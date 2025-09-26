@@ -1,5 +1,7 @@
+// Very top of the entry file (before other imports)
 import { Tabs } from 'expo-router';
 import React from 'react';
+import 'react-native-compat';
 
 import { HapticTab } from '@/components/haptic-tab';
 import { IconSymbol } from '@/components/ui/icon-symbol';
