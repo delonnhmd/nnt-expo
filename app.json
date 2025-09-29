@@ -5,10 +5,12 @@
     "scheme": "nnt",
     "version": "1.0.0",
     "platforms": [
-      "android"
+      "android",
+      "ios",
+      "web"
     ],
     "android": {
-      "package": "com.yourcompany.nnt",
+      "package": "nntpress.com",
       "intentFilters": [
         {
           "action": "VIEW",
@@ -23,6 +25,35 @@
           ]
         }
       ]
+    },
+    "ios": {
+      "bundleIdentifier": "nntpress.com",
+      "buildNumber": "1.0.0",
+      "infoPlist": {
+        "LSApplicationQueriesSchemes": [
+          "wc",
+          "metamask",
+          "trust",
+          "rainbow",
+          "zerion",
+          "imtoken",
+          "bitkeep",
+          "okx",
+          "safe",
+          "phantom",
+          "wc",
+          "metamask",
+          "trust",
+          "rainbow",
+          "zerion",
+          "imtoken",
+          "bitkeep",
+          "okx",
+          "safe",
+          "phantom"
+        ],
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "extra": {
       "eas": {
