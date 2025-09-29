@@ -1,15 +1,18 @@
-// nnt-expo/babel.config.js
 module.exports = function(api) {
   api.cache(true);
   return {
-    presets: [
-      [
-        'babel-preset-expo',
-        {
-          unstable_transformImportMeta: true
-        }
-      ]
+    presets: ['babel-preset-expo'],
+    plugins: [
+      ['@babel/plugin-transform-runtime'],
+      ['module-resolver', {
+        root: ['./src'],
+        alias: { '@': './src' }
+      }]
     ],
-    plugins: []
+    env: {
+      production: {
+        plugins: [['transform-remove-console', { exclude: ['error', 'warn'] }]]
+      }
+    }
   };
 };
