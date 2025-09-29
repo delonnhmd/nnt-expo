@@ -43,8 +43,6 @@ export default function Home() {
   const [topic, setTopic] = useState('General');
   const [content, setContent] = useState('Hello NNT!');
   const [streak, setStreak] = useState(1);
-
-  // show in UI
   const [chain, setChain] = useState<string>('');
 
   const append = (s: string) => setLog(p => s + '\n' + p);
