@@ -1,23 +1,14 @@
-// babel.config.js
 module.exports = function (api) {
   api.cache(true);
   return {
     presets: ['babel-preset-expo'],
-    // Keep aliases for "@/..." imports. Use the short plugin name "module-resolver".
     plugins: [
-      [
-        'module-resolver',
-        {
-          root: ['./'],
-          alias: {
-            '@': './src',
-          },
-          extensions: ['.ts', '.tsx', '.js', '.jsx', '.json'],
-        },
-      ],
-      // Reanimated plugin must be last if you use reanimated
+      // Optional alias – safe to keep
+      ['module-resolver', { alias: { '@': './src' } }],
+      // Strip console.* in production builds (optional)
+      ['transform-remove-console', { exclude: ['error', 'warn'] }],
+      // ⚠️ MUST be last: required by react-native-reanimated
       'react-native-reanimated/plugin',
     ],
-    // If you previously added any custom "unstable_transformImportMeta" flag, remove it now.
   };
 };

@@ -2,7 +2,7 @@ import { RPC_URL } from '@/constants';
 import { error } from '@/lib/logger';
 import { formatUnits } from '@/utils/format';
 import { ethers } from 'ethers';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 
 // minimal ERC-20 ABI
 const ERC20_ABI = [
@@ -22,9 +22,10 @@ export function useTokenBalance({ token, address, decimals, pollMs }: Opts) {
   const [raw, setRaw] = useState<bigint | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
 
+  // RPC_URL is an env constant; create provider once.
   const publicProvider = useMemo(() => new ethers.JsonRpcProvider(RPC_URL), []);
 
-  async function readOnce() {
+  const readOnce = useCallback(async () => {
     if (!address) return;
     try {
       setLoading(true);
@@ -43,15 +44,15 @@ export function useTokenBalance({ token, address, decimals, pollMs }: Opts) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [address, token, publicProvider]);
 
-  useEffect(() => { readOnce(); }, [address, token]);
+  useEffect(() => { readOnce(); }, [readOnce]);
 
   useEffect(() => {
     if (!pollMs) return;
     const t = setInterval(() => { readOnce(); }, pollMs);
     return () => clearInterval(t);
-  }, [pollMs, address, token]);
+  }, [pollMs, readOnce]);
 
   const formatted = useMemo(() => {
     if (raw == null) return '0';

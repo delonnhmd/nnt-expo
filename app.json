@@ -11,6 +11,7 @@
     ],
     "android": {
       "package": "nntpress.com",
+      "versionCode": 2,
       "intentFilters": [
         {
           "action": "VIEW",
@@ -27,33 +28,32 @@
       ]
     },
     "ios": {
-      "bundleIdentifier": "nntpress.com",
-      "buildNumber": "1.0.0",
+      "bundleIdentifier": "5SUQ269Z4G",
+      "buildNumber": "1.0.1",
       "infoPlist": {
         "LSApplicationQueriesSchemes": [
-          "wc",
           "metamask",
           "trust",
           "rainbow",
           "zerion",
-          "imtoken",
-          "bitkeep",
-          "okx",
-          "safe",
-          "phantom",
+          "argent",
+          "uniswap",
           "wc",
-          "metamask",
-          "trust",
-          "rainbow",
-          "zerion",
           "imtoken",
           "bitkeep",
+          "oneinch",
           "okx",
-          "safe",
-          "phantom"
+          "safepal",
+          "tokenpocket"
         ],
         "ITSAppUsesNonExemptEncryption": false
       }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/8b821dd0-43c9-43cf-854d-2942239acf2c"
+    },
+    "runtimeVersion": {
+      "policy": "sdkVersion"
     },
     "extra": {
       "eas": {
@@ -61,7 +61,8 @@
       }
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "expo-web-browser"
     ]
   }
 }

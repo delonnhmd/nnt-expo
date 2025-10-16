@@ -1,6 +1,7 @@
 import { error, log } from '@/lib/logger';
 import { useState } from 'react';
 import { useBackend } from './useBackend';
+import { useWallet } from './useWallet'; // import the hook to get openWallet
 
 type Opts = {
   address?: string;
@@ -9,6 +10,8 @@ type Opts = {
 
 export function useRegistration({ address, signMessage }: Opts) {
   const { getNonce, verify } = useBackend();
+  const { openWallet } = useWallet(); // get openWallet
+
   const [registered, setRegistered] = useState(false);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<'idle' | 'nonce' | 'signing' | 'verifying' | 'done' | 'error'>('idle');
@@ -20,6 +23,10 @@ export function useRegistration({ address, signMessage }: Opts) {
       setLoading(true); setLastError(null); setStatus('nonce');
       const { nonce } = await getNonce(address);                  // { nonce: "…" }
       setStatus('signing');
+
+      // Foreground the wallet app so the signature prompt is visible
+      try { await openWallet(); } catch { /* best-effort */ }
+
       const signature = await signMessage(nonce);
       setStatus('verifying');
       const resp = await verify({ address, signature });          // { ok: true }
