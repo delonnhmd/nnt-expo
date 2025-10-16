@@ -1,122 +1,57 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
-
-import { Collapsible } from '@/components/ui/collapsible';
-import { ExternalLink } from '@/components/external-link';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Fonts } from '@/constants/theme';
-import PostList from '@/components/PostList';
-import { usePosts } from '@/hooks';
 import React from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { getApi } from '@/lib/api';
 
-import '@walletconnect/react-native-compat';
+export default function RewardsScreen() {
+  const [me, setMe] = React.useState<{ nnt: number; gnnt: number; ads: { used: number; cap: number } } | null>(null);
+  const [rc, setRc] = React.useState<any>(null);
+  const [loading, setLoading] = React.useState(false);
 
-export default function TabTwoScreen() {
-  const posts = usePosts();
-  React.useEffect(() => { posts.loadFeed(); }, [posts.loadFeed]);
+  const refresh = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const api = await getApi();
+      try { await api.register(); } catch {}
+      try { const m = await api.meBalance(); setMe(m); } catch {}
+      try { const r = await api.rewardsCurrent(); setRc(r); } catch {}
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || String(e));
+    } finally { setLoading(false); }
+  }, []);
+
+  React.useEffect(() => { refresh(); }, [refresh]);
+
+  const adsLeft = (me?.ads?.cap ?? 0) - (me?.ads?.used ?? 0);
+  const viewReward = rc?.ad?.viewRewardGNNT ?? rc?.ad?.viewReward ?? 0;
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#D0D0D0', dark: '#353636' }}
-      headerImage={
-        <IconSymbol
-          size={310}
-          color="#808080"
-          name="chevron.left.forwardslash.chevron.right"
-          style={styles.headerImage}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText
-          type="title"
-          style={{
-            fontFamily: Fonts.rounded,
-          }}>
-          Explore
-        </ThemedText>
-      </ThemedView>
-      <ThemedText>This app includes example code to help you get started.</ThemedText>
-      <Collapsible title="File-based routing">
-        <ThemedText>
-          This app has two screens:{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/explore.tsx</ThemedText>
-        </ThemedText>
-        <ThemedText>
-          The layout file in <ThemedText type="defaultSemiBold">app/(tabs)/_layout.tsx</ThemedText>{' '}
-          sets up the tab navigator.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/router/introduction">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Android, iOS, and web support">
-        <ThemedText>
-          You can open this project on Android, iOS, and the web. To open the web version, press{' '}
-          <ThemedText type="defaultSemiBold">w</ThemedText> in the terminal running this project.
-        </ThemedText>
-      </Collapsible>
-      <Collapsible title="Images">
-        <ThemedText>
-          For static images, you can use the <ThemedText type="defaultSemiBold">@2x</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">@3x</ThemedText> suffixes to provide files for
-          different screen densities
-        </ThemedText>
-        <Image
-          source={require('@/assets/images/react-logo.png')}
-          style={{ width: 100, height: 100, alignSelf: 'center' }}
-        />
-        <ExternalLink href="https://reactnative.dev/docs/images">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Light and dark mode components">
-        <ThemedText>
-          This template has light and dark mode support. The{' '}
-          <ThemedText type="defaultSemiBold">useColorScheme()</ThemedText> hook lets you inspect
-          what the user&apos;s current color scheme is, and so you can adjust UI colors accordingly.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Feed">
-        <PostList data={posts.feed} />
-      </Collapsible>
-      <Collapsible title="Animations">
-        <ThemedText>
-          This template includes an example of an animated component. The{' '}
-          <ThemedText type="defaultSemiBold">components/HelloWave.tsx</ThemedText> component uses
-          the powerful{' '}
-          <ThemedText type="defaultSemiBold" style={{ fontFamily: Fonts.mono }}>
-            react-native-reanimated
-          </ThemedText>{' '}
-          library to create a waving hand animation.
-        </ThemedText>
-        {Platform.select({
-          ios: (
-            <ThemedText>
-              The <ThemedText type="defaultSemiBold">components/ParallaxScrollView.tsx</ThemedText>{' '}
-              component provides a parallax effect for the header image.
-            </ThemedText>
-          ),
-        })}
-      </Collapsible>
-    </ParallaxScrollView>
+    <ScrollView contentContainerStyle={styles.container}>
+      <Text style={styles.title}>Rewards</Text>
+      <View style={styles.card}>
+        <Text style={styles.row}>NNT: {me?.nnt ?? 0}</Text>
+        <Text style={styles.row}>GNNT: {me?.gnnt ?? 0}</Text>
+        <Text style={styles.row}>Ads Left Today: {adsLeft}</Text>
+        <Text style={styles.row}>Per Ad Reward (GNNT): {viewReward}</Text>
+        <TouchableOpacity style={styles.button} onPress={refresh} disabled={loading}>
+          <Text style={styles.buttonText}>{loading ? 'Refreshing…' : 'Refresh'}</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.subtitle}>Airdrop / Pool</Text>
+        <Text style={styles.row}>Treasury: {rc?.legacyAdPool?.treasury ?? '—'}</Text>
+        <Text style={styles.row}>Pool Cut (bps): {rc?.ad?.poolCutBps ?? rc?.poolCutBps ?? '—'}</Text>
+      </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  headerImage: {
-    color: '#808080',
-    bottom: -90,
-    left: -35,
-    position: 'absolute',
-  },
-  titleContainer: {
-    flexDirection: 'row',
-    gap: 8,
-  },
+  container: { padding: 16, backgroundColor: 'white', gap: 12 },
+  title: { fontSize: 18, fontWeight: '700' },
+  card: { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8, padding: 12, gap: 8 },
+  row: { fontSize: 14 },
+  subtitle: { fontSize: 16, fontWeight: '700' },
+  button: { backgroundColor: '#111827', paddingVertical: 10, borderRadius: 8, alignItems: 'center', marginTop: 6 },
+  buttonText: { color: 'white', fontWeight: '700' },
 });

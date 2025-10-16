@@ -17,6 +17,7 @@ export default function AccountPage() {
   const [activeTab, setActiveTab] = useState<'Posts' | 'Comments' | 'Activity'>('Posts');
   const [filter, setFilter] = useState<'all' | 'saved' | 'popular' | 'recent'>('all');
   const [query, setQuery] = useState<string>('');
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
 
   useEffect(() => {
     (async () => {
@@ -75,6 +76,16 @@ export default function AccountPage() {
   const postsCount = user?.postsCount ?? mine.length;
   const upvotes = user?.upvotesCount ?? 0;
   const memberSince = user?.joinedAt ? new Date(user.joinedAt).toLocaleDateString() : '—';
+  // detect admin by presence of token
+  useEffect(() => {
+    (async () => {
+      try {
+        const storage = (await import('@react-native-async-storage/async-storage')).default;
+        const t = await storage.getItem('admin:token');
+        setIsAdmin(!!t);
+      } catch {}
+    })();
+  }, []);
 
   return (
     <View style={{ flex: 1, backgroundColor: '#FFF' }}>
@@ -106,6 +117,22 @@ export default function AccountPage() {
                 <Text style={styles.subtext}>Total Posts: {postsCount}</Text>
                 <Text style={styles.subtext}>Total Upvotes: {upvotes}</Text>
                 <Text style={styles.subtext}>Member since {memberSince}</Text>
+                {isAdmin && (
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+                    <AdminButton label="Lock" onPress={async () => {
+                      try { const api = await getApi(); await api.adminUserLockAddress(String(address)); Alert.alert('Locked', 'User locked.'); }
+                      catch (e:any) { Alert.alert('Error', e?.message||String(e)); }
+                    }} />
+                    <AdminButton label="Unlock" onPress={async () => {
+                      try { const api = await getApi(); await api.adminUserUnlockAddress(String(address)); Alert.alert('Unlocked', 'User unlocked.'); }
+                      catch (e:any) { Alert.alert('Error', e?.message||String(e)); }
+                    }} />
+                    <AdminButton label="Reset Caps" onPress={async () => {
+                      try { const api = await getApi(); await api.adminUserResetCaps(String(address)); Alert.alert('Reset', 'Daily caps reset.'); setRefreshKey(k=>k+1); }
+                      catch (e:any) { Alert.alert('Error', e?.message||String(e)); }
+                    }} />
+                  </View>
+                )}
               </View>
             </View>
 
@@ -231,6 +258,17 @@ function PostCard({ postId, title, time, trueCount, fakeCount, onAfterVote }: { 
   const [tCount, setTCount] = useState<number>(trueCount);
   const [fCount, setFCount] = useState<number>(fakeCount);
   const [busy, setBusy] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const storage = (await import('@react-native-async-storage/async-storage')).default;
+        const t = await storage.getItem('admin:token');
+        setIsAdmin(!!t);
+      } catch {}
+    })();
+  }, []);
 
   const vote = async (sideTrue: boolean) => {
     if (busy) return;
@@ -265,6 +303,18 @@ function PostCard({ postId, title, time, trueCount, fakeCount, onAfterVote }: { 
         <SecondaryButton label="Fake" icon="thumbs-down" onPress={() => vote(false)} disabled={busy} />
         <RoundIcon name="share-2" onPress={() => Alert.alert('Share', 'Share link copied (demo).')} />
         <RoundIcon name="bookmark" onPress={() => Alert.alert('Saved', 'Saved to bookmarks (demo).')} />
+        {isAdmin && (
+          <>
+            <RoundIcon name="eye-off" onPress={async () => {
+              try { const api = await getApi(); await api.adminPostHide(postId); Alert.alert('Hidden', 'Post hidden.'); onAfterVote?.(); }
+              catch (e:any) { Alert.alert('Error', e?.message||String(e)); }
+            }} />
+            <RoundIcon name="eye" onPress={async () => {
+              try { const api = await getApi(); await api.adminPostUnhide(postId); Alert.alert('Unhidden', 'Post visible.'); onAfterVote?.(); }
+              catch (e:any) { Alert.alert('Error', e?.message||String(e)); }
+            }} />
+          </>
+        )}
       </View>
     </View>
   );
@@ -355,3 +405,11 @@ const styles = StyleSheet.create({
   btnSecondaryText: { color: '#111827', fontWeight: '600' },
   roundIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#E5E7EB', alignItems: 'center', justifyContent: 'center' },
 });
+
+function AdminButton({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <TouchableOpacity onPress={onPress} style={{ backgroundColor: '#111827', paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8 }}>
+      <Text style={{ color: '#fff', fontWeight: '600' }}>{label}</Text>
+    </TouchableOpacity>
+  );
+}

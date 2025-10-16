@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Image, ScrollView, StyleSheet, Alert } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
+import { View, Text, TextInput, TouchableOpacity, Image, ScrollView, StyleSheet, Alert, Share } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { getApi } from '@/lib/api';
 import TopStatusBar from '@/components/TopStatusBar';
@@ -16,29 +15,11 @@ export default function MainPage() {
   const [loadingFeed, setLoadingFeed] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [uploading, setUploading] = useState(false);
+  const [metrics, setMetrics] = useState<{ users: number; today_rows: number; today_ad_nnt: string; today_votes: number } | null>(null);
 
   const onCreatePost = async () => {
-    try {
-      if (!address) { Alert.alert('Connect wallet', 'Please connect your wallet to create a post.'); return; }
-      const api = await getApi();
-      const d = await api.getDebt(address);
-      const outstanding = d?.outstanding ?? 0;
-      if (outstanding > 0) {
-        Alert.alert(
-          'Posting locked',
-          `You have outstanding debt of ${outstanding} NNT. Repay debt to create posts.`,
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Go to Rewards', onPress: () => router.push('/(tabs)/rewards') },
-          ]
-        );
-        return;
-      }
-      // Navigate to a compose placeholder (modal) until full editor exists
-      try { router.push('/modal'); } catch {}
-    } catch (e: any) {
-      Alert.alert('Error', e?.message || String(e));
-    }
+    // Allow creating posts without wallet gating (admin or guest can proceed)
+    try { router.push('/compose'); } catch { router.push('/modal'); }
   };
 
   const onWatchAd = async () => {
@@ -46,6 +27,8 @@ export default function MainPage() {
     setWatchingAd(true);
     try {
       const api = await getApi();
+      // ensure registration so UID/FP exist server-side
+      try { await api.register(); } catch {}
       await api.adComplete();
   Alert.alert('Thanks!', 'Ad completed. Points awarded if available.');
   setRefreshKey((k) => k + 1);
@@ -58,9 +41,21 @@ export default function MainPage() {
 
   const onUpload = async () => {
     try {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      let picker: any;
+      try {
+        // Lazy-load the image picker so the app doesn't crash if the native module isn't in the installed build
+        picker = await import('expo-image-picker');
+      } catch (e: any) {
+        Alert.alert(
+          'Feature unavailable',
+          'This app build does not include the Image Picker. Please install the latest build or use a version with media upload enabled.'
+        );
+        return;
+      }
+
+      const perm = await picker.requestMediaLibraryPermissionsAsync();
       if (perm.status !== 'granted') { Alert.alert('Permission required', 'Media library permission is needed.'); return; }
-      const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.All, allowsEditing: false, quality: 0.8 });
+      const res = await picker.launchImageLibraryAsync({ mediaTypes: picker.MediaTypeOptions.All, allowsEditing: false, quality: 0.8 });
       if (res.canceled || !res.assets || !res.assets[0]) return;
       const asset = res.assets[0];
       const uri = asset.uri;
@@ -91,6 +86,10 @@ export default function MainPage() {
       setLoadingFeed(true);
       try {
         const api = await getApi();
+        // auto-register silently (simulated account)
+        try { await api.register(); } catch {}
+        // refresh stats
+        try { const m = await api.adminMetrics(); setMetrics(m); } catch {}
         if (search.trim().length > 0) {
           const list = await api.searchSite(search.trim());
           setFeed(Array.isArray(list) ? list : []);
@@ -134,8 +133,25 @@ export default function MainPage() {
               placeholderTextColor="#9CA3AF"
             />
           </View>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Button label={address ? 'Connected' : 'Connect Wallet'} onPress={async () => {
+              try {
+                const api = await getApi();
+                try { await api.register(); } catch {}
+                // attempt to connect WalletConnect and ensure correct chain
+                const w = require('@/hooks').useWallet; // dynamic to avoid circular at import time
+                // Can't call hook here; instead, route user to account page where wallet UI exists
+                router.push('/user/0xme');
+              } catch (e: any) {
+                Alert.alert('Wallet', e?.message || String(e));
+              }
+            }} />
+            <Button label="Register" onPress={async () => {
+              try { const api = await getApi(); const r = await api.register(); Alert.alert('Registered', 'Account initialized.'); setRefreshKey((k)=>k+1); }
+              catch(e:any){ Alert.alert('Register failed', e?.message||String(e)); }
+            }} />
+          </View>
           <Button label="Create Post" onPress={onCreatePost} />
-          <Button label={uploading ? 'Uploading…' : 'Upload Photo/Video'} onPress={onUpload} />
           {/* Watch Ad on the right side */}
           <Button label={watchingAd ? 'Watching…' : 'Watch Ad'} onPress={onWatchAd} />
         </View>
@@ -146,8 +162,12 @@ export default function MainPage() {
         <View style={styles.statsCard}>
           <Text style={styles.sectionTitle}>Statistics</Text>
           <View style={styles.statRow}>
-            <Text style={styles.subtext}>Total Users: 1,258</Text>
-            <Text style={styles.subtext}>Total Posts: 3,679</Text>
+            <Text style={styles.subtext}>Total Users: {metrics?.users ?? 0}</Text>
+            <Text style={styles.subtext}>Today Ad NNT: {metrics?.today_ad_nnt ?? '0'}</Text>
+          </View>
+          <View style={styles.statRow}>
+            <Text style={styles.subtext}>Today Rows: {metrics?.today_rows ?? 0}</Text>
+            <Text style={styles.subtext}>Today Votes: {metrics?.today_votes ?? 0}</Text>
           </View>
         </View>
 
@@ -155,10 +175,12 @@ export default function MainPage() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Categories</Text>
           <View style={styles.categoryRow}>
-            <IconButton label="Home" icon="home" onPress={() => {}} />
-            <IconButton label="Authors" icon="users" onPress={() => {}} />
-            <IconButton label="My Wallet" icon="credit-card" onPress={() => {}} />
+            <IconButton label="Home" icon="home" onPress={() => router.push('/')} />
+            <IconButton label="Authors" icon="users" onPress={() => router.push('/authors')} />
+            <IconButton label="My Wallet" icon="credit-card" onPress={() => router.push('/(tabs)/rewards')} />
             <IconButton label="Submit" icon="plus" onPress={onCreatePost} />
+            <IconButton label="Settings" icon="settings" onPress={() => router.push('/settings')} />
+            <IconButton label="Admin" icon="shield" onPress={() => router.push('/admin')} />
           </View>
         </View>
 
@@ -363,6 +385,13 @@ function PostCard({
     }
   };
 
+  const onShare = async () => {
+    try {
+      const message = `${title} — ${typeof postId === 'string' ? postId : `#${postId}`}`;
+      await Share.share({ message });
+    } catch {}
+  };
+
   return (
     <View style={styles.card}>
       <View style={styles.cardTop}>
@@ -388,7 +417,7 @@ function PostCard({
           <Feather name="thumbs-down" size={16} color="#111827" />
           <Text style={styles.btnSecondaryText}>Fake</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.roundIcon} onPress={() => {}}>
+        <TouchableOpacity style={styles.roundIcon} onPress={onShare}>
           <Feather name="share-2" size={18} color="#111827" />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>

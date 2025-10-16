@@ -22,6 +22,17 @@ export interface ApiClient {
   // New identity-based endpoints
   meBalance(): Promise<{ nnt: number; gnnt: number; ads: { used: number; cap: number } }>;
   getDebt(address: string): Promise<{ outstanding: number; pendingReceivables?: { total: number } }>;
+  adminMetrics(): Promise<{ users: number; today_rows: number; today_ad_nnt: string; today_votes: number }>;
+  register(): Promise<any>;
+  createPost(body: { topicId?: string; category?: string; content: string; author?: string }): Promise<any>;
+  rewardsCurrent(): Promise<any>;
+  // Admin actions
+  adminPostHide(postId: string | number): Promise<any>;
+  adminPostUnhide(postId: string | number): Promise<any>;
+  adminUserLockAddress(address: string): Promise<any>;
+  adminUserUnlockAddress(address: string): Promise<any>;
+  adminUserResetCaps(uid: string): Promise<any>;
+  adminUsers(query?: string, limit?: number): Promise<Array<{ address: string; postsCount: number; votesCount: number; locked: boolean; isAdmin: boolean; nnt: number; gnnt: number }>>;
 
   getFeed(): Promise<any[]>;
   vote(postId: string | number, sideTrue: boolean): Promise<any>;
@@ -74,19 +85,39 @@ async function getIdentityHeaders() {
   } as Record<string, string>;
 }
 
+async function getBaseUrl(): Promise<string> {
+  try {
+    const override = await AsyncStorage.getItem('backend:override');
+    if (override && /^https?:\/\//i.test(override)) return override.replace(/\/$/, '');
+  } catch {}
+  return BACKEND?.replace(/\/$/, '') || '';
+}
+
 async function fetchJson(path: string, init?: RequestInit) {
-  const url = `${BACKEND}${path}`;
+  const base = await getBaseUrl();
+  const url = `${base}${path}`;
   const idHeaders = await getIdentityHeaders();
+  // Optional admin token for privileged endpoints
+  let adminToken: string | null = null;
+  try { adminToken = await AsyncStorage.getItem('admin:token'); } catch {}
   const res = await fetch(url, {
     ...init,
     headers: {
       'content-type': 'application/json',
       ...idHeaders,
+      ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {}),
       ...(init?.headers || {}),
     },
   } as any);
   const text = await res.text();
-  const json = text ? JSON.parse(text) : null;
+  let json: any = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch (e) {
+    // Non-JSON response (e.g., HTML from a proxy). Surface details for easier debugging
+    const snippet = (text || '').slice(0, 200);
+    throw new Error(`Non-JSON response (status ${res.status}): ${snippet}`);
+  }
   if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
   return json;
 }
@@ -116,6 +147,9 @@ function createRealClient(): ApiClient {
   // New endpoints
     meBalance() { return fetchJson('/me/balance'); },
   getDebt(address: string) { return fetchJson(`/debt/${address}`); },
+  adminMetrics() { return fetchJson('/admin/metrics'); },
+  register() { return fetchJson('/register', { method: 'POST', body: '{}' }); },
+  createPost(body) { return fetchJson('/posts', { method: 'POST', body: JSON.stringify(body) }); },
   getFeed() { return fetchJson('/posts/feed'); },
   searchSite(query: string) { return fetchJson(`/search?q=${encodeURIComponent(query)}`); },
   searchUserPosts(address: string, query: string) { return fetchJson(`/posts/search?address=${encodeURIComponent(address)}&q=${encodeURIComponent(query)}`); },
@@ -127,6 +161,31 @@ function createRealClient(): ApiClient {
       return fetchJson('/ad/complete', { method: 'POST', body: '{}' });
     },
     referralLink() { return fetchJson('/ref/link'); },
+    rewardsCurrent() { return fetchJson('/rewards/current'); },
+    // Admin actions (require admin token in AsyncStorage as 'admin:token')
+    adminPostHide(postId: string | number) { return fetchJson(`/admin/post/${postId}/hide`, { method: 'POST', body: '{}' }); },
+    adminPostUnhide(postId: string | number) {
+      // Prefer role-protected endpoint; if backend also supports address-based unhide, it's fine to use this.
+      return fetchJson(`/admin/post/${postId}/unhide`, { method: 'POST', body: '{}' });
+    },
+    async adminUserLockAddress(address: string) {
+      // Address-based admin endpoints expect admin_address in body
+      let adminAddr: string | null = null;
+      try { adminAddr = await AsyncStorage.getItem('admin:address'); } catch {}
+      if (!adminAddr) throw new Error('Set admin address in Settings');
+      return fetchJson('/admin/user/lock', { method: 'POST', body: JSON.stringify({ admin_address: adminAddr, target_address: address }) });
+    },
+    async adminUserUnlockAddress(address: string) {
+      let adminAddr: string | null = null;
+      try { adminAddr = await AsyncStorage.getItem('admin:address'); } catch {}
+      if (!adminAddr) throw new Error('Set admin address in Settings');
+      return fetchJson('/admin/user/unlock', { method: 'POST', body: JSON.stringify({ admin_address: adminAddr, target_address: address }) });
+    },
+    adminUserResetCaps(uid: string) { return fetchJson(`/admin/user/${encodeURIComponent(uid)}/reset-caps`, { method: 'POST', body: '{}' }); },
+    adminUsers(query?: string, limit = 100) {
+      const q = query ? `?q=${encodeURIComponent(query)}&limit=${limit}` : `?limit=${limit}`;
+      return fetchJson(`/admin/users${q}`);
+    },
   };
 }
 
@@ -149,6 +208,10 @@ function createMockClient(): ApiClient {
       }));
       return out as any;
     },
+    adminMetrics: async () => ({ users: 0, today_rows: 0, today_ad_nnt: '0', today_votes: 0 }),
+    register: async () => ({ ok: true, early: { eligible: true } }),
+    createPost: async (body) => ({ ok: true, id: Math.floor(Math.random() * 1e6), ...body }),
+    rewardsCurrent: async () => ({ ok: true, ad: { viewRewardGNNT: 1, poolCutBps: 0 }, legacyAdPool: { treasury: '0x0' } }),
   meBalance: async () => ({ nnt: 0, gnnt: 0, ads: { used: 0, cap: 10 } }),
   getDebt: async () => ({ outstanding: 0, pendingReceivables: { total: 0 } }),
     getFeed: async () => ([{ id: 'p1', title: 'Post A', gap: 12 }, { id: 'p2', title: 'Post B', gap: -4 }]),
@@ -165,6 +228,16 @@ function createMockClient(): ApiClient {
       const q = (query || '').toLowerCase();
       return !q ? list : list.filter((p) => JSON.stringify(p).toLowerCase().includes(q));
     },
+    // Admin mocks
+    adminPostHide: async () => ({ ok: true }),
+    adminPostUnhide: async () => ({ ok: true }),
+    adminUserLockAddress: async () => ({ ok: true }),
+    adminUserUnlockAddress: async () => ({ ok: true }),
+    adminUserResetCaps: async () => ({ ok: true }),
+    adminUsers: async () => ([
+      { address: '0xAdmin', postsCount: 3, votesCount: 12, locked: false, isAdmin: true, nnt: 100, gnnt: 50 },
+      { address: '0xUser1', postsCount: 1, votesCount: 2, locked: false, isAdmin: false, nnt: 10, gnnt: 5 },
+    ] as any),
   };
 }
 
