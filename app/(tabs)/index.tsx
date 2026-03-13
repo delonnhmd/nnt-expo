@@ -7,7 +7,7 @@ import { useWallet } from '@/hooks';
 import { router } from 'expo-router';
 
 export default function MainPage() {
-  const { address } = useWallet();
+  const { address, connect } = useWallet();
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState<'Top' | 'Viewed' | 'Latest'>('Top');
   const [watchingAd, setWatchingAd] = useState(false);
@@ -16,6 +16,8 @@ export default function MainPage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [metrics, setMetrics] = useState<{ users: number; today_rows: number; today_ad_nnt: string; today_votes: number } | null>(null);
+  const [adPerNnt, setAdPerNnt] = useState<number | null>(null);
+  const [poolRemaining, setPoolRemaining] = useState<number | null>(null);
 
   const onCreatePost = async () => {
     // Allow creating posts without wallet gating (admin or guest can proceed)
@@ -90,6 +92,14 @@ export default function MainPage() {
         try { await api.register(); } catch {}
         // refresh stats
         try { const m = await api.adminMetrics(); setMetrics(m); } catch {}
+        // fetch rewards/pool for banner
+        try {
+          const r = await api.rewardsCurrent();
+          const per = Number(r?.ad?.perAd?.nnt ?? r?.legacyAdPool?.perAdNNT ?? 0);
+          const rem = Number(r?.legacyAdPool?.remaining ?? 0);
+          setAdPerNnt(Number.isFinite(per) ? per : null);
+          setPoolRemaining(Number.isFinite(rem) ? rem : null);
+        } catch {}
         if (search.trim().length > 0) {
           const list = await api.searchSite(search.trim());
           setFeed(Array.isArray(list) ? list : []);
@@ -135,20 +145,25 @@ export default function MainPage() {
           </View>
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <Button label={address ? 'Connected' : 'Connect Wallet'} onPress={async () => {
-              try {
-                const api = await getApi();
-                try { await api.register(); } catch {}
-                // attempt to connect WalletConnect and ensure correct chain
-                const w = require('@/hooks').useWallet; // dynamic to avoid circular at import time
-                // Can't call hook here; instead, route user to account page where wallet UI exists
-                router.push('/user/0xme');
-              } catch (e: any) {
-                Alert.alert('Wallet', e?.message || String(e));
+              if (address) {
+                // Already connected, navigate to account page to view details
+                router.push('/account');
+              } else {
+                // Not connected, trigger wallet connection
+                try {
+                  console.log('Attempting to connect wallet...');
+                  await connect();
+                  console.log('Wallet connected successfully');
+                  Alert.alert('Success', 'Wallet connected! You can now register and interact.');
+                } catch (e: any) {
+                  console.error('Wallet connection error:', e);
+                  Alert.alert('Connection failed', e?.message || String(e));
+                }
               }
             }} />
-            <Button label="Register" onPress={async () => {
-              try { const api = await getApi(); const r = await api.register(); Alert.alert('Registered', 'Account initialized.'); setRefreshKey((k)=>k+1); }
-              catch(e:any){ Alert.alert('Register failed', e?.message||String(e)); }
+            <Button label="Register" onPress={() => {
+              // Navigate to registration screen
+              router.push('/register');
             }} />
           </View>
           <Button label="Create Post" onPress={onCreatePost} />
@@ -158,6 +173,20 @@ export default function MainPage() {
       </View>
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+        {/* Rewards banner */}
+        {(adPerNnt !== null || poolRemaining !== null) && (
+          <View style={styles.rewardsCard}>
+            <Text style={styles.sectionTitle}>Rewards</Text>
+            <View style={styles.statRow}>
+              <Text style={styles.bodyText}>Per Ad</Text>
+              <Text style={styles.bodyText}>{adPerNnt !== null ? `${adPerNnt.toFixed(2)} NNT` : '—'}</Text>
+            </View>
+            <View style={styles.statRow}>
+              <Text style={styles.bodyText}>Legacy Ad Pool Remaining</Text>
+              <Text style={styles.bodyText}>{poolRemaining !== null ? `${poolRemaining.toLocaleString(undefined, { maximumFractionDigits: 2 })} NNT` : '—'}</Text>
+            </View>
+          </View>
+        )}
         {/* Stats */}
         <View style={styles.statsCard}>
           <Text style={styles.sectionTitle}>Statistics</Text>
@@ -491,6 +520,10 @@ const styles = StyleSheet.create({
 
   statsCard: {
     backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB',
+    borderRadius: 12, padding: 12, gap: 6,
+  },
+  rewardsCard: {
+    backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: '#DBEAFE',
     borderRadius: 12, padding: 12, gap: 6,
   },
   statRow: { flexDirection: 'row', justifyContent: 'space-between' },

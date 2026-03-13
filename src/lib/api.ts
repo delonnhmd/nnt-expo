@@ -23,9 +23,13 @@ export interface ApiClient {
   meBalance(): Promise<{ nnt: number; gnnt: number; ads: { used: number; cap: number } }>;
   getDebt(address: string): Promise<{ outstanding: number; pendingReceivables?: { total: number } }>;
   adminMetrics(): Promise<{ users: number; today_rows: number; today_ad_nnt: string; today_votes: number }>;
-  register(): Promise<any>;
+  register(username?: string, address?: string): Promise<any>;
+  getMyProfile(): Promise<{ ok: boolean; profile?: { username: string; address: string; created_at: number } }>;
   createPost(body: { topicId?: string; category?: string; content: string; author?: string }): Promise<any>;
   rewardsCurrent(): Promise<any>;
+  // Airdrop helpers
+  airdropClaimable(token: Token, epoch: number, address: string): Promise<any>;
+  txAirdropClaim(from: string, token: Token, epoch: number, address: string): Promise<any>;
   // Admin actions
   adminPostHide(postId: string | number): Promise<any>;
   adminPostUnhide(postId: string | number): Promise<any>;
@@ -96,30 +100,45 @@ async function getBaseUrl(): Promise<string> {
 async function fetchJson(path: string, init?: RequestInit) {
   const base = await getBaseUrl();
   const url = `${base}${path}`;
+  console.log(`[API] Fetching: ${url}`);
+  
   const idHeaders = await getIdentityHeaders();
   // Optional admin token for privileged endpoints
   let adminToken: string | null = null;
   try { adminToken = await AsyncStorage.getItem('admin:token'); } catch {}
-  const res = await fetch(url, {
-    ...init,
-    headers: {
-      'content-type': 'application/json',
-      ...idHeaders,
-      ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {}),
-      ...(init?.headers || {}),
-    },
-  } as any);
-  const text = await res.text();
-  let json: any = null;
+  
   try {
-    json = text ? JSON.parse(text) : null;
-  } catch (e) {
-    // Non-JSON response (e.g., HTML from a proxy). Surface details for easier debugging
-    const snippet = (text || '').slice(0, 200);
-    throw new Error(`Non-JSON response (status ${res.status}): ${snippet}`);
+    const res = await fetch(url, {
+      ...init,
+      headers: {
+        'content-type': 'application/json',
+        ...idHeaders,
+        ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {}),
+        ...(init?.headers || {}),
+      },
+    } as any);
+    
+    const text = await res.text();
+    console.log(`[API] Response status: ${res.status}, text length: ${text?.length || 0}`);
+    
+    let json: any = null;
+    try {
+      json = text ? JSON.parse(text) : null;
+    } catch (e) {
+      // Non-JSON response (e.g., HTML from a proxy). Surface details for easier debugging
+      const snippet = (text || '').slice(0, 200);
+      console.error(`[API] Non-JSON response: ${snippet}`);
+      throw new Error(`Non-JSON response (status ${res.status}): ${snippet}`);
+    }
+    if (!res.ok) {
+      console.error(`[API] Error response:`, json);
+      throw new Error(json?.error || `HTTP ${res.status}`);
+    }
+    return json;
+  } catch (e: any) {
+    console.error(`[API] Fetch error for ${path}:`, e);
+    throw e;
   }
-  if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
-  return json;
 }
 
 function createRealClient(): ApiClient {
@@ -148,7 +167,13 @@ function createRealClient(): ApiClient {
     meBalance() { return fetchJson('/me/balance'); },
   getDebt(address: string) { return fetchJson(`/debt/${address}`); },
   adminMetrics() { return fetchJson('/admin/metrics'); },
-  register() { return fetchJson('/register', { method: 'POST', body: '{}' }); },
+  register(username?: string, address?: string) { 
+    if (username && address) {
+      return fetchJson('/register', { method: 'POST', body: JSON.stringify({ username, address }) });
+    }
+    return fetchJson('/register', { method: 'POST', body: '{}' });
+  },
+  getMyProfile() { return fetchJson('/me/profile'); },
   createPost(body) { return fetchJson('/posts', { method: 'POST', body: JSON.stringify(body) }); },
   getFeed() { return fetchJson('/posts/feed'); },
   searchSite(query: string) { return fetchJson(`/search?q=${encodeURIComponent(query)}`); },
@@ -162,6 +187,13 @@ function createRealClient(): ApiClient {
     },
     referralLink() { return fetchJson('/ref/link'); },
     rewardsCurrent() { return fetchJson('/rewards/current'); },
+    airdropClaimable(token: Token, epoch: number, address: string) {
+      const q = `?token=${encodeURIComponent(token)}&epoch=${encodeURIComponent(String(epoch))}&address=${encodeURIComponent(address)}`;
+      return fetchJson(`/airdrop/claimable${q}`);
+    },
+    txAirdropClaim(from: string, token: Token, epoch: number, address: string) {
+      return fetchJson('/tx/airdrop/claim', { method: 'POST', body: JSON.stringify({ from, token, epoch, address }) });
+    },
     // Admin actions (require admin token in AsyncStorage as 'admin:token')
     adminPostHide(postId: string | number) { return fetchJson(`/admin/post/${postId}/hide`, { method: 'POST', body: '{}' }); },
     adminPostUnhide(postId: string | number) {
@@ -238,6 +270,10 @@ function createMockClient(): ApiClient {
       { address: '0xAdmin', postsCount: 3, votesCount: 12, locked: false, isAdmin: true, nnt: 100, gnnt: 50 },
       { address: '0xUser1', postsCount: 1, votesCount: 2, locked: false, isAdmin: false, nnt: 10, gnnt: 5 },
     ] as any),
+    // Airdrop mocks
+    airdropClaimable: async (_token: Token, epoch: number, address: string) => ({ ok: true, distributor: '0xDistributor', epoch, index: 0, amount: '0', proof: [], isClaimed: false, address }),
+    txAirdropClaim: async () => ({ ok: true, to: '0xDistributor', data: '0x', value: 0, chainId: 11155111 }),
+    getMyProfile: async () => ({ ok: true, profile: { username: 'mock', address: '0xMock', created_at: Date.now() / 1000 } }),
   };
 }
 
