@@ -1,0 +1,183 @@
+import React from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+
+import ProgressMeter from '@/components/ui/ProgressMeter';
+import SurfaceCard from '@/components/ui/SurfaceCard';
+import { theme } from '@/design/theme';
+import { ActionExecutionGuard } from '@/hooks/useDailySession';
+import { DailyActionHubResponse, DailyActionItem } from '@/types/gameplay';
+
+import ActionCard from './ActionCard';
+
+function ActionSection({
+  title,
+  actions,
+  onPreview,
+  getExecutionGuard,
+}: {
+  title: string;
+  actions: DailyActionItem[];
+  onPreview: (action: DailyActionItem) => void;
+  getExecutionGuard: (action: DailyActionItem) => ActionExecutionGuard;
+}) {
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      {actions.length > 0 ? (
+        actions.map((action) => {
+          const executionGuard = getExecutionGuard(action);
+          return (
+            <ActionCard
+              key={`${title}_${action.action_key}`}
+              action={action}
+              onPreview={onPreview}
+              executionGuard={executionGuard}
+            />
+          );
+        })
+      ) : (
+        <Text style={styles.empty}>No actions in this section.</Text>
+      )}
+    </View>
+  );
+}
+
+export default function ActionHubPanel({
+  hub,
+  onPreviewAction,
+  getExecutionGuard,
+  remainingTimeUnits,
+  totalTimeUnits,
+  sessionStatus,
+  progressRatio,
+}: {
+  hub: DailyActionHubResponse;
+  onPreviewAction: (action: DailyActionItem) => void;
+  getExecutionGuard: (action: DailyActionItem) => ActionExecutionGuard;
+  remainingTimeUnits: number;
+  totalTimeUnits: number;
+  sessionStatus: 'active' | 'ended';
+  progressRatio: number;
+}) {
+  return (
+    <SurfaceCard style={styles.card}>
+      <Text style={styles.heading}>Action Hub</Text>
+      <Text style={styles.subheading}>Choose what to do next and check tradeoffs before committing.</Text>
+      <SurfaceCard variant="muted" style={styles.timeBox}>
+        <View style={styles.timeTopRow}>
+          <Text style={styles.timeTitle}>Day Progress</Text>
+          <Text style={styles.timeMeta}>
+            {remainingTimeUnits}/{totalTimeUnits} units left | {sessionStatus}
+          </Text>
+        </View>
+        <ProgressMeter progress={progressRatio} />
+      </SurfaceCard>
+
+      {hub.top_tradeoffs.length > 0 ? (
+        <SurfaceCard variant="highlighted" style={styles.infoBox}>
+          <Text style={styles.infoTitle}>Top Tradeoffs</Text>
+          {hub.top_tradeoffs.slice(0, 3).map((item, index) => (
+            <Text key={`tradeoff_${index}`} style={styles.infoText}>
+              - {item}
+            </Text>
+          ))}
+        </SurfaceCard>
+      ) : null}
+
+      {hub.next_risk_warnings.length > 0 ? (
+        <SurfaceCard variant="warning" style={styles.warningBox}>
+          <Text style={styles.warningTitle}>Next Risks</Text>
+          {hub.next_risk_warnings.slice(0, 3).map((item, index) => (
+            <Text key={`warning_${index}`} style={styles.warningText}>
+              - {item}
+            </Text>
+          ))}
+        </SurfaceCard>
+      ) : null}
+
+      <ActionSection
+        title="Recommended"
+        actions={hub.recommended_actions}
+        onPreview={onPreviewAction}
+        getExecutionGuard={getExecutionGuard}
+      />
+      <ActionSection
+        title="Available"
+        actions={hub.available_actions}
+        onPreview={onPreviewAction}
+        getExecutionGuard={getExecutionGuard}
+      />
+      <ActionSection
+        title="Blocked"
+        actions={hub.blocked_actions}
+        onPreview={onPreviewAction}
+        getExecutionGuard={getExecutionGuard}
+      />
+    </SurfaceCard>
+  );
+}
+
+const styles = StyleSheet.create({
+  card: {
+    gap: theme.spacing.md,
+  },
+  heading: {
+    color: theme.color.textPrimary,
+    ...theme.typography.headingMd,
+  },
+  subheading: {
+    color: theme.color.textSecondary,
+    ...theme.typography.bodySm,
+  },
+  timeBox: {
+    gap: theme.spacing.sm,
+  },
+  timeTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.spacing.sm,
+    flexWrap: 'wrap',
+  },
+  timeTitle: {
+    color: theme.color.textSecondary,
+    ...theme.typography.label,
+  },
+  timeMeta: {
+    color: theme.color.textSecondary,
+    ...theme.typography.caption,
+  },
+  infoBox: {
+    gap: theme.spacing.xxs,
+  },
+  infoTitle: {
+    color: theme.color.info,
+    ...theme.typography.label,
+  },
+  infoText: {
+    color: '#1e3a8a',
+    ...theme.typography.bodySm,
+  },
+  warningBox: {
+    gap: theme.spacing.xxs,
+  },
+  warningTitle: {
+    color: '#92400e',
+    ...theme.typography.label,
+  },
+  warningText: {
+    color: '#78350f',
+    ...theme.typography.bodySm,
+  },
+  section: {
+    gap: theme.spacing.sm,
+  },
+  sectionTitle: {
+    color: theme.color.textSecondary,
+    ...theme.typography.headingSm,
+  },
+  empty: {
+    color: theme.color.muted,
+    ...theme.typography.bodySm,
+  },
+});

@@ -1,0 +1,2722 @@
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { router } from 'expo-router';
+import { RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+
+import ActionHistoryPanel from '@/components/gameplay/ActionHistoryPanel';
+import ActionHubPanel from '@/components/gameplay/ActionHubPanel';
+import ActionPreviewModal from '@/components/gameplay/ActionPreviewModal';
+import ActiveCommitmentCard from '@/components/gameplay/ActiveCommitmentCard';
+import BusinessPlanCard from '@/components/gameplay/BusinessPlanCard';
+import BusinessMarginsCard from '@/components/gameplay/BusinessMarginsCard';
+import CommutePressureCard from '@/components/gameplay/CommutePressureCard';
+import CommitmentFeedbackCard from '@/components/gameplay/CommitmentFeedbackCard';
+import CommitmentHistoryCard from '@/components/gameplay/CommitmentHistoryCard';
+import CommitmentPickerCard from '@/components/gameplay/CommitmentPickerCard';
+import CommitmentProgressCard from '@/components/gameplay/CommitmentProgressCard';
+import DailyBriefCard from '@/components/gameplay/DailyBriefCard';
+import DailyGoalsCard from '@/components/gameplay/DailyGoalsCard';
+import DebtVsGrowthCard from '@/components/gameplay/DebtVsGrowthCard';
+import EconomyExplainerCard from '@/components/gameplay/EconomyExplainerCard';
+import EmptyStateCard from '@/components/gameplay/EmptyStateCard';
+import EndOfDaySummaryCard from '@/components/gameplay/EndOfDaySummaryCard';
+import ErrorStateCard from '@/components/gameplay/ErrorStateCard';
+import FuturePreparationCard from '@/components/gameplay/FuturePreparationCard';
+import FutureOpportunitiesCard from '@/components/gameplay/FutureOpportunitiesCard';
+import HousingTradeoffCard from '@/components/gameplay/HousingTradeoffCard';
+import LoadingStateCard from '@/components/gameplay/LoadingStateCard';
+import MarketOverviewCard from '@/components/gameplay/MarketOverviewCard';
+import NotificationsDrawer from '@/components/gameplay/NotificationsDrawer';
+import LocalPressureCard from '@/components/gameplay/LocalPressureCard';
+import OnboardingBanner from '@/components/gameplay/OnboardingBanner';
+import OnboardingCoachmark from '@/components/gameplay/OnboardingCoachmark';
+import OnboardingProgressCard from '@/components/gameplay/OnboardingProgressCard';
+import OnboardingUnlockPreviewCard from '@/components/gameplay/OnboardingUnlockPreviewCard';
+import PatternInsightsCard from '@/components/gameplay/PatternInsightsCard';
+import PlayerStatsBar from '@/components/gameplay/PlayerStatsBar';
+import PlayerPatternsCard from '@/components/gameplay/PlayerPatternsCard';
+import PriceTrendsCard from '@/components/gameplay/PriceTrendsCard';
+import ProgressionSummaryCard from '@/components/gameplay/ProgressionSummaryCard';
+import RecoveryVsPushCard from '@/components/gameplay/RecoveryVsPushCard';
+import RegionMemoryCard from '@/components/gameplay/RegionMemoryCard';
+import ShortHorizonPlansCard from '@/components/gameplay/ShortHorizonPlansCard';
+import SecondaryDashboardSection from '@/components/gameplay/SecondaryDashboardSection';
+import PrimaryDashboardSection from '@/components/gameplay/PrimaryDashboardSection';
+import StreaksCard from '@/components/gameplay/StreaksCard';
+import StrategyRecommendationCard from '@/components/gameplay/StrategyRecommendationCard';
+import WeeklySummaryCard from '@/components/gameplay/WeeklySummaryCard';
+import WeeklyMissionsCard from '@/components/gameplay/WeeklyMissionsCard';
+import WorldNarrativeCard from '@/components/gameplay/WorldNarrativeCard';
+import FirstSessionSummaryCard from '@/components/gameplay/FirstSessionSummaryCard';
+import AppShell from '@/components/layout/AppShell';
+import ContentStack from '@/components/layout/ContentStack';
+import PageContainer from '@/components/layout/PageContainer';
+import FadeInView from '@/components/motion/FadeInView';
+import SecondaryButton from '@/components/ui/SecondaryButton';
+import { ActionExecutionGuard, useDailySession } from '@/hooks/useDailySession';
+import {
+  activateCommitment,
+  cancelCommitment,
+  getAvailableCommitments,
+  getCommitmentFeedback,
+  getCommitmentHistory,
+  getCommitmentSummary,
+  refreshCommitment,
+  replaceCommitment,
+} from '@/lib/api/commitment';
+import {
+  getBusinessMargins,
+  getCommutePressure,
+  getEconomyExplainer,
+  getFutureTeasers,
+  getMarketOverview,
+  getPriceTrends,
+} from '@/lib/api/economyPresentation';
+import {
+  endDay,
+  executeAction,
+  getEndOfDaySummary,
+  getPlayerActions,
+  getPlayerDashboard,
+  getPlayerNotifications,
+  getWeeklySummary,
+  previewPlayerAction,
+} from '@/lib/api/gameplay';
+import { getProgressionSummary } from '@/lib/api/progression';
+import {
+  advanceOnboarding,
+  completeOnboarding,
+  getOnboardingDashboardConfig,
+  getOnboardingGuidance,
+  getOnboardingState,
+  getOnboardingUnlockSchedule,
+  skipOnboarding,
+} from '@/lib/api/onboarding';
+import {
+  getBusinessPlan,
+  getDebtVsGrowth,
+  getFuturePreparation,
+  getHousingTradeoff,
+  getRecoveryVsPush,
+  getShortHorizonPlans,
+  getStrategyRecommendation,
+} from '@/lib/api/strategicPlanning';
+import {
+  getLocalPressure,
+  getPlayerPatterns,
+  getRegionMemory,
+  getWorldMemoryPatterns,
+  getWorldNarrative,
+} from '@/lib/api/worldMemory';
+import {
+  ActionExecutionResponse,
+  ActionPreviewResponse,
+  DailyActionHubResponse,
+  DailyActionItem,
+  EndDayResponse,
+  EndOfDaySummaryResponse,
+  GameplayActionKey,
+  PlayerDashboardResponse,
+  PlayerNotificationResponse,
+  WeeklyPlayerSummaryResponse,
+} from '@/types/gameplay';
+import {
+  CommitmentFeedbackResponse,
+  CommitmentHistoryResponse,
+  CommitmentSummaryResponse,
+  AvailableCommitmentsResponse,
+  AvailableCommitmentItem,
+} from '@/types/commitment';
+import {
+  BusinessMarginsResponse,
+  CommutePressureResponse,
+  FutureOpportunityTeasersResponse,
+  MarketOverviewResponse,
+  PlayerEconomyExplainerResponse,
+  PriceTrendsResponse,
+} from '@/types/economyPresentation';
+import { ProgressionSummaryResponse } from '@/types/progression';
+import {
+  OnboardingDashboardConfigResponse,
+  OnboardingGuidanceResponse,
+  OnboardingStateResponse,
+  OnboardingUnlockScheduleResponse,
+} from '@/types/onboarding';
+import {
+  BusinessPlanResponse,
+  DebtVsGrowthResponse,
+  FuturePreparationResponse,
+  HousingTradeoffResponse,
+  RecoveryVsPushResponse,
+  ShortHorizonPlansResponse,
+  StrategyRecommendationResponse,
+} from '@/types/strategicPlanning';
+import {
+  LocalPressureSummaryResponse,
+  PlayerPatternSummaryResponse,
+  RegionMemorySummaryResponse,
+  WorldNarrativeResponse,
+  WorldPatternsResponse,
+} from '@/types/worldMemory';
+import { SecondaryGroupKey, UI_LAYOUT_CONFIG } from '@/lib/ui_layout_config';
+import {
+  buildBusinessSummary,
+  buildEconomySummary,
+  buildPlanningSummary,
+  buildWorldSummary,
+} from '@/lib/uiSummaryFormatters';
+import { theme } from '@/design/theme';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
+
+type SectionStatus = 'idle' | 'loading' | 'ready' | 'empty' | 'error';
+
+interface SectionState<T> {
+  status: SectionStatus;
+  data: T | null;
+  error: string | null;
+}
+
+type FeedbackTone = 'success' | 'error' | 'info';
+
+interface FeedbackState {
+  tone: FeedbackTone;
+  message: string;
+}
+
+function initialSection<T>(): SectionState<T> {
+  return {
+    status: 'idle',
+    data: null,
+    error: null,
+  };
+}
+
+function normalizeError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+function deriveSuggestedTimeUnits(snapshot: PlayerDashboardResponse | null): number {
+  if (!snapshot) return 10;
+  const debug = snapshot.debug_meta || {};
+  const directUnits = Number(debug.daily_time_units ?? debug.time_units ?? debug.hours_available_units);
+  if (Number.isFinite(directUnits)) return directUnits;
+  const hoursAvailable = Number(debug.hours_available ?? debug.remaining_hours);
+  if (Number.isFinite(hoursAvailable)) {
+    if (hoursAvailable >= 20) return 10;
+    return Math.max(6, Math.min(16, Math.round(hoursAvailable / 2)));
+  }
+  return 10;
+}
+
+function feedbackToneStyle(tone: FeedbackTone): { borderColor: string; backgroundColor: string; color: string } {
+  if (tone === 'success') {
+    return { borderColor: '#86efac', backgroundColor: '#f0fdf4', color: '#166534' };
+  }
+  if (tone === 'error') {
+    return { borderColor: '#fecaca', backgroundColor: '#fef2f2', color: '#b91c1c' };
+  }
+  return { borderColor: '#bfdbfe', backgroundColor: '#eff6ff', color: '#1e40af' };
+}
+
+function summarizeStatusLabel(states: SectionState<unknown>[]): string | null {
+  const statuses = states.map((state) => state.status);
+  if (statuses.some((status) => status === 'error')) return 'partial';
+  if (statuses.some((status) => status === 'loading' || status === 'idle')) return 'updating';
+  if (statuses.every((status) => status === 'empty')) return 'empty';
+  if (statuses.some((status) => status === 'ready')) return 'ready';
+  return null;
+}
+
+function deriveProgressionFeedback(
+  before: ProgressionSummaryResponse | null,
+  after: ProgressionSummaryResponse | null,
+): string | null {
+  if (!before || !after) return null;
+
+  const beforeCompletedGoals = new Set(
+    before.daily_goals.filter((g) => g.status === 'completed').map((g) => g.goal_key),
+  );
+  const newlyCompletedGoal = after.daily_goals.find(
+    (g) => g.status === 'completed' && !beforeCompletedGoals.has(g.goal_key),
+  );
+  if (newlyCompletedGoal) {
+    return `Daily goal completed: ${newlyCompletedGoal.title}`;
+  }
+
+  const beforeMissionProgress = new Map(before.weekly_missions.map((m) => [m.mission_key, m.progress_current]));
+  const advancedMission = after.weekly_missions.find(
+    (m) => Number(m.progress_current) > Number(beforeMissionProgress.get(m.mission_key) || 0),
+  );
+  if (advancedMission) {
+    return `Weekly mission progress: ${advancedMission.title} (${advancedMission.progress_current}/${advancedMission.progress_target})`;
+  }
+
+  const beforeStreak = new Map(before.streaks.map((s) => [s.streak_key, Number(s.current_count) || 0]));
+  const increasedStreak = after.streaks.find(
+    (s) => Number(s.current_count) > Number(beforeStreak.get(s.streak_key) || 0),
+  );
+  if (increasedStreak) {
+    return `Streak increased: ${increasedStreak.title} is now ${increasedStreak.current_count}.`;
+  }
+
+  return null;
+}
+
+function deriveCommitmentFeedback(
+  before: CommitmentSummaryResponse | null,
+  after: CommitmentSummaryResponse | null,
+): FeedbackState | null {
+  if (!after) return null;
+  const previous = before?.active_commitment;
+  const next = after.active_commitment;
+  const hadActive = Boolean(previous && previous.status === 'active' && previous.commitment_key);
+  const hasActive = Boolean(next && next.status === 'active' && next.commitment_key);
+
+  if (!hadActive && hasActive) {
+    return {
+      tone: 'success',
+      message: `Commitment activated: ${next.title}`,
+    };
+  }
+
+  if (hadActive && !hasActive) {
+    const reward = next.reward_summary ? ` ${next.reward_summary}` : '';
+    return {
+      tone: 'info',
+      message: `Commitment closed.${reward}`.trim(),
+    };
+  }
+
+  if (!hadActive || !hasActive) return null;
+
+  const adherenceDelta = Number(next.adherence_score || 0) - Number(previous?.adherence_score || 0);
+  const momentumDelta = Number(next.momentum_score || 0) - Number(previous?.momentum_score || 0);
+  if (adherenceDelta >= 1 || momentumDelta >= 1) {
+    return {
+      tone: 'success',
+      message: `Commitment momentum +${Math.max(1, Math.round(momentumDelta || adherenceDelta))}: ${next.title}`,
+    };
+  }
+
+  const drift = String(next.drift_level || '').toLowerCase();
+  if (drift === 'moderate' || drift === 'high') {
+    return {
+      tone: 'error',
+      message: `Warning: ${next.title} is drifting off-plan.`,
+    };
+  }
+
+  return null;
+}
+
+const LEGACY_SECONDARY_SECTION_KEYS = new Set<string>([
+  'market_overview',
+  'price_trends',
+  'business_margins',
+  'business_plan',
+  'commute_pressure',
+  'housing_tradeoff',
+  'economy_explainer',
+  'future_teasers',
+  'future_preparation',
+  'world_memory',
+  'commitment',
+  'strategic_planning',
+  'debt_growth',
+  'recovery_vs_push',
+  'progression',
+  'weekly_summary',
+  'weekly_missions',
+]);
+
+export default function GameDashboardPage({
+  playerId,
+  onExecuteActionOverride,
+}: {
+  playerId: string;
+  onExecuteActionOverride?: (
+    actionKey: GameplayActionKey,
+    actionParameters?: Record<string, unknown>,
+  ) => Promise<ActionExecutionResponse | void> | ActionExecutionResponse | void;
+}) {
+  const [dashboardState, setDashboardState] = useState<SectionState<PlayerDashboardResponse>>(initialSection);
+  const [actionState, setActionState] = useState<SectionState<DailyActionHubResponse>>(initialSection);
+  const [notificationsState, setNotificationsState] = useState<SectionState<PlayerNotificationResponse>>(initialSection);
+  const [eodState, setEodState] = useState<SectionState<EndOfDaySummaryResponse>>(initialSection);
+  const [weeklyState, setWeeklyState] = useState<SectionState<WeeklyPlayerSummaryResponse>>(initialSection);
+  const [progressionState, setProgressionState] = useState<SectionState<ProgressionSummaryResponse>>(initialSection);
+  const [marketOverviewState, setMarketOverviewState] = useState<SectionState<MarketOverviewResponse>>(initialSection);
+  const [priceTrendsState, setPriceTrendsState] = useState<SectionState<PriceTrendsResponse>>(initialSection);
+  const [businessMarginsState, setBusinessMarginsState] = useState<SectionState<BusinessMarginsResponse>>(initialSection);
+  const [commutePressureState, setCommutePressureState] = useState<SectionState<CommutePressureResponse>>(initialSection);
+  const [economyExplainerState, setEconomyExplainerState] = useState<SectionState<PlayerEconomyExplainerResponse>>(initialSection);
+  const [futureTeasersState, setFutureTeasersState] = useState<SectionState<FutureOpportunityTeasersResponse>>(initialSection);
+  const [shortHorizonPlansState, setShortHorizonPlansState] = useState<SectionState<ShortHorizonPlansResponse>>(initialSection);
+  const [housingTradeoffState, setHousingTradeoffState] = useState<SectionState<HousingTradeoffResponse>>(initialSection);
+  const [debtVsGrowthState, setDebtVsGrowthState] = useState<SectionState<DebtVsGrowthResponse>>(initialSection);
+  const [businessPlanState, setBusinessPlanState] = useState<SectionState<BusinessPlanResponse>>(initialSection);
+  const [recoveryVsPushState, setRecoveryVsPushState] = useState<SectionState<RecoveryVsPushResponse>>(initialSection);
+  const [strategyRecommendationState, setStrategyRecommendationState] = useState<SectionState<StrategyRecommendationResponse>>(initialSection);
+  const [futurePreparationState, setFuturePreparationState] = useState<SectionState<FuturePreparationResponse>>(initialSection);
+  const [worldPatternsState, setWorldPatternsState] = useState<SectionState<WorldPatternsResponse>>(initialSection);
+  const [worldNarrativeState, setWorldNarrativeState] = useState<SectionState<WorldNarrativeResponse>>(initialSection);
+  const [worldLocalPressureState, setWorldLocalPressureState] = useState<SectionState<LocalPressureSummaryResponse>>(initialSection);
+  const [worldPlayerPatternsState, setWorldPlayerPatternsState] = useState<SectionState<PlayerPatternSummaryResponse>>(initialSection);
+  const [worldRegionMemoryState, setWorldRegionMemoryState] = useState<SectionState<RegionMemorySummaryResponse>>(initialSection);
+  const [commitmentAvailableState, setCommitmentAvailableState] = useState<SectionState<AvailableCommitmentsResponse>>(initialSection);
+  const [commitmentSummaryState, setCommitmentSummaryState] = useState<SectionState<CommitmentSummaryResponse>>(initialSection);
+  const [commitmentFeedbackState, setCommitmentFeedbackState] = useState<SectionState<CommitmentFeedbackResponse>>(initialSection);
+  const [commitmentHistoryState, setCommitmentHistoryState] = useState<SectionState<CommitmentHistoryResponse>>(initialSection);
+  const [commitmentBusy, setCommitmentBusy] = useState(false);
+  const [onboardingStateState, setOnboardingStateState] = useState<SectionState<OnboardingStateResponse>>(initialSection);
+  const [onboardingGuidanceState, setOnboardingGuidanceState] = useState<SectionState<OnboardingGuidanceResponse>>(initialSection);
+  const [onboardingConfigState, setOnboardingConfigState] = useState<SectionState<OnboardingDashboardConfigResponse>>(initialSection);
+  const [onboardingUnlockState, setOnboardingUnlockState] = useState<SectionState<OnboardingUnlockScheduleResponse>>(initialSection);
+  const [onboardingBusy, setOnboardingBusy] = useState(false);
+  const [coachmarkDismissed, setCoachmarkDismissed] = useState(false);
+
+  const [refreshing, setRefreshing] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [feedback, setFeedback] = useState<FeedbackState | null>(null);
+
+  const [selectedAction, setSelectedAction] = useState<DailyActionItem | null>(null);
+  const [selectedActionGuard, setSelectedActionGuard] = useState<ActionExecutionGuard | null>(null);
+  const [previewVisible, setPreviewVisible] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewPayload, setPreviewPayload] = useState<ActionPreviewResponse | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [executingAction, setExecutingAction] = useState(false);
+  const [endingDay, setEndingDay] = useState(false);
+  const [lastEndDayResult, setLastEndDayResult] = useState<EndDayResponse | null>(null);
+
+  const dailySession = useDailySession();
+  const { isMobile } = useBreakpoint();
+  const scrollRef = useRef<ScrollView | null>(null);
+  const [activeShellTab, setActiveShellTab] = useState<'home' | 'actions' | 'progress' | 'insights' | 'profile'>('home');
+  const [expandedSecondaryGroups, setExpandedSecondaryGroups] = useState<Record<SecondaryGroupKey, boolean>>(() =>
+    UI_LAYOUT_CONFIG.secondaryGroups.reduce((acc, group) => ({
+      ...acc,
+      [group.key]: !group.defaultCollapsed,
+    }), {
+      economy_overview: false,
+      business_insights: false,
+      planning_commitment: false,
+      progression: false,
+      world_memory: false,
+    } as Record<SecondaryGroupKey, boolean>),
+  );
+
+  const loadDashboard = useCallback(async () => {
+    setDashboardState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const data = await getPlayerDashboard(playerId);
+      setDashboardState({
+        status: data ? 'ready' : 'empty',
+        data,
+        error: null,
+      });
+    } catch (error) {
+      setDashboardState({
+        status: 'error',
+        data: null,
+        error: normalizeError(error),
+      });
+    }
+  }, [playerId]);
+
+  const loadActionHub = useCallback(async () => {
+    setActionState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const data = await getPlayerActions(playerId);
+      const actionCount =
+        data.recommended_actions.length + data.available_actions.length + data.blocked_actions.length;
+      setActionState({
+        status: actionCount > 0 ? 'ready' : 'empty',
+        data,
+        error: null,
+      });
+    } catch (error) {
+      setActionState({
+        status: 'error',
+        data: null,
+        error: normalizeError(error),
+      });
+    }
+  }, [playerId]);
+
+  const loadNotifications = useCallback(async () => {
+    setNotificationsState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const data = await getPlayerNotifications(playerId);
+      setNotificationsState({
+        status: data.notifications.length > 0 ? 'ready' : 'empty',
+        data,
+        error: null,
+      });
+    } catch (error) {
+      setNotificationsState({
+        status: 'error',
+        data: null,
+        error: normalizeError(error),
+      });
+    }
+  }, [playerId]);
+
+  const loadEndOfDaySummary = useCallback(async () => {
+    setEodState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const data = await getEndOfDaySummary(playerId);
+      setEodState({
+        status: data ? 'ready' : 'empty',
+        data,
+        error: null,
+      });
+    } catch (error) {
+      setEodState({
+        status: 'error',
+        data: null,
+        error: normalizeError(error),
+      });
+    }
+  }, [playerId]);
+
+  const loadWeeklySummary = useCallback(async () => {
+    setWeeklyState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const data = await getWeeklySummary(playerId);
+      setWeeklyState({
+        status: data ? 'ready' : 'empty',
+        data,
+        error: null,
+      });
+    } catch (error) {
+      setWeeklyState({
+        status: 'error',
+        data: null,
+        error: normalizeError(error),
+      });
+    }
+  }, [playerId]);
+
+  const loadProgression = useCallback(async (): Promise<ProgressionSummaryResponse | null> => {
+    setProgressionState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const data = await getProgressionSummary(playerId);
+      const hasContent =
+        data.daily_goals.length > 0 || data.weekly_missions.length > 0 || data.streaks.length > 0;
+      setProgressionState({
+        status: hasContent ? 'ready' : 'empty',
+        data,
+        error: null,
+      });
+      return data;
+    } catch (error) {
+      setProgressionState({
+        status: 'error',
+        data: null,
+        error: normalizeError(error),
+      });
+      return null;
+    }
+  }, [playerId]);
+
+  const loadMarketOverview = useCallback(async () => {
+    setMarketOverviewState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const data = await getMarketOverview(playerId);
+      setMarketOverviewState({
+        status: data ? 'ready' : 'empty',
+        data,
+        error: null,
+      });
+    } catch (error) {
+      setMarketOverviewState({
+        status: 'error',
+        data: null,
+        error: normalizeError(error),
+      });
+    }
+  }, [playerId]);
+
+  const loadPriceTrends = useCallback(async () => {
+    setPriceTrendsState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const data = await getPriceTrends(playerId);
+      setPriceTrendsState({
+        status: data.items.length > 0 ? 'ready' : 'empty',
+        data,
+        error: null,
+      });
+    } catch (error) {
+      setPriceTrendsState({
+        status: 'error',
+        data: null,
+        error: normalizeError(error),
+      });
+    }
+  }, [playerId]);
+
+  const loadBusinessMargins = useCallback(async () => {
+    setBusinessMarginsState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const data = await getBusinessMargins(playerId);
+      setBusinessMarginsState({
+        status: data.items.length > 0 ? 'ready' : 'empty',
+        data,
+        error: null,
+      });
+    } catch (error) {
+      setBusinessMarginsState({
+        status: 'error',
+        data: null,
+        error: normalizeError(error),
+      });
+    }
+  }, [playerId]);
+
+  const loadCommutePressure = useCallback(async () => {
+    setCommutePressureState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const data = await getCommutePressure(playerId);
+      setCommutePressureState({
+        status: data ? 'ready' : 'empty',
+        data,
+        error: null,
+      });
+    } catch (error) {
+      setCommutePressureState({
+        status: 'error',
+        data: null,
+        error: normalizeError(error),
+      });
+    }
+  }, [playerId]);
+
+  const loadEconomyExplainer = useCallback(async () => {
+    setEconomyExplainerState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const data = await getEconomyExplainer(playerId);
+      setEconomyExplainerState({
+        status: data ? 'ready' : 'empty',
+        data,
+        error: null,
+      });
+    } catch (error) {
+      setEconomyExplainerState({
+        status: 'error',
+        data: null,
+        error: normalizeError(error),
+      });
+    }
+  }, [playerId]);
+
+  const loadFutureTeasers = useCallback(async () => {
+    setFutureTeasersState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const data = await getFutureTeasers(playerId);
+      setFutureTeasersState({
+        status: data.teasers.length > 0 ? 'ready' : 'empty',
+        data,
+        error: null,
+      });
+    } catch (error) {
+      setFutureTeasersState({
+        status: 'error',
+        data: null,
+        error: normalizeError(error),
+      });
+    }
+  }, [playerId]);
+
+  const loadShortHorizonPlans = useCallback(async () => {
+    setShortHorizonPlansState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const data = await getShortHorizonPlans(playerId);
+      setShortHorizonPlansState({
+        status: data.options.length > 0 ? 'ready' : 'empty',
+        data,
+        error: null,
+      });
+    } catch (error) {
+      setShortHorizonPlansState({
+        status: 'error',
+        data: null,
+        error: normalizeError(error),
+      });
+    }
+  }, [playerId]);
+
+  const loadHousingTradeoff = useCallback(async () => {
+    setHousingTradeoffState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const data = await getHousingTradeoff(playerId);
+      setHousingTradeoffState({
+        status: data ? 'ready' : 'empty',
+        data,
+        error: null,
+      });
+    } catch (error) {
+      setHousingTradeoffState({
+        status: 'error',
+        data: null,
+        error: normalizeError(error),
+      });
+    }
+  }, [playerId]);
+
+  const loadDebtVsGrowth = useCallback(async () => {
+    setDebtVsGrowthState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const data = await getDebtVsGrowth(playerId);
+      setDebtVsGrowthState({
+        status: data.items.length > 0 ? 'ready' : 'empty',
+        data,
+        error: null,
+      });
+    } catch (error) {
+      setDebtVsGrowthState({
+        status: 'error',
+        data: null,
+        error: normalizeError(error),
+      });
+    }
+  }, [playerId]);
+
+  const loadBusinessPlan = useCallback(async () => {
+    setBusinessPlanState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const data = await getBusinessPlan(playerId);
+      setBusinessPlanState({
+        status: data.items.length > 0 ? 'ready' : 'empty',
+        data,
+        error: null,
+      });
+    } catch (error) {
+      setBusinessPlanState({
+        status: 'error',
+        data: null,
+        error: normalizeError(error),
+      });
+    }
+  }, [playerId]);
+
+  const loadRecoveryVsPush = useCallback(async () => {
+    setRecoveryVsPushState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const data = await getRecoveryVsPush(playerId);
+      setRecoveryVsPushState({
+        status: data ? 'ready' : 'empty',
+        data,
+        error: null,
+      });
+    } catch (error) {
+      setRecoveryVsPushState({
+        status: 'error',
+        data: null,
+        error: normalizeError(error),
+      });
+    }
+  }, [playerId]);
+
+  const loadStrategyRecommendation = useCallback(async () => {
+    setStrategyRecommendationState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const data = await getStrategyRecommendation(playerId);
+      setStrategyRecommendationState({
+        status: data ? 'ready' : 'empty',
+        data,
+        error: null,
+      });
+    } catch (error) {
+      setStrategyRecommendationState({
+        status: 'error',
+        data: null,
+        error: normalizeError(error),
+      });
+    }
+  }, [playerId]);
+
+  const loadFuturePreparation = useCallback(async () => {
+    setFuturePreparationState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const data = await getFuturePreparation(playerId);
+      setFuturePreparationState({
+        status: data.items.length > 0 ? 'ready' : 'empty',
+        data,
+        error: null,
+      });
+    } catch (error) {
+      setFuturePreparationState({
+        status: 'error',
+        data: null,
+        error: normalizeError(error),
+      });
+    }
+  }, [playerId]);
+
+  const loadWorldPatterns = useCallback(async () => {
+    setWorldPatternsState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const data = await getWorldMemoryPatterns(playerId);
+      setWorldPatternsState({
+        status: data.items.length > 0 ? 'ready' : 'empty',
+        data,
+        error: null,
+      });
+    } catch (error) {
+      setWorldPatternsState({
+        status: 'error',
+        data: null,
+        error: normalizeError(error),
+      });
+    }
+  }, [playerId]);
+
+  const loadWorldNarrative = useCallback(async () => {
+    setWorldNarrativeState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const data = await getWorldNarrative(playerId);
+      setWorldNarrativeState({
+        status: data ? 'ready' : 'empty',
+        data,
+        error: null,
+      });
+    } catch (error) {
+      setWorldNarrativeState({
+        status: 'error',
+        data: null,
+        error: normalizeError(error),
+      });
+    }
+  }, [playerId]);
+
+  const loadWorldLocalPressure = useCallback(async () => {
+    setWorldLocalPressureState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const data = await getLocalPressure(playerId);
+      setWorldLocalPressureState({
+        status: data ? 'ready' : 'empty',
+        data,
+        error: null,
+      });
+    } catch (error) {
+      setWorldLocalPressureState({
+        status: 'error',
+        data: null,
+        error: normalizeError(error),
+      });
+    }
+  }, [playerId]);
+
+  const loadWorldPlayerPatterns = useCallback(async () => {
+    setWorldPlayerPatternsState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const data = await getPlayerPatterns(playerId);
+      const hasItems =
+        Boolean(data.dominant_player_pattern) ||
+        data.supporting_patterns.length > 0 ||
+        data.risk_patterns.length > 0 ||
+        data.improving_patterns.length > 0;
+      setWorldPlayerPatternsState({
+        status: hasItems ? 'ready' : 'empty',
+        data,
+        error: null,
+      });
+    } catch (error) {
+      setWorldPlayerPatternsState({
+        status: 'error',
+        data: null,
+        error: normalizeError(error),
+      });
+    }
+  }, [playerId]);
+
+  const loadWorldRegionMemory = useCallback(async () => {
+    setWorldRegionMemoryState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const data = await getRegionMemory(playerId);
+      setWorldRegionMemoryState({
+        status: data ? 'ready' : 'empty',
+        data,
+        error: null,
+      });
+    } catch (error) {
+      setWorldRegionMemoryState({
+        status: 'error',
+        data: null,
+        error: normalizeError(error),
+      });
+    }
+  }, [playerId]);
+
+  const loadCommitmentAvailable = useCallback(async (): Promise<AvailableCommitmentsResponse | null> => {
+    setCommitmentAvailableState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const data = await getAvailableCommitments(playerId);
+      setCommitmentAvailableState({
+        status: data.items.length > 0 ? 'ready' : 'empty',
+        data,
+        error: null,
+      });
+      return data;
+    } catch (error) {
+      setCommitmentAvailableState({
+        status: 'error',
+        data: null,
+        error: normalizeError(error),
+      });
+      return null;
+    }
+  }, [playerId]);
+
+  const loadCommitmentSummary = useCallback(async (): Promise<CommitmentSummaryResponse | null> => {
+    setCommitmentSummaryState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const data = await getCommitmentSummary(playerId);
+      const hasActive = data.active_commitment.status === 'active' && Boolean(data.active_commitment.commitment_key);
+      setCommitmentSummaryState({
+        status: hasActive ? 'ready' : 'empty',
+        data,
+        error: null,
+      });
+      return data;
+    } catch (error) {
+      setCommitmentSummaryState({
+        status: 'error',
+        data: null,
+        error: normalizeError(error),
+      });
+      return null;
+    }
+  }, [playerId]);
+
+  const loadCommitmentFeedback = useCallback(async (): Promise<CommitmentFeedbackResponse | null> => {
+    setCommitmentFeedbackState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const data = await getCommitmentFeedback(playerId);
+      setCommitmentFeedbackState({
+        status: data.items.length > 0 ? 'ready' : 'empty',
+        data,
+        error: null,
+      });
+      return data;
+    } catch (error) {
+      setCommitmentFeedbackState({
+        status: 'error',
+        data: null,
+        error: normalizeError(error),
+      });
+      return null;
+    }
+  }, [playerId]);
+
+  const loadCommitmentHistory = useCallback(async (): Promise<CommitmentHistoryResponse | null> => {
+    setCommitmentHistoryState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const data = await getCommitmentHistory(playerId, { limit: 12 });
+      setCommitmentHistoryState({
+        status: data.entries.length > 0 ? 'ready' : 'empty',
+        data,
+        error: null,
+      });
+      return data;
+    } catch (error) {
+      setCommitmentHistoryState({
+        status: 'error',
+        data: null,
+        error: normalizeError(error),
+      });
+      return null;
+    }
+  }, [playerId]);
+
+  const loadOnboardingState = useCallback(async (): Promise<OnboardingStateResponse | null> => {
+    setOnboardingStateState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const data = await getOnboardingState(playerId);
+      setOnboardingStateState({
+        status: data ? 'ready' : 'empty',
+        data,
+        error: null,
+      });
+      return data;
+    } catch (error) {
+      setOnboardingStateState({
+        status: 'error',
+        data: null,
+        error: normalizeError(error),
+      });
+      return null;
+    }
+  }, [playerId]);
+
+  const loadOnboardingGuidance = useCallback(async (): Promise<OnboardingGuidanceResponse | null> => {
+    setOnboardingGuidanceState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const data = await getOnboardingGuidance(playerId);
+      setOnboardingGuidanceState({
+        status: data ? 'ready' : 'empty',
+        data,
+        error: null,
+      });
+      return data;
+    } catch (error) {
+      setOnboardingGuidanceState({
+        status: 'error',
+        data: null,
+        error: normalizeError(error),
+      });
+      return null;
+    }
+  }, [playerId]);
+
+  const loadOnboardingConfig = useCallback(async (): Promise<OnboardingDashboardConfigResponse | null> => {
+    setOnboardingConfigState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const data = await getOnboardingDashboardConfig(playerId);
+      setOnboardingConfigState({
+        status: data ? 'ready' : 'empty',
+        data,
+        error: null,
+      });
+      return data;
+    } catch (error) {
+      setOnboardingConfigState({
+        status: 'error',
+        data: null,
+        error: normalizeError(error),
+      });
+      return null;
+    }
+  }, [playerId]);
+
+  const loadOnboardingUnlockSchedule = useCallback(async (): Promise<OnboardingUnlockScheduleResponse | null> => {
+    setOnboardingUnlockState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const data = await getOnboardingUnlockSchedule(playerId);
+      setOnboardingUnlockState({
+        status: data ? 'ready' : 'empty',
+        data,
+        error: null,
+      });
+      return data;
+    } catch (error) {
+      setOnboardingUnlockState({
+        status: 'error',
+        data: null,
+        error: normalizeError(error),
+      });
+      return null;
+    }
+  }, [playerId]);
+
+  const loadOnboardingBundle = useCallback(async () => {
+    const [state, guidance, config, unlock] = await Promise.all([
+      loadOnboardingState(),
+      loadOnboardingGuidance(),
+      loadOnboardingConfig(),
+      loadOnboardingUnlockSchedule(),
+    ]);
+    return { state, guidance, config, unlock };
+  }, [
+    loadOnboardingConfig,
+    loadOnboardingGuidance,
+    loadOnboardingState,
+    loadOnboardingUnlockSchedule,
+  ]);
+
+  const applyOnboardingActionResult = useCallback((payload: {
+    state: OnboardingStateResponse;
+    guidance: OnboardingGuidanceResponse;
+    dashboard_config: OnboardingDashboardConfigResponse;
+    unlock_schedule: OnboardingUnlockScheduleResponse;
+  }) => {
+    setOnboardingStateState({ status: 'ready', data: payload.state, error: null });
+    setOnboardingGuidanceState({ status: 'ready', data: payload.guidance, error: null });
+    setOnboardingConfigState({ status: 'ready', data: payload.dashboard_config, error: null });
+    setOnboardingUnlockState({ status: 'ready', data: payload.unlock_schedule, error: null });
+    setCoachmarkDismissed(false);
+  }, []);
+
+  const onboardingStatus = String(
+    onboardingStateState.data?.onboarding_status ||
+    onboardingConfigState.data?.onboarding_status ||
+    'not_started',
+  ).toLowerCase();
+  const onboardingActive = onboardingStatus === 'not_started' || onboardingStatus === 'in_progress';
+  const visibleSectionSet = useMemo(
+    () => new Set((onboardingConfigState.data?.visible_sections || []).map((entry) => String(entry))),
+    [onboardingConfigState.data?.visible_sections],
+  );
+  const blockedActionReasonByKey = useMemo(() => {
+    const mapping = new Map<string, string>();
+    (onboardingConfigState.data?.blocked_actions_for_onboarding || []).forEach((entry) => {
+      if (entry?.action_key) {
+        mapping.set(String(entry.action_key), String(entry.reason || 'Locked during onboarding.'));
+      }
+    });
+    return mapping;
+  }, [onboardingConfigState.data?.blocked_actions_for_onboarding]);
+  const allowedActionsSet = useMemo(
+    () => new Set((onboardingConfigState.data?.allowed_actions || []).map((entry) => String(entry))),
+    [onboardingConfigState.data?.allowed_actions],
+  );
+
+  const isSectionAllowedByOnboarding = useCallback((sectionKey: string): boolean => {
+    if (!onboardingActive) return true;
+    if (visibleSectionSet.size === 0) return true;
+    return visibleSectionSet.has(sectionKey);
+  }, [onboardingActive, visibleSectionSet]);
+
+  const isSectionVisible = useCallback((sectionKey: string): boolean => {
+    if (!isSectionAllowedByOnboarding(sectionKey)) return false;
+    if (LEGACY_SECONDARY_SECTION_KEYS.has(sectionKey)) return false;
+    if (UI_LAYOUT_CONFIG.hideByDefault.includes(sectionKey)) return false;
+    return true;
+  }, [isSectionAllowedByOnboarding]);
+
+  const isOnboardingActionAllowed = useCallback((actionKey: string | null | undefined): boolean => {
+    if (!onboardingActive) return true;
+    if (!actionKey) return true;
+    if (allowedActionsSet.size === 0) return true;
+    return allowedActionsSet.has(String(actionKey));
+  }, [allowedActionsSet, onboardingActive]);
+
+  const onboardingActionBlockReason = useCallback((actionKey: string | null | undefined): string => {
+    const key = String(actionKey || '');
+    if (!key) return 'Action unavailable during onboarding.';
+    return blockedActionReasonByKey.get(key) || 'This action unlocks later in onboarding.';
+  }, [blockedActionReasonByKey]);
+
+  const loadAll = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.allSettled([
+      loadOnboardingBundle(),
+      loadDashboard(),
+      loadActionHub(),
+      loadNotifications(),
+      loadEndOfDaySummary(),
+      loadWeeklySummary(),
+      loadProgression(),
+      loadMarketOverview(),
+      loadPriceTrends(),
+      loadBusinessMargins(),
+      loadCommutePressure(),
+      loadEconomyExplainer(),
+      loadFutureTeasers(),
+      loadShortHorizonPlans(),
+      loadHousingTradeoff(),
+      loadDebtVsGrowth(),
+      loadBusinessPlan(),
+      loadRecoveryVsPush(),
+      loadStrategyRecommendation(),
+      loadFuturePreparation(),
+      loadWorldPatterns(),
+      loadWorldNarrative(),
+      loadWorldLocalPressure(),
+      loadWorldPlayerPatterns(),
+      loadWorldRegionMemory(),
+      loadCommitmentAvailable(),
+      loadCommitmentSummary(),
+      loadCommitmentFeedback(),
+      loadCommitmentHistory(),
+    ]);
+    setRefreshing(false);
+  }, [
+    loadActionHub,
+    loadOnboardingBundle,
+    loadBusinessPlan,
+    loadBusinessMargins,
+    loadCommutePressure,
+    loadDashboard,
+    loadDebtVsGrowth,
+    loadEconomyExplainer,
+    loadEndOfDaySummary,
+    loadFuturePreparation,
+    loadFutureTeasers,
+    loadHousingTradeoff,
+    loadMarketOverview,
+    loadNotifications,
+    loadPriceTrends,
+    loadProgression,
+    loadRecoveryVsPush,
+    loadShortHorizonPlans,
+    loadStrategyRecommendation,
+    loadWeeklySummary,
+    loadWorldPatterns,
+    loadWorldNarrative,
+    loadWorldLocalPressure,
+    loadWorldPlayerPatterns,
+    loadWorldRegionMemory,
+    loadCommitmentAvailable,
+    loadCommitmentSummary,
+    loadCommitmentFeedback,
+    loadCommitmentHistory,
+  ]);
+
+  const refreshAfterAction = useCallback(async (actionKey?: GameplayActionKey) => {
+    const beforeProgression = progressionState.data;
+    const beforeCommitment = commitmentSummaryState.data;
+    if (actionKey) {
+      try {
+        const payload = await advanceOnboarding(playerId, { action_key: String(actionKey) });
+        applyOnboardingActionResult(payload);
+      } catch {
+        // Best-effort onboarding refresh; keep gameplay flow alive.
+      }
+    }
+    if (actionKey) {
+      try {
+        await refreshCommitment(playerId, { actionKey: String(actionKey) });
+      } catch {
+        // Commitment refresh is best-effort and should not break action flow.
+      }
+    }
+
+    const results = await Promise.allSettled([
+      loadOnboardingBundle(),
+      loadDashboard(),
+      loadActionHub(),
+      loadNotifications(),
+      loadProgression(),
+      loadMarketOverview(),
+      loadPriceTrends(),
+      loadBusinessMargins(),
+      loadCommutePressure(),
+      loadEconomyExplainer(),
+      loadFutureTeasers(),
+      loadShortHorizonPlans(),
+      loadHousingTradeoff(),
+      loadDebtVsGrowth(),
+      loadBusinessPlan(),
+      loadRecoveryVsPush(),
+      loadStrategyRecommendation(),
+      loadFuturePreparation(),
+      loadWorldPatterns(),
+      loadWorldNarrative(),
+      loadWorldLocalPressure(),
+      loadWorldPlayerPatterns(),
+      loadWorldRegionMemory(),
+      loadCommitmentAvailable(),
+      loadCommitmentSummary(),
+      loadCommitmentFeedback(),
+      loadCommitmentHistory(),
+    ]);
+    const progressionResult = results[4];
+    const commitmentSummaryResult = results[24];
+
+    if (progressionResult.status === 'fulfilled') {
+      const message = deriveProgressionFeedback(beforeProgression, progressionResult.value);
+      if (message) {
+        setFeedback({ tone: 'success', message });
+      }
+    }
+
+    if (commitmentSummaryResult.status === 'fulfilled') {
+      const commitmentFeedback = deriveCommitmentFeedback(beforeCommitment, commitmentSummaryResult.value);
+      if (commitmentFeedback) {
+        setFeedback(commitmentFeedback);
+      }
+    }
+  }, [
+    applyOnboardingActionResult,
+    commitmentSummaryState.data,
+    loadOnboardingBundle,
+    loadActionHub,
+    loadBusinessPlan,
+    loadBusinessMargins,
+    loadCommutePressure,
+    loadDashboard,
+    loadDebtVsGrowth,
+    loadEconomyExplainer,
+    loadFuturePreparation,
+    loadFutureTeasers,
+    loadHousingTradeoff,
+    loadMarketOverview,
+    loadNotifications,
+    loadPriceTrends,
+    loadProgression,
+    loadRecoveryVsPush,
+    loadShortHorizonPlans,
+    loadStrategyRecommendation,
+    loadWorldPatterns,
+    loadWorldNarrative,
+    loadWorldLocalPressure,
+    loadWorldPlayerPatterns,
+    loadWorldRegionMemory,
+    loadCommitmentAvailable,
+    loadCommitmentSummary,
+    loadCommitmentFeedback,
+    loadCommitmentHistory,
+    playerId,
+    progressionState.data,
+  ]);
+
+  useEffect(() => {
+    loadAll();
+  }, [loadAll]);
+
+  useEffect(() => {
+    setCoachmarkDismissed(false);
+  }, [onboardingConfigState.data?.highlighted_section, onboardingStateState.data?.current_step_key]);
+
+  const activeDayKey = useMemo(() => {
+    return (
+      dashboardState.data?.as_of_date ||
+      actionState.data?.as_of_date ||
+      eodState.data?.as_of_date ||
+      ''
+    );
+  }, [actionState.data?.as_of_date, dashboardState.data?.as_of_date, eodState.data?.as_of_date]);
+
+  useEffect(() => {
+    if (!activeDayKey) return;
+    const suggestedUnits = deriveSuggestedTimeUnits(dashboardState.data);
+    dailySession.initializeDay(activeDayKey, suggestedUnits);
+  }, [activeDayKey, dailySession, dashboardState.data]);
+
+  const getExecutionGuard = useCallback((action: DailyActionItem): ActionExecutionGuard => {
+    const explicit = Number(
+      (action.parameters?.time_cost_units as number) ??
+      (action.debug_meta?.time_cost_units as number),
+    );
+    return dailySession.canExecuteAction(action, Number.isFinite(explicit) ? explicit : undefined);
+  }, [dailySession]);
+
+  const applySessionBlockers = useCallback(
+    (actions: DailyActionItem[]): DailyActionItem[] =>
+      actions.map((action) => {
+        if (!isOnboardingActionAllowed(action.action_key)) {
+          const reason = onboardingActionBlockReason(action.action_key);
+          const blockers = [reason, ...(action.blockers || [])];
+          return {
+            ...action,
+            status: 'blocked',
+            blocker_text: blockers[0] || action.blocker_text || 'Action unavailable',
+            blockers,
+            debug_meta: {
+              ...(action.debug_meta || {}),
+              onboarding_blocker: true,
+            },
+          };
+        }
+        const guard = getExecutionGuard(action);
+        if (guard.allowed) return action;
+        if (action.status === 'blocked') return action;
+        const blockers = [...(action.blockers || [])];
+        if (guard.reason) blockers.unshift(guard.reason);
+        return {
+          ...action,
+          status: 'blocked',
+          blocker_text: blockers[0] || action.blocker_text || 'Action unavailable',
+          blockers,
+          debug_meta: {
+            ...(action.debug_meta || {}),
+            local_blocker: true,
+            local_time_cost_units: guard.timeCostUnits,
+          },
+        };
+      }),
+    [getExecutionGuard, isOnboardingActionAllowed, onboardingActionBlockReason],
+  );
+
+  const effectiveActionHub = useMemo(() => {
+    if (!actionState.data) return null;
+    return {
+      ...actionState.data,
+      recommended_actions: applySessionBlockers(actionState.data.recommended_actions),
+      available_actions: applySessionBlockers(actionState.data.available_actions),
+      blocked_actions: applySessionBlockers(actionState.data.blocked_actions),
+    };
+  }, [actionState.data, applySessionBlockers]);
+
+  const notificationCount = notificationsState.data?.notifications.length || 0;
+
+  const openPreview = useCallback(
+    async (action: DailyActionItem) => {
+      if (!isOnboardingActionAllowed(action.action_key)) {
+        setFeedback({ tone: 'error', message: onboardingActionBlockReason(action.action_key) });
+        return;
+      }
+      const guard = getExecutionGuard(action);
+      if (!guard.allowed) {
+        setFeedback({ tone: 'error', message: guard.reason || 'Action blocked right now.' });
+        return;
+      }
+      setSelectedAction(action);
+      setSelectedActionGuard(guard);
+      setPreviewVisible(true);
+      setPreviewLoading(true);
+      setPreviewPayload(null);
+      setPreviewError(null);
+      try {
+        const payload = await previewPlayerAction(playerId, {
+          action_key: action.action_key,
+          parameters: action.parameters || {},
+        });
+        const previewTime = Number(payload.expected_time_impact?.amount);
+        if (Number.isFinite(previewTime) && previewTime > 0) {
+          setSelectedActionGuard(dailySession.canExecuteAction(action, previewTime));
+        }
+        setPreviewPayload(payload);
+      } catch (error) {
+        setPreviewError(normalizeError(error));
+      } finally {
+        setPreviewLoading(false);
+      }
+    },
+    [dailySession, getExecutionGuard, isOnboardingActionAllowed, onboardingActionBlockReason, playerId],
+  );
+
+  const onExecuteAction = useCallback(async (
+    actionKey: GameplayActionKey,
+    actionParams: Record<string, unknown> = {},
+  ) => {
+    if (!isOnboardingActionAllowed(actionKey)) {
+      throw new Error(onboardingActionBlockReason(actionKey));
+    }
+    const baseAction = selectedAction || {
+      action_key: actionKey,
+      title: String(actionKey),
+      description: 'Executed from gameplay action flow.',
+      status: 'available' as const,
+      blockers: [],
+    };
+    const guard = selectedActionGuard || dailySession.canExecuteAction(baseAction);
+    if (!guard.allowed) {
+      throw new Error(guard.reason || 'Action blocked right now.');
+    }
+
+    if (onExecuteActionOverride) {
+      const externalResult = await onExecuteActionOverride(actionKey, actionParams);
+      if (externalResult && typeof externalResult === 'object' && 'success' in externalResult) {
+        return externalResult as ActionExecutionResponse;
+      }
+      return {
+        player_id: playerId,
+        action_key: actionKey,
+        success: true,
+        message: 'Action executed',
+        result_summary: 'Action completed.',
+        time_cost_units: guard.timeCostUnits,
+      };
+    }
+
+    return executeAction(playerId, actionKey, {
+      ...actionParams,
+      time_cost_units: guard.timeCostUnits,
+    });
+  }, [
+    dailySession,
+    isOnboardingActionAllowed,
+    onExecuteActionOverride,
+    onboardingActionBlockReason,
+    playerId,
+    selectedAction,
+    selectedActionGuard,
+  ]);
+
+  const handleExecuteSelectedAction = useCallback(async () => {
+    if (!selectedAction) return;
+
+    const guard = selectedActionGuard || dailySession.canExecuteAction(selectedAction);
+    if (!guard.allowed) {
+      setFeedback({ tone: 'error', message: guard.reason || 'Action blocked right now.' });
+      return;
+    }
+
+    setExecutingAction(true);
+    dailySession.setPendingExecution(true);
+    try {
+      const result = await onExecuteAction(selectedAction.action_key, selectedAction.parameters || {});
+      const consumed = Math.max(1, Math.round(Number(result.time_cost_units) || guard.timeCostUnits));
+      dailySession.consumeTime(consumed);
+      dailySession.addActionToHistory({
+        action_key: selectedAction.action_key,
+        title: selectedAction.title,
+        description: selectedAction.description,
+        result_summary: result.result_summary,
+        time_cost_units: consumed,
+        success: true,
+        impact_snapshot: {
+          cash_delta_xgp: result.cash_delta_xgp,
+          stress_delta: result.stress_delta,
+          health_delta: result.health_delta,
+        },
+      });
+      setPreviewVisible(false);
+      setFeedback({
+        tone: 'success',
+        message: `${result.message}. ${result.result_summary}`,
+      });
+      await refreshAfterAction(selectedAction.action_key);
+    } catch (error) {
+      const message = normalizeError(error);
+      dailySession.addActionToHistory({
+        action_key: selectedAction.action_key,
+        title: selectedAction.title,
+        description: selectedAction.description,
+        result_summary: '',
+        time_cost_units: 0,
+        success: false,
+        error_message: message,
+      });
+      setFeedback({ tone: 'error', message: message || 'Action failed.' });
+    } finally {
+      setExecutingAction(false);
+      dailySession.setPendingExecution(false);
+    }
+  }, [dailySession, onExecuteAction, refreshAfterAction, selectedAction, selectedActionGuard]);
+
+  const handleEndDay = useCallback(async () => {
+    if (dailySession.sessionStatus !== 'active') {
+      setFeedback({ tone: 'info', message: 'Day already ended. Start next day to continue.' });
+      return;
+    }
+    if (dailySession.pendingExecution || executingAction || endingDay) return;
+
+    setEndingDay(true);
+    dailySession.setPendingExecution(true);
+    try {
+      const result = await endDay(playerId);
+      setLastEndDayResult(result);
+      dailySession.endDay();
+      try {
+        const onboardingPayload = await advanceOnboarding(playerId, { action_key: 'end_day' });
+        applyOnboardingActionResult(onboardingPayload);
+      } catch {
+        // End-day onboarding evaluation is best-effort.
+      }
+      setFeedback({
+        tone: 'success',
+        message: result.summary_headline || result.message || 'Day settled successfully.',
+      });
+      await Promise.allSettled([
+        loadOnboardingBundle(),
+        loadDashboard(),
+        loadActionHub(),
+        loadNotifications(),
+        loadEndOfDaySummary(),
+        loadWeeklySummary(),
+        loadProgression(),
+        loadMarketOverview(),
+        loadPriceTrends(),
+        loadBusinessMargins(),
+        loadCommutePressure(),
+        loadEconomyExplainer(),
+        loadFutureTeasers(),
+        loadShortHorizonPlans(),
+        loadHousingTradeoff(),
+        loadDebtVsGrowth(),
+        loadBusinessPlan(),
+        loadRecoveryVsPush(),
+        loadStrategyRecommendation(),
+        loadFuturePreparation(),
+        loadWorldPatterns(),
+        loadWorldNarrative(),
+        loadWorldLocalPressure(),
+        loadWorldPlayerPatterns(),
+        loadWorldRegionMemory(),
+        loadCommitmentAvailable(),
+        loadCommitmentSummary(),
+        loadCommitmentFeedback(),
+        loadCommitmentHistory(),
+      ]);
+    } catch (error) {
+      setFeedback({
+        tone: 'error',
+        message: normalizeError(error),
+      });
+    } finally {
+      setEndingDay(false);
+      dailySession.setPendingExecution(false);
+    }
+  }, [
+    dailySession,
+    endingDay,
+    executingAction,
+    loadActionHub,
+    applyOnboardingActionResult,
+    loadOnboardingBundle,
+    loadBusinessPlan,
+    loadDashboard,
+    loadBusinessMargins,
+    loadCommutePressure,
+    loadDebtVsGrowth,
+    loadEconomyExplainer,
+    loadEndOfDaySummary,
+    loadFuturePreparation,
+    loadFutureTeasers,
+    loadHousingTradeoff,
+    loadMarketOverview,
+    loadNotifications,
+    loadPriceTrends,
+    loadProgression,
+    loadRecoveryVsPush,
+    loadShortHorizonPlans,
+    loadStrategyRecommendation,
+    loadWorldPatterns,
+    loadWorldNarrative,
+    loadWorldLocalPressure,
+    loadWorldPlayerPatterns,
+    loadWorldRegionMemory,
+    loadWeeklySummary,
+    loadCommitmentAvailable,
+    loadCommitmentSummary,
+    loadCommitmentFeedback,
+    loadCommitmentHistory,
+    playerId,
+  ]);
+
+  const handleStartNextDay = useCallback(async () => {
+    dailySession.resetSession({
+      totalUnits: deriveSuggestedTimeUnits(dashboardState.data),
+      nextDayKey: `${Date.now()}`,
+    });
+    setLastEndDayResult(null);
+    setFeedback({ tone: 'info', message: 'New day started. Choose your next action.' });
+    await loadAll();
+  }, [dailySession, dashboardState.data, loadAll]);
+
+  const refreshCommitmentSections = useCallback(async () => {
+    await Promise.allSettled([
+      loadCommitmentAvailable(),
+      loadCommitmentSummary(),
+      loadCommitmentFeedback(),
+      loadCommitmentHistory(),
+      loadStrategyRecommendation(),
+      loadShortHorizonPlans(),
+    ]);
+  }, [
+    loadCommitmentAvailable,
+    loadCommitmentSummary,
+    loadCommitmentFeedback,
+    loadCommitmentHistory,
+    loadStrategyRecommendation,
+    loadShortHorizonPlans,
+  ]);
+
+  const handleActivateCommitment = useCallback(async (
+    item: AvailableCommitmentItem,
+    options?: { replaceActive?: boolean },
+  ) => {
+    if (!item?.commitment_key) return;
+    setCommitmentBusy(true);
+    try {
+      const current = commitmentSummaryState.data?.active_commitment;
+      const hasActive = Boolean(current && current.status === 'active' && current.commitment_key);
+      const shouldReplace = Boolean(options?.replaceActive || hasActive);
+      if (shouldReplace) {
+        await replaceCommitment(playerId, {
+          commitment_key: item.commitment_key,
+          duration_days: item.suggested_duration_days,
+          replace_active: true,
+        });
+      } else {
+        await activateCommitment(playerId, {
+          commitment_key: item.commitment_key,
+          duration_days: item.suggested_duration_days,
+          replace_active: false,
+        });
+      }
+      await refreshCommitmentSections();
+      setFeedback({
+        tone: 'success',
+        message: shouldReplace
+          ? `Commitment replaced: ${item.title}`
+          : `Commitment activated: ${item.title}`,
+      });
+    } catch (error) {
+      setFeedback({ tone: 'error', message: normalizeError(error) });
+    } finally {
+      setCommitmentBusy(false);
+    }
+  }, [commitmentSummaryState.data?.active_commitment, playerId, refreshCommitmentSections]);
+
+  const handleCancelCommitment = useCallback(async () => {
+    setCommitmentBusy(true);
+    try {
+      await cancelCommitment(playerId);
+      await refreshCommitmentSections();
+      setFeedback({ tone: 'info', message: 'Commitment cancelled. You can pick a new plan.' });
+    } catch (error) {
+      setFeedback({ tone: 'error', message: normalizeError(error) });
+    } finally {
+      setCommitmentBusy(false);
+    }
+  }, [playerId, refreshCommitmentSections]);
+
+  const handleAdvanceOnboarding = useCallback(async (actionKey?: string | null) => {
+    setOnboardingBusy(true);
+    try {
+      const payload = await advanceOnboarding(playerId, {
+        action_key: actionKey || undefined,
+      });
+      applyOnboardingActionResult(payload);
+      setFeedback({ tone: 'success', message: payload.message || 'Onboarding updated.' });
+    } catch (error) {
+      setFeedback({ tone: 'error', message: normalizeError(error) });
+    } finally {
+      setOnboardingBusy(false);
+    }
+  }, [applyOnboardingActionResult, playerId]);
+
+  const handleSkipOnboarding = useCallback(async () => {
+    setOnboardingBusy(true);
+    try {
+      const payload = await skipOnboarding(playerId);
+      applyOnboardingActionResult(payload);
+      setFeedback({ tone: 'info', message: payload.message || 'Onboarding skipped.' });
+    } catch (error) {
+      setFeedback({ tone: 'error', message: normalizeError(error) });
+    } finally {
+      setOnboardingBusy(false);
+    }
+  }, [applyOnboardingActionResult, playerId]);
+
+  const handleCompleteOnboarding = useCallback(async () => {
+    setOnboardingBusy(true);
+    try {
+      const payload = await completeOnboarding(playerId);
+      applyOnboardingActionResult(payload);
+      setFeedback({ tone: 'success', message: payload.message || 'Onboarding completed.' });
+    } catch (error) {
+      setFeedback({ tone: 'error', message: normalizeError(error) });
+    } finally {
+      setOnboardingBusy(false);
+    }
+  }, [applyOnboardingActionResult, playerId]);
+
+  const highlightedSection = onboardingActive && !coachmarkDismissed
+    ? onboardingConfigState.data?.highlighted_section || null
+    : null;
+  const highlightedSecondaryGroup = useMemo(() => {
+    if (!highlightedSection) return null;
+    const group = UI_LAYOUT_CONFIG.secondaryGroups.find((entry) =>
+      entry.sectionDependencies.includes(highlightedSection),
+    );
+    return group?.key || null;
+  }, [highlightedSection]);
+
+  const wrapSection = useCallback((sectionKey: string, node: React.ReactNode) => (
+    <FadeInView>
+      <View
+        style={[
+          styles.sectionShell,
+          highlightedSection === sectionKey || highlightedSecondaryGroup === sectionKey
+            ? styles.highlightSection
+            : null,
+        ]}
+      >
+        {node}
+      </View>
+    </FadeInView>
+  ), [highlightedSection, highlightedSecondaryGroup]);
+
+  const secondaryHiddenByOnboarding = onboardingActive && UI_LAYOUT_CONFIG.onboarding.hideSecondaryDuringOnboarding;
+  const forceCollapsedSecondary = onboardingActive && UI_LAYOUT_CONFIG.onboarding.forceCollapseSecondary;
+
+  const secondaryGroupVisibility = useMemo(() => ({
+    economy_overview: UI_LAYOUT_CONFIG.secondaryGroups
+      .find((group) => group.key === 'economy_overview')
+      ?.sectionDependencies.some((sectionKey) => isSectionAllowedByOnboarding(sectionKey)) || false,
+    business_insights: UI_LAYOUT_CONFIG.secondaryGroups
+      .find((group) => group.key === 'business_insights')
+      ?.sectionDependencies.some((sectionKey) => isSectionAllowedByOnboarding(sectionKey)) || false,
+    planning_commitment: UI_LAYOUT_CONFIG.secondaryGroups
+      .find((group) => group.key === 'planning_commitment')
+      ?.sectionDependencies.some((sectionKey) => isSectionAllowedByOnboarding(sectionKey)) || false,
+    progression: UI_LAYOUT_CONFIG.secondaryGroups
+      .find((group) => group.key === 'progression')
+      ?.sectionDependencies.some((sectionKey) => isSectionAllowedByOnboarding(sectionKey)) || false,
+    world_memory: UI_LAYOUT_CONFIG.secondaryGroups
+      .find((group) => group.key === 'world_memory')
+      ?.sectionDependencies.some((sectionKey) => isSectionAllowedByOnboarding(sectionKey)) || false,
+  }), [isSectionAllowedByOnboarding]);
+
+  const toggleSecondaryGroup = useCallback((groupKey: SecondaryGroupKey) => {
+    setExpandedSecondaryGroups((prev) => ({
+      ...prev,
+      [groupKey]: !prev[groupKey],
+    }));
+  }, []);
+
+  const collapseAllSecondaryGroups = useCallback(() => {
+    setExpandedSecondaryGroups({
+      economy_overview: false,
+      business_insights: false,
+      planning_commitment: false,
+      progression: false,
+      world_memory: false,
+    });
+  }, []);
+
+  const mobileNavItems = useMemo(
+    () => [
+      {
+        key: 'home',
+        label: 'Home',
+        onPress: () => {
+          setActiveShellTab('home');
+          collapseAllSecondaryGroups();
+          scrollRef.current?.scrollTo({ y: 0, animated: true });
+        },
+      },
+      {
+        key: 'actions',
+        label: 'Actions',
+        onPress: () => {
+          setActiveShellTab('actions');
+          scrollRef.current?.scrollTo({ y: 0, animated: true });
+        },
+      },
+      {
+        key: 'progress',
+        label: 'Progress',
+        onPress: () => {
+          setActiveShellTab('progress');
+          setExpandedSecondaryGroups((prev) => ({ ...prev, progression: true }));
+        },
+      },
+      {
+        key: 'insights',
+        label: 'Insights',
+        onPress: () => {
+          setActiveShellTab('insights');
+          setExpandedSecondaryGroups((prev) => ({
+            ...prev,
+            economy_overview: true,
+            world_memory: true,
+          }));
+        },
+      },
+      {
+        key: 'profile',
+        label: 'Profile',
+        onPress: () => {
+          setActiveShellTab('profile');
+          router.push('/account/index');
+        },
+      },
+    ],
+    [collapseAllSecondaryGroups],
+  );
+
+  const isSecondaryGroupExpanded = useCallback((groupKey: SecondaryGroupKey): boolean => {
+    if (highlightedSecondaryGroup === groupKey) return true;
+    if (forceCollapsedSecondary) return false;
+    return expandedSecondaryGroups[groupKey];
+  }, [expandedSecondaryGroups, forceCollapsedSecondary, highlightedSecondaryGroup]);
+
+  const economySummary = useMemo(
+    () =>
+      buildEconomySummary(
+        marketOverviewState.data,
+        priceTrendsState.data,
+        commutePressureState.data,
+      ),
+    [commutePressureState.data, marketOverviewState.data, priceTrendsState.data],
+  );
+  const businessSummary = useMemo(
+    () => buildBusinessSummary(businessMarginsState.data),
+    [businessMarginsState.data],
+  );
+  const planningSummary = useMemo(
+    () => buildPlanningSummary(strategyRecommendationState.data, commitmentSummaryState.data),
+    [commitmentSummaryState.data, strategyRecommendationState.data],
+  );
+  const worldSummary = useMemo(
+    () =>
+      buildWorldSummary(
+        worldNarrativeState.data,
+        worldPatternsState.data,
+        worldLocalPressureState.data,
+      ),
+    [worldLocalPressureState.data, worldNarrativeState.data, worldPatternsState.data],
+  );
+  const progressionSummary = useMemo(() => {
+    if (!progressionState.data) return 'Goals and streak momentum will appear after your first actions.';
+    const completedGoals = progressionState.data.daily_goals.filter((goal) => goal.status === 'completed').length;
+    const totalGoals = progressionState.data.daily_goals.length;
+    const activeStreak = progressionState.data.streaks.find((streak) => Number(streak.current_count) > 0);
+    const streakLine = activeStreak ? `${activeStreak.title} streak ${activeStreak.current_count}` : 'No active streak yet';
+    return `${completedGoals}/${totalGoals} daily goals complete. ${streakLine}.`;
+  }, [progressionState.data]);
+  const actionHubSummary = useMemo(() => {
+    if (!effectiveActionHub) return 'Action options will load shortly.';
+    return `${effectiveActionHub.recommended_actions.length} recommended, ${effectiveActionHub.available_actions.length} available, ${effectiveActionHub.blocked_actions.length} blocked.`;
+  }, [effectiveActionHub]);
+  const strategySummary = useMemo(() => {
+    if (strategyRecommendationState.data) {
+      return `${strategyRecommendationState.data.recommended_plan_title}. Risk: ${strategyRecommendationState.data.biggest_risk}.`;
+    }
+    return 'One clear defensive move and one growth move for today.';
+  }, [strategyRecommendationState.data]);
+  const dailyBriefSummary = useMemo(() => {
+    if (!dashboardState.data) return 'Today’s headline, top opportunity, and top risk.';
+    const leadRisk = dashboardState.data.top_risks?.[0] || 'No major risk flagged';
+    const leadOpportunity = dashboardState.data.top_opportunities?.[0] || 'No major opportunity flagged';
+    return `${leadOpportunity}. Risk: ${leadRisk}.`;
+  }, [dashboardState.data]);
+  const statsSummary = useMemo(() => {
+    if (!dashboardState.data) return 'Cash, debt, stress, health, and credit at a glance.';
+    const { cash_xgp, debt_xgp, stress, health } = dashboardState.data.stats;
+    return `Cash ${cash_xgp} | Debt ${debt_xgp} | Stress ${stress} | Health ${health}`;
+  }, [dashboardState.data]);
+
+  const economyStatusLabel = useMemo(
+    () =>
+      summarizeStatusLabel([
+        marketOverviewState as SectionState<unknown>,
+        priceTrendsState as SectionState<unknown>,
+        commutePressureState as SectionState<unknown>,
+        housingTradeoffState as SectionState<unknown>,
+        economyExplainerState as SectionState<unknown>,
+        futureTeasersState as SectionState<unknown>,
+      ]),
+    [
+      commutePressureState,
+      economyExplainerState,
+      futureTeasersState,
+      housingTradeoffState,
+      marketOverviewState,
+      priceTrendsState,
+    ],
+  );
+  const businessStatusLabel = useMemo(
+    () =>
+      summarizeStatusLabel([
+        businessMarginsState as SectionState<unknown>,
+        businessPlanState as SectionState<unknown>,
+      ]),
+    [businessMarginsState, businessPlanState],
+  );
+  const planningStatusLabel = useMemo(
+    () =>
+      summarizeStatusLabel([
+        shortHorizonPlansState as SectionState<unknown>,
+        strategyRecommendationState as SectionState<unknown>,
+        debtVsGrowthState as SectionState<unknown>,
+        recoveryVsPushState as SectionState<unknown>,
+        commitmentSummaryState as SectionState<unknown>,
+        commitmentAvailableState as SectionState<unknown>,
+        commitmentFeedbackState as SectionState<unknown>,
+        commitmentHistoryState as SectionState<unknown>,
+        futurePreparationState as SectionState<unknown>,
+      ]),
+    [
+      commitmentAvailableState,
+      commitmentFeedbackState,
+      commitmentHistoryState,
+      commitmentSummaryState,
+      debtVsGrowthState,
+      futurePreparationState,
+      recoveryVsPushState,
+      shortHorizonPlansState,
+      strategyRecommendationState,
+    ],
+  );
+  const progressionStatusLabel = useMemo(
+    () =>
+      summarizeStatusLabel([
+        progressionState as SectionState<unknown>,
+        weeklyState as SectionState<unknown>,
+      ]),
+    [progressionState, weeklyState],
+  );
+  const worldStatusLabel = useMemo(
+    () =>
+      summarizeStatusLabel([
+        worldNarrativeState as SectionState<unknown>,
+        worldPatternsState as SectionState<unknown>,
+        worldLocalPressureState as SectionState<unknown>,
+        worldPlayerPatternsState as SectionState<unknown>,
+        worldRegionMemoryState as SectionState<unknown>,
+      ]),
+    [
+      worldLocalPressureState,
+      worldNarrativeState,
+      worldPatternsState,
+      worldPlayerPatternsState,
+      worldRegionMemoryState,
+    ],
+  );
+
+  const feedbackStyle = feedback ? feedbackToneStyle(feedback.tone) : null;
+
+  return (
+    <AppShell
+      title="Gold Penny Gameplay"
+      subtitle={`Player ${playerId}`}
+      headerRight={(
+        <View style={styles.headerActions}>
+          <SecondaryButton label="Refresh" onPress={loadAll} />
+          {isSectionVisible('notifications') ? (
+            <SecondaryButton
+              label={`Notifications (${notificationCount})`}
+              onPress={() => setNotificationsOpen(true)}
+            />
+          ) : null}
+        </View>
+      )}
+      bottomNavItems={isMobile ? mobileNavItems : undefined}
+      activeBottomNavKey={isMobile ? activeShellTab : null}
+    >
+      <PageContainer>
+        <ScrollView
+          ref={scrollRef}
+          contentContainerStyle={[
+            styles.content,
+            isMobile ? styles.contentWithBottomNav : null,
+          ]}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadAll} />}
+          showsVerticalScrollIndicator={false}
+        >
+          <ContentStack gap={theme.spacing.md}>
+        {feedback && feedbackStyle ? (
+          <View
+            style={[
+              styles.feedbackBox,
+              {
+                borderColor: feedbackStyle.borderColor,
+                backgroundColor: feedbackStyle.backgroundColor,
+              },
+            ]}
+          >
+            <Text style={[styles.feedbackText, { color: feedbackStyle.color }]}>{feedback.message}</Text>
+          </View>
+        ) : null}
+
+        {onboardingStateState.status === 'error' ? (
+          <ErrorStateCard
+            title="Onboarding unavailable"
+            message={onboardingStateState.error || undefined}
+            onRetry={loadOnboardingBundle}
+          />
+        ) : null}
+        {onboardingStateState.data && onboardingGuidanceState.data && onboardingActive ? (
+          <>
+            <OnboardingBanner
+              state={onboardingStateState.data}
+              guidance={onboardingGuidanceState.data}
+              busy={onboardingBusy}
+              onAdvance={handleAdvanceOnboarding}
+              onSkip={handleSkipOnboarding}
+              onComplete={handleCompleteOnboarding}
+            />
+            {!coachmarkDismissed && onboardingConfigState.data?.highlighted_section ? (
+              <OnboardingCoachmark
+                targetSection={onboardingConfigState.data.highlighted_section}
+                message="Follow this section to complete your current onboarding step."
+                onDismiss={() => setCoachmarkDismissed(true)}
+              />
+            ) : null}
+            <OnboardingProgressCard state={onboardingStateState.data} />
+            {onboardingUnlockState.data ? <OnboardingUnlockPreviewCard schedule={onboardingUnlockState.data} /> : null}
+          </>
+        ) : null}
+        {onboardingStateState.data && !onboardingActive && onboardingUnlockState.data ? (
+          <FirstSessionSummaryCard
+            state={onboardingStateState.data}
+            unlockSchedule={onboardingUnlockState.data}
+          />
+        ) : null}
+
+        {isSectionVisible('day_controls') ? wrapSection(
+          'day_controls',
+          <View style={styles.dayControlCard}>
+            <View style={styles.dayControlCopy}>
+              <Text style={styles.dayControlTitle}>Daily Session</Text>
+              <Text style={styles.dayControlMeta}>
+                {dailySession.remainingTimeUnits}/{dailySession.totalTimeUnits} time units left
+              </Text>
+              <Text style={styles.dayControlMeta}>Status: {dailySession.sessionStatus}</Text>
+            </View>
+            <View style={styles.dayControlButtons}>
+              <TouchableOpacity
+                style={[styles.primaryActionButton, dailySession.sessionStatus !== 'active' ? styles.buttonDisabled : null]}
+                onPress={handleEndDay}
+                disabled={dailySession.sessionStatus !== 'active' || endingDay || dailySession.pendingExecution}
+              >
+                <Text style={styles.primaryActionButtonText}>{endingDay ? 'Ending...' : 'End Day'}</Text>
+              </TouchableOpacity>
+              {dailySession.sessionStatus === 'ended' ? (
+                <TouchableOpacity
+                  style={styles.secondaryActionButton}
+                  onPress={handleStartNextDay}
+                  disabled={refreshing}
+                >
+                  <Text style={styles.secondaryActionButtonText}>Start Next Day</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>,
+        ) : null}
+
+        {dashboardState.status === 'loading' || dashboardState.status === 'idle' ? (
+          <LoadingStateCard label="Loading dashboard..." />
+        ) : null}
+        {dashboardState.status === 'error' ? (
+          <ErrorStateCard
+            title="Dashboard unavailable"
+            message={dashboardState.error || undefined}
+            onRetry={loadDashboard}
+          />
+        ) : null}
+        {dashboardState.status === 'empty' ? (
+          <EmptyStateCard
+            title="No dashboard snapshot yet"
+            subtitle="Run a day cycle to generate the first gameplay snapshot."
+          />
+        ) : null}
+
+        {dashboardState.status === 'ready' && dashboardState.data ? (
+          <>
+            {isSectionVisible('player_stats')
+              ? wrapSection(
+                'player_stats',
+                <PrimaryDashboardSection title="Player Snapshot" summary={statsSummary}>
+                  <PlayerStatsBar stats={dashboardState.data.stats} />
+                </PrimaryDashboardSection>,
+              )
+              : null}
+            {isSectionVisible('daily_brief')
+              ? wrapSection(
+                'daily_brief',
+                <PrimaryDashboardSection title="Daily Brief" summary={dailyBriefSummary}>
+                  <DailyBriefCard dashboard={dashboardState.data} />
+                </PrimaryDashboardSection>,
+              )
+              : null}
+          </>
+        ) : null}
+
+        {isSectionVisible('strategic_recommendation') && (strategyRecommendationState.status === 'loading' || strategyRecommendationState.status === 'idle') ? (
+          <LoadingStateCard label="Loading strategy recommendation..." />
+        ) : null}
+        {isSectionVisible('strategic_recommendation') && strategyRecommendationState.status === 'error' ? (
+          <ErrorStateCard
+            title="Strategy recommendation unavailable"
+            message={strategyRecommendationState.error || undefined}
+            onRetry={loadStrategyRecommendation}
+          />
+        ) : null}
+        {isSectionVisible('strategic_recommendation') && strategyRecommendationState.status === 'ready' && strategyRecommendationState.data ? (
+          wrapSection(
+            'strategic_recommendation',
+            <PrimaryDashboardSection title="Strategy Recommendation" summary={strategySummary}>
+              <StrategyRecommendationCard recommendation={strategyRecommendationState.data} />
+            </PrimaryDashboardSection>,
+          )
+        ) : null}
+
+        {isSectionVisible('action_hub') && (actionState.status === 'loading' || actionState.status === 'idle') ? (
+          <LoadingStateCard label="Loading action hub..." />
+        ) : null}
+        {isSectionVisible('action_hub') && actionState.status === 'error' ? (
+          <ErrorStateCard
+            title="Action hub unavailable"
+            message={actionState.error || undefined}
+            onRetry={loadActionHub}
+          />
+        ) : null}
+        {isSectionVisible('action_hub') && actionState.status === 'empty' ? (
+          <EmptyStateCard
+            title="No actions currently available"
+            subtitle="Check back after the next simulation cycle."
+          />
+        ) : null}
+        {isSectionVisible('action_hub') && actionState.status === 'ready' && effectiveActionHub ? (
+          wrapSection(
+            'action_hub',
+            <PrimaryDashboardSection title="Action Hub" summary={actionHubSummary}>
+              <ActionHubPanel
+                hub={effectiveActionHub}
+                onPreviewAction={openPreview}
+                getExecutionGuard={getExecutionGuard}
+                remainingTimeUnits={dailySession.remainingTimeUnits}
+                totalTimeUnits={dailySession.totalTimeUnits}
+                sessionStatus={dailySession.sessionStatus}
+                progressRatio={dailySession.progress}
+              />
+              {isSectionVisible('action_history') ? (
+                <ActionHistoryPanel
+                  entries={dailySession.actionsTakenToday}
+                  sessionStatus={dailySession.sessionStatus}
+                />
+              ) : null}
+            </PrimaryDashboardSection>,
+          )
+        ) : null}
+
+        {!secondaryHiddenByOnboarding && secondaryGroupVisibility.economy_overview ? (
+          wrapSection(
+            'economy_overview',
+            <SecondaryDashboardSection
+              title="Economy + Market"
+              summary={economySummary}
+              statusLabel={economyStatusLabel}
+              expanded={isSecondaryGroupExpanded('economy_overview')}
+              onToggle={() => toggleSecondaryGroup('economy_overview')}
+            >
+              {isSectionAllowedByOnboarding('market_overview') && (marketOverviewState.status === 'loading' || marketOverviewState.status === 'idle') ? (
+                <LoadingStateCard label="Loading market overview..." />
+              ) : null}
+              {isSectionAllowedByOnboarding('market_overview') && marketOverviewState.status === 'error' ? (
+                <ErrorStateCard
+                  title="Market overview unavailable"
+                  message={marketOverviewState.error || undefined}
+                  onRetry={loadMarketOverview}
+                />
+              ) : null}
+              {isSectionAllowedByOnboarding('market_overview') && marketOverviewState.status === 'ready' && marketOverviewState.data ? (
+                <MarketOverviewCard overview={marketOverviewState.data} />
+              ) : null}
+
+              {isSectionAllowedByOnboarding('price_trends') && (priceTrendsState.status === 'loading' || priceTrendsState.status === 'idle') ? (
+                <LoadingStateCard label="Loading price trends..." />
+              ) : null}
+              {isSectionAllowedByOnboarding('price_trends') && priceTrendsState.status === 'error' ? (
+                <ErrorStateCard
+                  title="Price trends unavailable"
+                  message={priceTrendsState.error || undefined}
+                  onRetry={loadPriceTrends}
+                />
+              ) : null}
+              {isSectionAllowedByOnboarding('price_trends') && priceTrendsState.status === 'ready' && priceTrendsState.data ? (
+                <PriceTrendsCard trends={priceTrendsState.data} />
+              ) : null}
+
+              {isSectionAllowedByOnboarding('commute_pressure') && (commutePressureState.status === 'loading' || commutePressureState.status === 'idle') ? (
+                <LoadingStateCard label="Loading commute pressure..." />
+              ) : null}
+              {isSectionAllowedByOnboarding('commute_pressure') && commutePressureState.status === 'error' ? (
+                <ErrorStateCard
+                  title="Commute pressure unavailable"
+                  message={commutePressureState.error || undefined}
+                  onRetry={loadCommutePressure}
+                />
+              ) : null}
+              {isSectionAllowedByOnboarding('commute_pressure') && commutePressureState.status === 'ready' && commutePressureState.data ? (
+                <CommutePressureCard commute={commutePressureState.data} />
+              ) : null}
+
+              {isSectionAllowedByOnboarding('housing_tradeoff') && (housingTradeoffState.status === 'loading' || housingTradeoffState.status === 'idle') ? (
+                <LoadingStateCard label="Loading housing tradeoff..." />
+              ) : null}
+              {isSectionAllowedByOnboarding('housing_tradeoff') && housingTradeoffState.status === 'error' ? (
+                <ErrorStateCard
+                  title="Housing tradeoff unavailable"
+                  message={housingTradeoffState.error || undefined}
+                  onRetry={loadHousingTradeoff}
+                />
+              ) : null}
+              {isSectionAllowedByOnboarding('housing_tradeoff') && housingTradeoffState.status === 'ready' && housingTradeoffState.data ? (
+                <HousingTradeoffCard tradeoff={housingTradeoffState.data} />
+              ) : null}
+
+              {isSectionAllowedByOnboarding('economy_explainer') && (economyExplainerState.status === 'loading' || economyExplainerState.status === 'idle') ? (
+                <LoadingStateCard label="Loading economy explainer..." />
+              ) : null}
+              {isSectionAllowedByOnboarding('economy_explainer') && economyExplainerState.status === 'error' ? (
+                <ErrorStateCard
+                  title="Economy explainer unavailable"
+                  message={economyExplainerState.error || undefined}
+                  onRetry={loadEconomyExplainer}
+                />
+              ) : null}
+              {isSectionAllowedByOnboarding('economy_explainer') && economyExplainerState.status === 'ready' && economyExplainerState.data ? (
+                <EconomyExplainerCard explainer={economyExplainerState.data} />
+              ) : null}
+
+              {isSectionAllowedByOnboarding('future_teasers') && (futureTeasersState.status === 'loading' || futureTeasersState.status === 'idle') ? (
+                <LoadingStateCard label="Loading future opportunity teasers..." />
+              ) : null}
+              {isSectionAllowedByOnboarding('future_teasers') && futureTeasersState.status === 'error' ? (
+                <ErrorStateCard
+                  title="Future opportunity teasers unavailable"
+                  message={futureTeasersState.error || undefined}
+                  onRetry={loadFutureTeasers}
+                />
+              ) : null}
+              {isSectionAllowedByOnboarding('future_teasers') && futureTeasersState.status === 'ready' && futureTeasersState.data ? (
+                <FutureOpportunitiesCard teasers={futureTeasersState.data} />
+              ) : null}
+            </SecondaryDashboardSection>,
+          )
+        ) : null}
+
+        {!secondaryHiddenByOnboarding && secondaryGroupVisibility.business_insights ? (
+          wrapSection(
+            'business_insights',
+            <SecondaryDashboardSection
+              title="Business + Margins"
+              summary={businessSummary}
+              statusLabel={businessStatusLabel}
+              expanded={isSecondaryGroupExpanded('business_insights')}
+              onToggle={() => toggleSecondaryGroup('business_insights')}
+            >
+              {isSectionAllowedByOnboarding('business_margins') && (businessMarginsState.status === 'loading' || businessMarginsState.status === 'idle') ? (
+                <LoadingStateCard label="Loading business margin view..." />
+              ) : null}
+              {isSectionAllowedByOnboarding('business_margins') && businessMarginsState.status === 'error' ? (
+                <ErrorStateCard
+                  title="Business margin view unavailable"
+                  message={businessMarginsState.error || undefined}
+                  onRetry={loadBusinessMargins}
+                />
+              ) : null}
+              {isSectionAllowedByOnboarding('business_margins') && businessMarginsState.status === 'ready' && businessMarginsState.data ? (
+                <BusinessMarginsCard margins={businessMarginsState.data} />
+              ) : null}
+
+              {isSectionAllowedByOnboarding('business_plan') && (businessPlanState.status === 'loading' || businessPlanState.status === 'idle') ? (
+                <LoadingStateCard label="Loading business plan..." />
+              ) : null}
+              {isSectionAllowedByOnboarding('business_plan') && businessPlanState.status === 'error' ? (
+                <ErrorStateCard
+                  title="Business plan unavailable"
+                  message={businessPlanState.error || undefined}
+                  onRetry={loadBusinessPlan}
+                />
+              ) : null}
+              {isSectionAllowedByOnboarding('business_plan') && businessPlanState.status === 'ready' && businessPlanState.data ? (
+                <BusinessPlanCard plan={businessPlanState.data} />
+              ) : null}
+            </SecondaryDashboardSection>,
+          )
+        ) : null}
+
+        {!secondaryHiddenByOnboarding && secondaryGroupVisibility.planning_commitment ? (
+          wrapSection(
+            'planning_commitment',
+            <SecondaryDashboardSection
+              title="Planning + Commitment"
+              summary={planningSummary}
+              statusLabel={planningStatusLabel}
+              expanded={isSecondaryGroupExpanded('planning_commitment')}
+              onToggle={() => toggleSecondaryGroup('planning_commitment')}
+            >
+              {isSectionAllowedByOnboarding('strategic_planning') && (shortHorizonPlansState.status === 'loading' || shortHorizonPlansState.status === 'idle') ? (
+                <LoadingStateCard label="Loading short-horizon plans..." />
+              ) : null}
+              {isSectionAllowedByOnboarding('strategic_planning') && shortHorizonPlansState.status === 'error' ? (
+                <ErrorStateCard
+                  title="Short-horizon plans unavailable"
+                  message={shortHorizonPlansState.error || undefined}
+                  onRetry={loadShortHorizonPlans}
+                />
+              ) : null}
+              {isSectionAllowedByOnboarding('strategic_planning') && shortHorizonPlansState.status === 'ready' && shortHorizonPlansState.data ? (
+                <ShortHorizonPlansCard plans={shortHorizonPlansState.data} />
+              ) : null}
+
+              {isSectionAllowedByOnboarding('debt_growth') && (debtVsGrowthState.status === 'loading' || debtVsGrowthState.status === 'idle') ? (
+                <LoadingStateCard label="Loading debt vs growth analysis..." />
+              ) : null}
+              {isSectionAllowedByOnboarding('debt_growth') && debtVsGrowthState.status === 'error' ? (
+                <ErrorStateCard
+                  title="Debt vs growth analysis unavailable"
+                  message={debtVsGrowthState.error || undefined}
+                  onRetry={loadDebtVsGrowth}
+                />
+              ) : null}
+              {isSectionAllowedByOnboarding('debt_growth') && debtVsGrowthState.status === 'ready' && debtVsGrowthState.data ? (
+                <DebtVsGrowthCard analysis={debtVsGrowthState.data} />
+              ) : null}
+
+              {isSectionAllowedByOnboarding('recovery_vs_push') && (recoveryVsPushState.status === 'loading' || recoveryVsPushState.status === 'idle') ? (
+                <LoadingStateCard label="Loading recovery vs push analysis..." />
+              ) : null}
+              {isSectionAllowedByOnboarding('recovery_vs_push') && recoveryVsPushState.status === 'error' ? (
+                <ErrorStateCard
+                  title="Recovery vs push analysis unavailable"
+                  message={recoveryVsPushState.error || undefined}
+                  onRetry={loadRecoveryVsPush}
+                />
+              ) : null}
+              {isSectionAllowedByOnboarding('recovery_vs_push') && recoveryVsPushState.status === 'ready' && recoveryVsPushState.data ? (
+                <RecoveryVsPushCard analysis={recoveryVsPushState.data} />
+              ) : null}
+
+              {isSectionAllowedByOnboarding('future_preparation') && (futurePreparationState.status === 'loading' || futurePreparationState.status === 'idle') ? (
+                <LoadingStateCard label="Loading future path preparation..." />
+              ) : null}
+              {isSectionAllowedByOnboarding('future_preparation') && futurePreparationState.status === 'error' ? (
+                <ErrorStateCard
+                  title="Future path preparation unavailable"
+                  message={futurePreparationState.error || undefined}
+                  onRetry={loadFuturePreparation}
+                />
+              ) : null}
+              {isSectionAllowedByOnboarding('future_preparation') && futurePreparationState.status === 'ready' && futurePreparationState.data ? (
+                <FuturePreparationCard future={futurePreparationState.data} />
+              ) : null}
+
+              {isSectionAllowedByOnboarding('commitment') && (commitmentSummaryState.status === 'loading' || commitmentSummaryState.status === 'idle') ? (
+                <LoadingStateCard label="Loading commitment summary..." />
+              ) : null}
+              {isSectionAllowedByOnboarding('commitment') && commitmentSummaryState.status === 'error' ? (
+                <ErrorStateCard
+                  title="Commitment summary unavailable"
+                  message={commitmentSummaryState.error || undefined}
+                  onRetry={loadCommitmentSummary}
+                />
+              ) : null}
+              {isSectionAllowedByOnboarding('commitment') && commitmentSummaryState.data ? (
+                <View style={styles.groupStack}>
+                  <ActiveCommitmentCard
+                    commitment={commitmentSummaryState.data.active_commitment}
+                    busy={commitmentBusy}
+                    onCancel={handleCancelCommitment}
+                  />
+                  <CommitmentProgressCard summary={commitmentSummaryState.data} />
+                </View>
+              ) : null}
+
+              {isSectionAllowedByOnboarding('commitment') && (commitmentAvailableState.status === 'loading' || commitmentAvailableState.status === 'idle') ? (
+                <LoadingStateCard label="Loading commitment options..." />
+              ) : null}
+              {isSectionAllowedByOnboarding('commitment') && commitmentAvailableState.status === 'error' ? (
+                <ErrorStateCard
+                  title="Commitment options unavailable"
+                  message={commitmentAvailableState.error || undefined}
+                  onRetry={loadCommitmentAvailable}
+                />
+              ) : null}
+              {isSectionAllowedByOnboarding('commitment') && commitmentAvailableState.data ? (
+                <CommitmentPickerCard
+                  available={commitmentAvailableState.data}
+                  activeCommitment={commitmentSummaryState.data?.active_commitment || null}
+                  busy={commitmentBusy}
+                  onActivate={handleActivateCommitment}
+                />
+              ) : null}
+
+              {isSectionAllowedByOnboarding('commitment') && (commitmentFeedbackState.status === 'loading' || commitmentFeedbackState.status === 'idle') ? (
+                <LoadingStateCard label="Loading commitment feedback..." />
+              ) : null}
+              {isSectionAllowedByOnboarding('commitment') && commitmentFeedbackState.status === 'error' ? (
+                <ErrorStateCard
+                  title="Commitment feedback unavailable"
+                  message={commitmentFeedbackState.error || undefined}
+                  onRetry={loadCommitmentFeedback}
+                />
+              ) : null}
+              {isSectionAllowedByOnboarding('commitment') && commitmentFeedbackState.status === 'ready' && commitmentFeedbackState.data ? (
+                <CommitmentFeedbackCard feedback={commitmentFeedbackState.data} />
+              ) : null}
+
+              {isSectionAllowedByOnboarding('commitment') && (commitmentHistoryState.status === 'loading' || commitmentHistoryState.status === 'idle') ? (
+                <LoadingStateCard label="Loading commitment history..." />
+              ) : null}
+              {isSectionAllowedByOnboarding('commitment') && commitmentHistoryState.status === 'error' ? (
+                <ErrorStateCard
+                  title="Commitment history unavailable"
+                  message={commitmentHistoryState.error || undefined}
+                  onRetry={loadCommitmentHistory}
+                />
+              ) : null}
+              {isSectionAllowedByOnboarding('commitment') && commitmentHistoryState.status === 'ready' && commitmentHistoryState.data ? (
+                <CommitmentHistoryCard history={commitmentHistoryState.data} />
+              ) : null}
+            </SecondaryDashboardSection>,
+          )
+        ) : null}
+
+        {!secondaryHiddenByOnboarding && secondaryGroupVisibility.progression ? (
+          wrapSection(
+            'progression',
+            <SecondaryDashboardSection
+              title="Progression"
+              summary={progressionSummary}
+              statusLabel={progressionStatusLabel}
+              expanded={isSecondaryGroupExpanded('progression')}
+              onToggle={() => toggleSecondaryGroup('progression')}
+            >
+              {isSectionAllowedByOnboarding('progression') && (progressionState.status === 'loading' || progressionState.status === 'idle') ? (
+                <LoadingStateCard label="Loading progression..." />
+              ) : null}
+              {isSectionAllowedByOnboarding('progression') && progressionState.status === 'error' ? (
+                <ErrorStateCard
+                  title="Progression unavailable"
+                  message={progressionState.error || undefined}
+                  onRetry={loadProgression}
+                />
+              ) : null}
+              {isSectionAllowedByOnboarding('progression') && progressionState.status === 'empty' ? (
+                <EmptyStateCard
+                  title="No progression goals yet"
+                  subtitle="Complete one action to generate your first goals and streaks."
+                />
+              ) : null}
+              {isSectionAllowedByOnboarding('progression') && progressionState.status === 'ready' && progressionState.data ? (
+                <View style={styles.groupStack}>
+                  <ProgressionSummaryCard summary={progressionState.data} />
+                  <DailyGoalsCard goals={progressionState.data.daily_goals} />
+                  <StreaksCard streaks={progressionState.data.streaks} />
+                  <WeeklyMissionsCard missions={progressionState.data.weekly_missions} />
+                </View>
+              ) : null}
+
+              {isSectionAllowedByOnboarding('weekly_summary') && (weeklyState.status === 'loading' || weeklyState.status === 'idle') ? (
+                <LoadingStateCard label="Loading weekly summary..." />
+              ) : null}
+              {isSectionAllowedByOnboarding('weekly_summary') && weeklyState.status === 'error' ? (
+                <ErrorStateCard
+                  title="Weekly summary unavailable"
+                  message={weeklyState.error || undefined}
+                  onRetry={loadWeeklySummary}
+                />
+              ) : null}
+              {isSectionAllowedByOnboarding('weekly_summary') && weeklyState.status === 'ready' && weeklyState.data ? (
+                <WeeklySummaryCard summary={weeklyState.data} />
+              ) : null}
+            </SecondaryDashboardSection>,
+          )
+        ) : null}
+
+        {!secondaryHiddenByOnboarding && secondaryGroupVisibility.world_memory ? (
+          wrapSection(
+            'world_memory',
+            <SecondaryDashboardSection
+              title="World Memory"
+              summary={worldSummary}
+              statusLabel={worldStatusLabel}
+              expanded={isSecondaryGroupExpanded('world_memory')}
+              onToggle={() => toggleSecondaryGroup('world_memory')}
+            >
+              {isSectionAllowedByOnboarding('world_memory') && (worldNarrativeState.status === 'loading' || worldNarrativeState.status === 'idle') ? (
+                <LoadingStateCard label="Loading world narrative..." />
+              ) : null}
+              {isSectionAllowedByOnboarding('world_memory') && worldNarrativeState.status === 'error' ? (
+                <ErrorStateCard
+                  title="World narrative unavailable"
+                  message={worldNarrativeState.error || undefined}
+                  onRetry={loadWorldNarrative}
+                />
+              ) : null}
+              {isSectionAllowedByOnboarding('world_memory') && worldNarrativeState.status === 'ready' && worldNarrativeState.data ? (
+                <WorldNarrativeCard narrative={worldNarrativeState.data} />
+              ) : null}
+
+              {isSectionAllowedByOnboarding('world_memory') && (worldLocalPressureState.status === 'loading' || worldLocalPressureState.status === 'idle') ? (
+                <LoadingStateCard label="Loading local pressure memory..." />
+              ) : null}
+              {isSectionAllowedByOnboarding('world_memory') && worldLocalPressureState.status === 'error' ? (
+                <ErrorStateCard
+                  title="Local pressure memory unavailable"
+                  message={worldLocalPressureState.error || undefined}
+                  onRetry={loadWorldLocalPressure}
+                />
+              ) : null}
+              {isSectionAllowedByOnboarding('world_memory') && worldLocalPressureState.status === 'ready' && worldLocalPressureState.data ? (
+                <LocalPressureCard local={worldLocalPressureState.data} />
+              ) : null}
+
+              {isSectionAllowedByOnboarding('world_memory') && (worldPatternsState.status === 'loading' || worldPatternsState.status === 'idle') ? (
+                <LoadingStateCard label="Loading pattern insights..." />
+              ) : null}
+              {isSectionAllowedByOnboarding('world_memory') && worldPatternsState.status === 'error' ? (
+                <ErrorStateCard
+                  title="Pattern insights unavailable"
+                  message={worldPatternsState.error || undefined}
+                  onRetry={loadWorldPatterns}
+                />
+              ) : null}
+              {isSectionAllowedByOnboarding('world_memory') && worldPatternsState.status === 'ready' && worldPatternsState.data ? (
+                <PatternInsightsCard patterns={worldPatternsState.data} />
+              ) : null}
+
+              {isSectionAllowedByOnboarding('world_memory') && (worldPlayerPatternsState.status === 'loading' || worldPlayerPatternsState.status === 'idle') ? (
+                <LoadingStateCard label="Loading player pattern memory..." />
+              ) : null}
+              {isSectionAllowedByOnboarding('world_memory') && worldPlayerPatternsState.status === 'error' ? (
+                <ErrorStateCard
+                  title="Player pattern memory unavailable"
+                  message={worldPlayerPatternsState.error || undefined}
+                  onRetry={loadWorldPlayerPatterns}
+                />
+              ) : null}
+              {isSectionAllowedByOnboarding('world_memory') && worldPlayerPatternsState.status === 'ready' && worldPlayerPatternsState.data ? (
+                <PlayerPatternsCard patterns={worldPlayerPatternsState.data} />
+              ) : null}
+
+              {isSectionAllowedByOnboarding('world_memory') && (worldRegionMemoryState.status === 'loading' || worldRegionMemoryState.status === 'idle') ? (
+                <LoadingStateCard label="Loading region memory..." />
+              ) : null}
+              {isSectionAllowedByOnboarding('world_memory') && worldRegionMemoryState.status === 'error' ? (
+                <ErrorStateCard
+                  title="Region memory unavailable"
+                  message={worldRegionMemoryState.error || undefined}
+                  onRetry={loadWorldRegionMemory}
+                />
+              ) : null}
+              {isSectionAllowedByOnboarding('world_memory') && worldRegionMemoryState.status === 'ready' && worldRegionMemoryState.data ? (
+                <RegionMemoryCard region={worldRegionMemoryState.data} />
+              ) : null}
+            </SecondaryDashboardSection>,
+          )
+        ) : null}
+
+        {isSectionVisible('end_of_day_summary') && (eodState.status === 'loading' || eodState.status === 'idle') && dailySession.sessionStatus === 'ended' ? (
+          <LoadingStateCard label="Loading end-of-day summary..." />
+        ) : null}
+        {isSectionVisible('end_of_day_summary') && eodState.status === 'error' && dailySession.sessionStatus === 'ended' ? (
+          <ErrorStateCard
+            title="End-of-day summary unavailable"
+            message={eodState.error || undefined}
+            onRetry={loadEndOfDaySummary}
+          />
+        ) : null}
+        {isSectionVisible('end_of_day_summary') && eodState.status === 'ready' && eodState.data
+          ? wrapSection('end_of_day_summary', <EndOfDaySummaryCard summary={eodState.data} />)
+          : null}
+
+        {isSectionVisible('end_of_day_summary') && lastEndDayResult && eodState.status !== 'ready' ? (
+          <View style={styles.fallbackSummaryCard}>
+            <Text style={styles.fallbackSummaryTitle}>Day Settled</Text>
+            <Text style={styles.fallbackSummaryText}>
+              {lastEndDayResult.summary_headline || lastEndDayResult.summary || lastEndDayResult.message}
+            </Text>
+          </View>
+        ) : null}
+
+          </ContentStack>
+        </ScrollView>
+      </PageContainer>
+
+      <ActionPreviewModal
+        visible={previewVisible}
+        action={selectedAction}
+        preview={previewPayload}
+        loading={previewLoading}
+        error={previewError}
+        onClose={() => setPreviewVisible(false)}
+        onExecuteAction={handleExecuteSelectedAction}
+        executeDisabled={dailySession.sessionStatus !== 'active' || endingDay || dailySession.pendingExecution}
+        executeGuard={selectedActionGuard || undefined}
+        executing={executingAction}
+      />
+
+      {isSectionVisible('notifications') ? (
+        <NotificationsDrawer
+          visible={notificationsOpen}
+          notifications={notificationsState.data?.notifications || []}
+          onClose={() => setNotificationsOpen(false)}
+        />
+      ) : null}
+    </AppShell>
+  );
+}
+
+const styles = StyleSheet.create({
+  headerActions: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    flexWrap: 'wrap',
+  },
+  content: {
+    paddingTop: theme.spacing.md,
+    paddingBottom: theme.spacing.xxxl,
+  },
+  contentWithBottomNav: {
+    paddingBottom: 92,
+  },
+  sectionShell: {
+    gap: theme.spacing.sm,
+  },
+  highlightSection: {
+    borderWidth: 2,
+    borderColor: '#93c5fd',
+    borderRadius: theme.radius.lg,
+    padding: 4,
+    backgroundColor: '#f8fbff',
+  },
+  groupStack: {
+    gap: theme.spacing.sm,
+  },
+  feedbackBox: {
+    borderWidth: 1,
+    borderRadius: theme.radius.md,
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+  },
+  feedbackText: {
+    ...theme.typography.bodySm,
+    fontWeight: '600',
+  },
+  dayControlCard: {
+    borderWidth: 1,
+    borderColor: theme.color.border,
+    borderRadius: theme.radius.lg,
+    backgroundColor: theme.color.surface,
+    padding: theme.spacing.md,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+    flexWrap: 'wrap',
+  },
+  dayControlCopy: {
+    gap: theme.spacing.xxs,
+  },
+  dayControlTitle: {
+    color: theme.color.textPrimary,
+    ...theme.typography.headingSm,
+  },
+  dayControlMeta: {
+    color: theme.color.textSecondary,
+    ...theme.typography.bodySm,
+    fontWeight: '600',
+  },
+  dayControlButtons: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    flexWrap: 'wrap',
+  },
+  primaryActionButton: {
+    borderRadius: theme.radius.md,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    backgroundColor: theme.color.accent,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  primaryActionButtonText: {
+    color: '#ffffff',
+    ...theme.typography.label,
+  },
+  secondaryActionButton: {
+    borderRadius: theme.radius.md,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    backgroundColor: theme.color.textPrimary,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  secondaryActionButtonText: {
+    color: '#ffffff',
+    ...theme.typography.label,
+  },
+  buttonDisabled: {
+    opacity: 0.45,
+  },
+  fallbackSummaryCard: {
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    borderRadius: theme.radius.md,
+    backgroundColor: '#eff6ff',
+    padding: theme.spacing.md,
+    gap: theme.spacing.xs,
+  },
+  fallbackSummaryTitle: {
+    color: '#1e40af',
+    ...theme.typography.headingSm,
+  },
+  fallbackSummaryText: {
+    color: '#1e3a8a',
+    ...theme.typography.bodySm,
+  },
+});
+

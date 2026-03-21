@@ -1,4 +1,4 @@
-// nnt-expo/app/_layout.tsx
+// pft-expo/app/_layout.tsx
 import '@walletconnect/react-native-compat'; // MUST be first — ensures native shims are registered
 import 'react-native-get-random-values';
 import 'react-native-url-polyfill/auto';

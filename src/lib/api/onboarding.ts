@@ -1,0 +1,315 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+import { BACKEND } from '@/constants';
+import {
+  OnboardingActionResultResponse,
+  OnboardingAdvanceRequest,
+  OnboardingDashboardConfigResponse,
+  OnboardingGuidanceResponse,
+  OnboardingStateResponse,
+  OnboardingUnlockScheduleResponse,
+} from '@/types/onboarding';
+
+async function getBaseUrl(): Promise<string> {
+  try {
+    const override = await AsyncStorage.getItem('backend:override');
+    if (override && /^https?:\/\//i.test(override)) {
+      return override.replace(/\/$/, '');
+    }
+  } catch {
+    // Use default backend when storage lookup fails.
+  }
+  return (BACKEND || '').replace(/\/$/, '');
+}
+
+async function getIdentityHeaders(): Promise<Record<string, string>> {
+  let uid = '';
+  try {
+    uid = (await AsyncStorage.getItem('identity:uid')) || '';
+  } catch {
+    uid = '';
+  }
+
+  if (!uid) {
+    uid = `uid_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    try {
+      await AsyncStorage.setItem('identity:uid', uid);
+    } catch {
+      // Continue without persistence if storage fails.
+    }
+  }
+
+  const ua =
+    typeof navigator !== 'undefined' && (navigator as any)?.userAgent
+      ? String((navigator as any).userAgent)
+      : 'expo';
+
+  return {
+    'X-UID': uid,
+    'X-Device-FP': ua,
+  };
+}
+
+function toString(value: unknown, fallback = ''): string {
+  if (typeof value === 'string') return value;
+  if (value == null) return fallback;
+  return String(value);
+}
+
+function toBoolean(value: unknown, fallback = false): boolean {
+  if (typeof value === 'boolean') return value;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return fallback;
+}
+
+function toNumber(value: unknown, fallback = 0): number {
+  const next = Number(value);
+  return Number.isFinite(next) ? next : fallback;
+}
+
+function toRecord(value: unknown): Record<string, unknown> {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+}
+
+function toStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((entry) => toString(entry)).filter(Boolean);
+}
+
+async function fetchJsonPath<T>(path: string, init?: RequestInit): Promise<T> {
+  const base = await getBaseUrl();
+  if (!base) {
+    throw new Error('Backend URL is not configured. Set EXPO_PUBLIC_BACKEND or backend override.');
+  }
+
+  let adminToken: string | null = null;
+  try {
+    adminToken = await AsyncStorage.getItem('admin:token');
+  } catch {
+    adminToken = null;
+  }
+  const identityHeaders = await getIdentityHeaders();
+
+  const response = await fetch(`${base}${path}`, {
+    ...init,
+    headers: {
+      'content-type': 'application/json',
+      ...identityHeaders,
+      ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {}),
+      ...(init?.headers || {}),
+    },
+  } as RequestInit);
+
+  const text = await response.text();
+  let payload: unknown = null;
+  try {
+    payload = text ? JSON.parse(text) : null;
+  } catch {
+    const snippet = (text || '').slice(0, 180);
+    throw new Error(`Non-JSON response at ${path}: ${snippet}`);
+  }
+
+  if (!response.ok) {
+    const detail =
+      typeof payload === 'object' && payload && 'detail' in (payload as any)
+        ? String((payload as any).detail)
+        : typeof payload === 'object' && payload && 'error' in (payload as any)
+          ? String((payload as any).error)
+          : `HTTP ${response.status}`;
+    throw new Error(`${path}: ${detail}`);
+  }
+
+  return payload as T;
+}
+
+async function fetchWithFallback<T>(paths: string[], init?: RequestInit): Promise<T> {
+  const errors: string[] = [];
+  for (const path of paths) {
+    try {
+      return await fetchJsonPath<T>(path, init);
+    } catch (error: unknown) {
+      errors.push(error instanceof Error ? error.message : String(error));
+    }
+  }
+  throw new Error(errors.join(' | '));
+}
+
+function normalizeState(raw: unknown): OnboardingStateResponse {
+  const obj = toRecord(raw);
+  return {
+    player_id: toString(obj.player_id),
+    as_of_date: toString(obj.as_of_date),
+    onboarding_status: toString(obj.onboarding_status, 'not_started'),
+    current_step_key: toString(obj.current_step_key),
+    current_step_index: toNumber(obj.current_step_index, 1),
+    current_step_title: toString(obj.current_step_title),
+    current_step_body: toString(obj.current_step_body),
+    progress_label: toString(obj.progress_label),
+    first_session_day_count: toNumber(obj.first_session_day_count, 0),
+    visible_modules: toStringList(obj.visible_modules),
+    unlocked_modules: toStringList(obj.unlocked_modules),
+    completed_step_keys: toStringList(obj.completed_step_keys),
+    debug_meta: toRecord(obj.debug_meta),
+  };
+}
+
+function normalizeGuidance(raw: unknown): OnboardingGuidanceResponse {
+  const obj = toRecord(raw);
+  return {
+    player_id: toString(obj.player_id),
+    as_of_date: toString(obj.as_of_date),
+    onboarding_status: toString(obj.onboarding_status, 'not_started'),
+    step_key: toString(obj.step_key),
+    title: toString(obj.title),
+    body: toString(obj.body),
+    highlight_target: toString(obj.highlight_target),
+    required_action_key: obj.required_action_key != null ? toString(obj.required_action_key) : null,
+    optional_action_key: obj.optional_action_key != null ? toString(obj.optional_action_key) : null,
+    completion_condition: toString(obj.completion_condition),
+    blocker_reason: obj.blocker_reason != null ? toString(obj.blocker_reason) : null,
+    can_skip: toBoolean(obj.can_skip, true),
+    debug_meta: toRecord(obj.debug_meta),
+  };
+}
+
+function normalizeDashboardConfig(raw: unknown): OnboardingDashboardConfigResponse {
+  const obj = toRecord(raw);
+  const blockedRaw = Array.isArray(obj.blocked_actions_for_onboarding)
+    ? obj.blocked_actions_for_onboarding
+    : [];
+  return {
+    player_id: toString(obj.player_id),
+    as_of_date: toString(obj.as_of_date),
+    onboarding_status: toString(obj.onboarding_status, 'not_started'),
+    visible_sections: toStringList(obj.visible_sections),
+    collapsed_sections: toStringList(obj.collapsed_sections),
+    hidden_sections: toStringList(obj.hidden_sections),
+    highlighted_section: obj.highlighted_section != null ? toString(obj.highlighted_section) : null,
+    allowed_actions: toStringList(obj.allowed_actions),
+    blocked_actions_for_onboarding: blockedRaw.map((entry) => {
+      const row = toRecord(entry);
+      return {
+        action_key: toString(row.action_key),
+        reason: toString(row.reason),
+      };
+    }),
+    debug_meta: toRecord(obj.debug_meta),
+  };
+}
+
+function normalizeUnlockSchedule(raw: unknown): OnboardingUnlockScheduleResponse {
+  const obj = toRecord(raw);
+  const itemRaw = Array.isArray(obj.items) ? obj.items : [];
+  return {
+    player_id: toString(obj.player_id),
+    as_of_date: toString(obj.as_of_date),
+    onboarding_status: toString(obj.onboarding_status, 'not_started'),
+    items: itemRaw.map((entry) => {
+      const row = toRecord(entry);
+      return {
+        module_key: toString(row.module_key),
+        unlock_condition: toString(row.unlock_condition),
+        unlock_status: toBoolean(row.unlock_status, false),
+        unlock_reason: toString(row.unlock_reason),
+        debug_meta: toRecord(row.debug_meta),
+      };
+    }),
+    debug_meta: toRecord(obj.debug_meta),
+  };
+}
+
+function normalizeActionResult(raw: unknown): OnboardingActionResultResponse {
+  const obj = toRecord(raw);
+  return {
+    player_id: toString(obj.player_id),
+    as_of_date: toString(obj.as_of_date),
+    message: toString(obj.message),
+    state: normalizeState(obj.state),
+    guidance: normalizeGuidance(obj.guidance),
+    dashboard_config: normalizeDashboardConfig(obj.dashboard_config),
+    unlock_schedule: normalizeUnlockSchedule(obj.unlock_schedule),
+    debug_meta: toRecord(obj.debug_meta),
+  };
+}
+
+export async function getOnboardingState(playerId: string): Promise<OnboardingStateResponse> {
+  const raw = await fetchWithFallback<unknown>([
+    `/onboarding/player/${playerId}/state`,
+  ]);
+  return normalizeState(raw);
+}
+
+export async function getOnboardingGuidance(playerId: string): Promise<OnboardingGuidanceResponse> {
+  const raw = await fetchWithFallback<unknown>([
+    `/onboarding/player/${playerId}/guidance`,
+  ]);
+  return normalizeGuidance(raw);
+}
+
+export async function getOnboardingDashboardConfig(playerId: string): Promise<OnboardingDashboardConfigResponse> {
+  const raw = await fetchWithFallback<unknown>([
+    `/onboarding/player/${playerId}/dashboard-config`,
+  ]);
+  return normalizeDashboardConfig(raw);
+}
+
+export async function getOnboardingUnlockSchedule(playerId: string): Promise<OnboardingUnlockScheduleResponse> {
+  const raw = await fetchWithFallback<unknown>([
+    `/onboarding/player/${playerId}/unlock-schedule`,
+  ]);
+  return normalizeUnlockSchedule(raw);
+}
+
+export async function advanceOnboarding(
+  playerId: string,
+  payload: OnboardingAdvanceRequest = {},
+): Promise<OnboardingActionResultResponse> {
+  const raw = await fetchWithFallback<unknown>(
+    [`/onboarding/player/${playerId}/advance`],
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+  );
+  return normalizeActionResult(raw);
+}
+
+export async function skipOnboarding(playerId: string): Promise<OnboardingActionResultResponse> {
+  const raw = await fetchWithFallback<unknown>(
+    [`/onboarding/player/${playerId}/skip`],
+    {
+      method: 'POST',
+      body: JSON.stringify({}),
+    },
+  );
+  return normalizeActionResult(raw);
+}
+
+export async function completeOnboarding(playerId: string): Promise<OnboardingActionResultResponse> {
+  const raw = await fetchWithFallback<unknown>(
+    [`/onboarding/player/${playerId}/complete`],
+    {
+      method: 'POST',
+      body: JSON.stringify({}),
+    },
+  );
+  return normalizeActionResult(raw);
+}
+
+export async function refreshOnboarding(
+  playerId: string,
+  payload: OnboardingAdvanceRequest = {},
+): Promise<OnboardingActionResultResponse> {
+  const raw = await fetchWithFallback<unknown>(
+    [`/onboarding/player/${playerId}/refresh`],
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+  );
+  return normalizeActionResult(raw);
+}

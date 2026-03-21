@@ -1,11 +1,7 @@
+// Gold Penny active hooks
 export * from './useBackend';
 export * from './useRegistration';
-export * from './useTokenBalance';
 export * from './useWallet';
-export * from './useAds';
-export * from './usePosts';
-export * from './useTransactions';
-export * from './useVoting';
-export * from './useUsers';
 export * from './useDebt';
+// Archived (NNT-only): useTokenBalance, useAds, usePosts, useTransactions, useVoting, useUsers, useAdminActions
 
