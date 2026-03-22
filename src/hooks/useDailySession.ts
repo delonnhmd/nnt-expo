@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { BALANCE } from '@/lib/balanceConfig';
+import { normalizeTimeUnits } from '@/lib/economySafety';
 import {
   createEmptyPersistedGameplayState,
   PersistedGameplaySessionState,
@@ -50,9 +51,11 @@ function normalizeActionKey(key: GameplayActionKey): string {
 }
 
 function clampTotalUnits(value: number | undefined): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return DEFAULT_TOTAL_TIME_UNITS;
-  return Math.max(MIN_TOTAL_TIME_UNITS, Math.min(MAX_TOTAL_TIME_UNITS, Math.round(parsed)));
+  return normalizeTimeUnits(value, {
+    fallback: DEFAULT_TOTAL_TIME_UNITS,
+    min: MIN_TOTAL_TIME_UNITS,
+    max: MAX_TOTAL_TIME_UNITS,
+  });
 }
 
 export function useDailySession(playerId: string) {

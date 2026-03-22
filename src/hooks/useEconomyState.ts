@@ -2,6 +2,8 @@ import { useMemo } from 'react';
 
 import { formatMoney } from '@/lib/gameplayFormatters';
 import { GameplayCanonicalState } from '@/lib/gameplayRuntimeState';
+import { BALANCE } from '@/lib/balanceConfig';
+import { normalizeMoneyValue, normalizePercentageStat, safeNetCashFlowCalculation } from '@/lib/economySafety';
 import { DebtPressureLevel, EconomyStatus, GameplayEconomyState } from '@/types/economy';
 
 const DEFAULT_ECONOMY_STATE: GameplayEconomyState = {
@@ -36,10 +38,10 @@ function deriveDebtPressure(cashOnHand: number, debtAmount: number, netWorthAmou
   if (debtAmount <= 0) return 'low';
   if (cashOnHand <= 0 || netWorthAmount < 0) return 'critical';
 
-  const debtToCashRatio = debtAmount / Math.max(cashOnHand, 1);
-  if (debtToCashRatio >= 2) return 'critical';
-  if (debtToCashRatio >= 1) return 'high';
-  if (debtToCashRatio >= 0.4) return 'moderate';
+  const debtToCashRatio = debtAmount / cashOnHand;
+  if (debtToCashRatio >= BALANCE.THRESHOLDS.DEBT_CRITICAL_RATIO * 2) return 'critical';
+  if (debtToCashRatio >= BALANCE.THRESHOLDS.DEBT_CRITICAL_RATIO) return 'high';
+  if (debtToCashRatio >= BALANCE.THRESHOLDS.DEBT_HIGH_RATIO) return 'moderate';
   return 'low';
 }
 
@@ -50,7 +52,7 @@ function deriveEconomyStatus(
   health: number,
 ): EconomyStatus {
   if (debtPressure === 'critical' || stress >= 80 || health <= 30) return 'critical';
-  if (debtPressure === 'high' || (netCashFlow ?? 0) < 0 || stress >= 60 || health <= 45) return 'strained';
+  if (debtPressure === 'high' || (netCashFlow != null && netCashFlow < 0) || stress >= 60 || health <= 45) return 'strained';
   if (debtPressure === 'moderate' || stress >= 45 || health <= 60) return 'watch';
   return 'stable';
 }
@@ -88,18 +90,24 @@ export function deriveGameplayEconomyState(
 ): GameplayEconomyState {
   if (!state.hasDashboardSnapshot) return DEFAULT_ECONOMY_STATE;
 
-  const cashOnHand = state.cashOnHand;
-  const debtAmount = state.debtAmount;
-  const netWorthAmount = state.netWorthAmount;
-  const incomeAmount = state.incomeAmount;
-  const expenseAmount = state.expenseAmount;
-  const netCashFlow = state.netCashFlow;
+  const cashOnHand = normalizeMoneyValue(state.cashOnHand, { fallback: 0, allowNegative: true });
+  const debtAmount = normalizeMoneyValue(state.debtAmount, { fallback: 0, allowNegative: false });
+  const netWorthAmount = normalizeMoneyValue(state.netWorthAmount, { fallback: 0, allowNegative: true });
+  const incomeAmount = state.incomeAmount == null
+    ? null
+    : normalizeMoneyValue(state.incomeAmount, { fallback: 0, allowNegative: false });
+  const expenseAmount = state.expenseAmount == null
+    ? null
+    : normalizeMoneyValue(state.expenseAmount, { fallback: 0, allowNegative: false });
+  const netCashFlow = incomeAmount == null || expenseAmount == null
+    ? null
+    : safeNetCashFlowCalculation(incomeAmount, expenseAmount, state.netCashFlow);
   const debtPressure = deriveDebtPressure(cashOnHand, debtAmount, netWorthAmount);
   const economyStatus = deriveEconomyStatus(
     debtPressure,
     netCashFlow,
-    state.stress,
-    state.health,
+    normalizePercentageStat(state.stress, 0),
+    normalizePercentageStat(state.health, 100),
   );
   const economyWarnings = deriveWarnings(state, debtPressure, netCashFlow);
   const cashFlowLabel = netCashFlow == null ? 'Pending' : `${netCashFlow > 0 ? '+' : ''}${formatMoney(netCashFlow)}`;

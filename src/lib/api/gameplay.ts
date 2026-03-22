@@ -1,5 +1,16 @@
 import { fetchApiWithFallback } from '@/lib/apiClient';
 import {
+  clampDeltaRange,
+  normalizeCreditScore,
+  normalizeCurrentDay,
+  normalizeFiniteNumber,
+  normalizeMoneyValue,
+  normalizeOptionalMoneyValue,
+  normalizePercentageStat,
+  normalizeTimeCostUnits,
+  safeNetCashFlowCalculation,
+} from '@/lib/economySafety';
+import {
   ActionImpact,
   ActionExecutionResponse,
   ActionPreviewRequest,
@@ -20,8 +31,7 @@ import {
 
 
 function toNumber(value: unknown, fallback = 0): number {
-  const num = Number(value);
-  return Number.isFinite(num) ? num : fallback;
+  return normalizeFiniteNumber(value, { fallback });
 }
 
 function toString(value: unknown, fallback = ''): string {
@@ -96,11 +106,12 @@ function normalizeImpact(raw: unknown, label: string, fallbackDirection: TrendDi
     return { label, direction: fallbackDirection, text: 'No estimate' };
   }
   if (typeof raw === 'number') {
+    const amount = clampDeltaRange(raw);
     return {
       label,
-      direction: raw > 0 ? 'up' : raw < 0 ? 'down' : 'flat',
-      amount: raw,
-      text: `${raw > 0 ? '+' : ''}${raw}`,
+      direction: amount > 0 ? 'up' : amount < 0 ? 'down' : 'flat',
+      amount,
+      text: `${amount > 0 ? '+' : ''}${amount}`,
     };
   }
   if (typeof raw === 'string') {
@@ -112,7 +123,7 @@ function normalizeImpact(raw: unknown, label: string, fallbackDirection: TrendDi
   }
 
   const obj = raw as Record<string, unknown>;
-  const amount = obj.amount != null ? toNumber(obj.amount) : undefined;
+  const amount = obj.amount != null ? clampDeltaRange(obj.amount) : undefined;
   return {
     label: toString(obj.label, label),
     direction: toTrendDirection(obj.direction, fallbackDirection),
@@ -143,12 +154,12 @@ function normalizeDashboard(raw: Record<string, unknown>, playerId: string): Pla
     headline: toString(raw.headline || raw.summary_headline, 'Today at Gold Penny'),
     daily_brief: toString(raw.daily_brief || raw.summary, 'No daily brief available yet.'),
     stats: {
-      cash_xgp: toNumber(stats.cash_xgp ?? raw.ending_cash_xgp ?? raw.cash),
-      debt_xgp: toNumber(stats.debt_xgp ?? raw.ending_debt_xgp ?? raw.debt_xgp),
-      net_worth_xgp: toNumber(stats.net_worth_xgp ?? raw.net_worth_xgp),
-      stress: toNumber(stats.stress ?? raw.stress ?? raw.stress_after),
-      health: toNumber(stats.health ?? raw.health ?? raw.health_after, 100),
-      credit_score: toNumber(stats.credit_score ?? raw.ending_credit_score ?? raw.credit_score, 650),
+      cash_xgp: normalizeMoneyValue(stats.cash_xgp ?? raw.ending_cash_xgp ?? raw.cash, { allowNegative: true, fallback: 0 }),
+      debt_xgp: normalizeMoneyValue(stats.debt_xgp ?? raw.ending_debt_xgp ?? raw.debt_xgp, { allowNegative: false, fallback: 0 }),
+      net_worth_xgp: normalizeMoneyValue(stats.net_worth_xgp ?? raw.net_worth_xgp, { allowNegative: true, fallback: 0 }),
+      stress: normalizePercentageStat(stats.stress ?? raw.stress ?? raw.stress_after, 0),
+      health: normalizePercentageStat(stats.health ?? raw.health ?? raw.health_after, 100),
+      credit_score: normalizeCreditScore(stats.credit_score ?? raw.ending_credit_score ?? raw.credit_score, 650),
       current_job: toString(stats.current_job ?? raw.main_job ?? raw.current_job, ''),
       region_key: toString(stats.region_key ?? raw.region_key ?? raw.housing_region, ''),
     },
@@ -160,7 +171,7 @@ function normalizeDashboard(raw: Record<string, unknown>, playerId: string): Pla
         title: toString(item.title || item.name, 'Opportunity'),
         description: toString(item.description || item.summary, ''),
         severity: toString(item.severity || 'low') as any,
-        value: item.value != null ? toNumber(item.value) : undefined,
+        value: item.value != null ? normalizeMoneyValue(item.value, { allowNegative: true, fallback: 0 }) : undefined,
         category: toString(item.category, ''),
       };
     }),
@@ -171,7 +182,7 @@ function normalizeDashboard(raw: Record<string, unknown>, playerId: string): Pla
         title: toString(item.title || item.name, 'Risk'),
         description: toString(item.description || item.summary, ''),
         severity: toString(item.severity || 'medium') as any,
-        value: item.value != null ? toNumber(item.value) : undefined,
+        value: item.value != null ? normalizeMoneyValue(item.value, { allowNegative: true, fallback: 0 }) : undefined,
         category: toString(item.category, ''),
       };
     }),
@@ -233,10 +244,10 @@ function normalizePreview(raw: Record<string, unknown>, playerId: string, action
   };
 }
 
-function normalizeEndOfDay(raw: Record<string, unknown>, playerId: string): EndOfDaySummaryResponse {
-  const earned = toNumber(raw.total_earned_xgp ?? raw.income_xgp);
-  const spent = toNumber(raw.total_spent_xgp ?? raw.expenses_xgp);
-  const net = toNumber(raw.net_change_xgp, earned - spent);
+function normalizeEndOfDaySummary(raw: Record<string, unknown>, playerId: string): EndOfDaySummaryResponse {
+  const earned = normalizeMoneyValue(raw.total_earned_xgp ?? raw.income_xgp, { allowNegative: false, fallback: 0 });
+  const spent = normalizeMoneyValue(raw.total_spent_xgp ?? raw.expenses_xgp, { allowNegative: false, fallback: 0 });
+  const net = safeNetCashFlowCalculation(earned, spent, raw.net_change_xgp);
 
   return {
     player_id: toString(raw.player_id, playerId),
@@ -246,10 +257,10 @@ function normalizeEndOfDay(raw: Record<string, unknown>, playerId: string): EndO
     net_change_xgp: net,
     biggest_gain: toString(raw.biggest_gain, 'No standout gain today'),
     biggest_loss: toString(raw.biggest_loss, 'No standout loss today'),
-    stress_delta: toNumber(raw.stress_delta ?? raw.stress_change),
-    health_delta: toNumber(raw.health_delta ?? raw.health_change),
-    skill_delta: toNumber(raw.skill_delta, 0),
-    credit_score_delta: toNumber(raw.credit_score_delta ?? raw.credit_score_change),
+    stress_delta: clampDeltaRange(raw.stress_delta ?? raw.stress_change, { min: -100, max: 100, fallback: 0 }),
+    health_delta: clampDeltaRange(raw.health_delta ?? raw.health_change, { min: -100, max: 100, fallback: 0 }),
+    skill_delta: clampDeltaRange(raw.skill_delta, { min: -100, max: 100, fallback: 0 }),
+    credit_score_delta: clampDeltaRange(raw.credit_score_delta ?? raw.credit_score_change, { min: -200, max: 200, fallback: 0 }),
     distress_state: toString(raw.distress_state ?? raw.distress_state_after, 'stable'),
     tomorrow_warnings: Array.isArray(raw.tomorrow_warnings)
       ? raw.tomorrow_warnings.map((entry) => toString(entry))
@@ -264,7 +275,7 @@ function normalizeWeekly(raw: Record<string, unknown>, playerId: string): Weekly
       const item = (entry || {}) as Record<string, unknown>;
       return {
         source: toString(item.source, 'income'),
-        amount_xgp: toNumber(item.amount_xgp ?? item.amount),
+        amount_xgp: normalizeMoneyValue(item.amount_xgp ?? item.amount, { allowNegative: true, fallback: 0 }),
       };
     })
     : [];
@@ -344,7 +355,17 @@ function executionResponseBase(
     success: true,
     message,
     result_summary: resultSummary,
-    time_cost_units: Math.max(1, Math.min(4, Math.round(timeCostUnits))),
+    time_cost_units: normalizeTimeCostUnits(timeCostUnits, 2),
+    cash_delta_xgp: normalizeOptionalMoneyValue(
+      rawResult.cash_delta_xgp ?? rawResult.cash_change_xgp ?? rawResult.cash_impact_xgp,
+      { allowNegative: true, fallback: 0 },
+    ) ?? undefined,
+    stress_delta: rawResult.stress_delta != null
+      ? clampDeltaRange(rawResult.stress_delta, { min: -100, max: 100, fallback: 0 })
+      : undefined,
+    health_delta: rawResult.health_delta != null
+      ? clampDeltaRange(rawResult.health_delta, { min: -100, max: 100, fallback: 0 })
+      : undefined,
     raw_result: rawResult,
   };
 }
@@ -352,13 +373,16 @@ function executionResponseBase(
 function normalizeEndDay(raw: Record<string, unknown>, playerId: string): EndDayResponse {
   return {
     player_id: toString(raw.player_id, playerId),
-    settled_day: Math.max(0, Math.round(toNumber(raw.settled_day ?? raw.day_number ?? raw.day))),
+    settled_day: normalizeCurrentDay(raw.settled_day ?? raw.day_number ?? raw.day, 1),
     message: toString(raw.message, 'Day settled.'),
     summary_headline: toString(raw.summary_headline || raw.headline, ''),
     summary: toString(raw.summary, ''),
-    ending_cash_xgp: toNumber(raw.ending_cash_xgp ?? raw.cash_after ?? raw.ending_cash),
-    stress_change: toNumber(raw.stress_change),
-    health_change: toNumber(raw.health_change),
+    ending_cash_xgp: normalizeMoneyValue(raw.ending_cash_xgp ?? raw.cash_after ?? raw.ending_cash, {
+      allowNegative: true,
+      fallback: 0,
+    }),
+    stress_change: clampDeltaRange(raw.stress_change, { min: -100, max: 100, fallback: 0 }),
+    health_change: clampDeltaRange(raw.health_change, { min: -100, max: 100, fallback: 0 }),
     raw_result: raw,
   };
 }
@@ -426,7 +450,7 @@ export async function getEndOfDaySummary(playerId: string): Promise<EndOfDaySumm
     `/player/${playerId}/end-of-day-summary`,
     `/day/summary/${playerId}`,
   ]);
-  return normalizeEndOfDay(raw, playerId);
+  return normalizeEndOfDaySummary(raw, playerId);
 }
 
 export async function getWeeklySummary(playerId: string): Promise<WeeklyPlayerSummaryResponse> {

@@ -3,11 +3,36 @@
 // Numeric values reference BALANCE constants — tune them in balanceConfig.ts.
 
 import { BALANCE } from '@/lib/balanceConfig';
+import { clampDeltaRange, normalizeMoneyValue } from '@/lib/economySafety';
 import { RandomEventDefinition, RecoveryActionDefinition } from '@/types/randomEvent';
+
+function sanitizeRandomEventDefinition(definition: RandomEventDefinition): RandomEventDefinition {
+  return {
+    ...definition,
+    cashDelta: clampDeltaRange(definition.cashDelta),
+    expenseDelta: clampDeltaRange(definition.expenseDelta, { min: 0, fallback: 0 }),
+    debtDelta: clampDeltaRange(definition.debtDelta),
+  };
+}
+
+function sanitizeRecoveryActionDefinition(action: RecoveryActionDefinition): RecoveryActionDefinition {
+  const cashCost = normalizeMoneyValue(action.cashCost, { fallback: 0, allowNegative: false });
+  return {
+    ...action,
+    cashCost,
+    cashGain: normalizeMoneyValue(action.cashGain, { fallback: 0, allowNegative: false }),
+    debtReduction: normalizeMoneyValue(action.debtReduction, { fallback: 0, allowNegative: false }),
+    minCashRequired: normalizeMoneyValue(action.minCashRequired, {
+      fallback: cashCost,
+      allowNegative: false,
+      min: cashCost,
+    }),
+  };
+}
 
 // ─── Event pool ───────────────────────────────────────────────────────────────
 
-export const RANDOM_EVENT_POOL: RandomEventDefinition[] = [
+const RANDOM_EVENT_DEFINITIONS: RandomEventDefinition[] = [
   {
     eventId: 'unexpected_bill',
     category: 'expense',
@@ -98,9 +123,11 @@ export const RANDOM_EVENT_POOL: RandomEventDefinition[] = [
   },
 ];
 
+export const RANDOM_EVENT_POOL: RandomEventDefinition[] = RANDOM_EVENT_DEFINITIONS.map(sanitizeRandomEventDefinition);
+
 // ─── Recovery action pool ─────────────────────────────────────────────────────
 
-export const RECOVERY_ACTION_POOL: RecoveryActionDefinition[] = [
+const RECOVERY_ACTION_DEFINITIONS: RecoveryActionDefinition[] = [
   {
     recoveryActionId: 'cut_spending',
     label: 'Cut Spending',
@@ -148,6 +175,8 @@ export const RECOVERY_ACTION_POOL: RecoveryActionDefinition[] = [
   },
 ];
 
+export const RECOVERY_ACTION_POOL: RecoveryActionDefinition[] = RECOVERY_ACTION_DEFINITIONS.map(sanitizeRecoveryActionDefinition);
+
 // ─── Logic ────────────────────────────────────────────────────────────────────
 
 /**
@@ -182,7 +211,8 @@ export function rollDailyEvent(
 export function getAvailableRecoveryActions(
   cashOnHand: number,
 ): RecoveryActionDefinition[] {
+  const safeCashOnHand = normalizeMoneyValue(cashOnHand, { fallback: 0, allowNegative: true });
   return RECOVERY_ACTION_POOL.filter(
-    (action) => cashOnHand >= action.minCashRequired,
+    (action) => safeCashOnHand >= action.minCashRequired,
   );
 }

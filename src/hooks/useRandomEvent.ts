@@ -13,6 +13,7 @@ import {
   readPersistedGameplayState,
   updatePersistedGameplayState,
 } from '@/lib/gameplayPersistence';
+import { normalizeMoneyValue } from '@/lib/economySafety';
 import { recordInfo, recordWarning } from '@/lib/logger';
 import {
   ActiveRandomEvent,
@@ -227,6 +228,20 @@ export function useRandomEvent(
 
   const applyRecoveryAction = useCallback(
     (recoveryActionId: string): void => {
+      const availableAction = getAvailableRecoveryActions(
+        normalizeMoneyValue(cashOnHand, { fallback: 0, allowNegative: true }),
+      ).find((action) => action.recoveryActionId === recoveryActionId);
+      if (!availableAction || !activeEvent) {
+        recordWarning('randomEvent', 'Recovery action rejected by local economy validation.', {
+          action: 'apply_recovery_action',
+          context: {
+            recoveryActionId,
+            eventId: activeEvent?.eventId || null,
+            currentGameDay,
+          },
+        });
+        return;
+      }
       recordInfo('randomEvent', 'Applied recovery action to random event.', {
         action: 'apply_recovery_action',
         context: {
@@ -237,7 +252,7 @@ export function useRandomEvent(
       });
       resolveEvent();
     },
-    [activeEvent?.eventId, currentGameDay, resolveEvent],
+    [activeEvent, cashOnHand, currentGameDay, resolveEvent],
   );
 
   const dismissEvent = useCallback((): void => {
@@ -251,7 +266,9 @@ export function useRandomEvent(
     resolveEvent();
   }, [activeEvent?.eventId, currentGameDay, resolveEvent]);
 
-  const availableRecoveryActions = getAvailableRecoveryActions(cashOnHand);
+  const availableRecoveryActions = getAvailableRecoveryActions(
+    normalizeMoneyValue(cashOnHand, { fallback: 0, allowNegative: true }),
+  );
 
   return { activeEvent, availableRecoveryActions, applyRecoveryAction, dismissEvent };
 }

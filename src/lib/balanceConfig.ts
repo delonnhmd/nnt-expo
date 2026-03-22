@@ -65,4 +65,18 @@ export const BALANCE = {
     DEBT_HIGH_RATIO: 0.5,        // debt > 50 % of cash = high pressure
     DEBT_CRITICAL_RATIO: 1.0,    // debt >= cash = critical pressure
   },
+
+  // ─── Runtime safety boundaries ───────────────────────────────────────────────
+  SAFETY: {
+    MAX_ABSOLUTE_XGP: 1000000,
+    MAX_ABSOLUTE_DELTA_XGP: 250000,
+    MIN_PERCENTAGE_STAT: 0,
+    MAX_PERCENTAGE_STAT: 100,
+    MIN_CREDIT_SCORE: 300,
+    MAX_CREDIT_SCORE: 850,
+    MIN_TIME_COST_UNITS: 1,
+    MAX_TIME_COST_UNITS: 4,
+    MAX_GAME_DAY: 36500,
+    MAX_NET_CASHFLOW_MISMATCH_XGP: 1000,
+  },
 } as const;

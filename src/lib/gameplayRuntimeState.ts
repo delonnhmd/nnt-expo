@@ -4,6 +4,13 @@ import {
   EndOfDaySummaryResponse,
   PlayerDashboardResponse,
 } from '@/types/gameplay';
+import {
+  normalizeCurrentDay,
+  normalizeMoneyValue,
+  normalizeOptionalMoneyValue,
+  normalizePercentageStat,
+  safeNetCashFlowCalculation,
+} from '@/lib/economySafety';
 import { ActiveRandomEvent } from '@/types/randomEvent';
 
 export interface GameplayCanonicalState {
@@ -57,22 +64,31 @@ export function createGameplayCanonicalState({
   endOfDay,
 }: CreateGameplayCanonicalStateArgs): GameplayCanonicalState {
   const settledEndOfDay = resolveSettledEndOfDay(sessionStatus, endOfDay);
+  const incomeAmount = settledEndOfDay
+    ? normalizeOptionalMoneyValue(settledEndOfDay.total_earned_xgp, { allowNegative: false, fallback: 0 })
+    : null;
+  const expenseAmount = settledEndOfDay
+    ? normalizeOptionalMoneyValue(settledEndOfDay.total_spent_xgp, { allowNegative: false, fallback: 0 })
+    : null;
+  const netCashFlow = settledEndOfDay
+    ? safeNetCashFlowCalculation(incomeAmount, expenseAmount, settledEndOfDay.net_change_xgp)
+    : null;
 
   return {
     playerId,
-    currentDay,
+    currentDay: normalizeCurrentDay(currentDay, 1),
     sessionStatus,
     hasDashboardSnapshot: Boolean(dashboard),
     hasSettledEndOfDay: Boolean(settledEndOfDay),
-    cashOnHand: Number(dashboard?.stats.cash_xgp || 0),
-    debtAmount: Number(dashboard?.stats.debt_xgp || 0),
-    netWorthAmount: Number(dashboard?.stats.net_worth_xgp || 0),
-    stress: Number(dashboard?.stats.stress || 0),
-    health: Number(dashboard?.stats.health || 0),
+    cashOnHand: normalizeMoneyValue(dashboard?.stats.cash_xgp, { fallback: 0, allowNegative: true }),
+    debtAmount: normalizeMoneyValue(dashboard?.stats.debt_xgp, { fallback: 0, allowNegative: false }),
+    netWorthAmount: normalizeMoneyValue(dashboard?.stats.net_worth_xgp, { fallback: 0, allowNegative: true }),
+    stress: normalizePercentageStat(dashboard?.stats.stress, 0),
+    health: normalizePercentageStat(dashboard?.stats.health, 100),
     currentJob: toNullableJob(dashboard?.stats.current_job),
-    incomeAmount: settledEndOfDay ? Number(settledEndOfDay.total_earned_xgp || 0) : null,
-    expenseAmount: settledEndOfDay ? Number(settledEndOfDay.total_spent_xgp || 0) : null,
-    netCashFlow: settledEndOfDay ? Number(settledEndOfDay.net_change_xgp || 0) : null,
+    incomeAmount,
+    expenseAmount,
+    netCashFlow,
     incomeSource: toNullableJob(settledEndOfDay?.biggest_gain),
     tomorrowWarnings: Array.isArray(settledEndOfDay?.tomorrow_warnings)
       ? settledEndOfDay.tomorrow_warnings
