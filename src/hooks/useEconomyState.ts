@@ -59,10 +59,16 @@ function deriveEconomyStatus(
 
 function deriveWarnings(
   state: GameplayCanonicalState,
+  cashOnHand: number,
+  debtAmount: number,
   debtPressure: DebtPressureLevel,
   netCashFlow: number | null,
 ): string[] {
   const warnings: string[] = [];
+
+  if (cashOnHand <= BALANCE.THRESHOLDS.LOW_CASH_WARNING_XGP) {
+    warnings.push('Cash buffer is thin. One weak day can force borrowing or missed payments.');
+  }
 
   if (debtPressure === 'critical') {
     warnings.push('Debt pressure is critical and needs immediate attention.');
@@ -74,6 +80,10 @@ function deriveWarnings(
 
   if (netCashFlow != null && netCashFlow < 0) {
     warnings.push('Current cash flow is negative after today\'s settlement.');
+  }
+
+  if (debtAmount > 0 && cashOnHand > 0 && debtAmount >= cashOnHand * 2) {
+    warnings.push('Debt is more than double your liquid cash, so recovery gets harder each day.');
   }
 
   for (const signal of state.topRisks) {
@@ -109,10 +119,16 @@ export function deriveGameplayEconomyState(
     normalizePercentageStat(state.stress, 0),
     normalizePercentageStat(state.health, 100),
   );
-  const economyWarnings = deriveWarnings(state, debtPressure, netCashFlow);
+  const economyWarnings = deriveWarnings(state, cashOnHand, debtAmount, debtPressure, netCashFlow);
   const cashFlowLabel = netCashFlow == null ? 'Pending' : `${netCashFlow > 0 ? '+' : ''}${formatMoney(netCashFlow)}`;
+  const liquidityLabel = cashOnHand <= 0
+    ? 'Cash exhausted'
+    : cashOnHand <= BALANCE.THRESHOLDS.LOW_CASH_WARNING_XGP
+      ? 'Cash buffer thin'
+      : 'Cash buffer holding';
   const summaryLine = [
     `Cash ${formatMoney(cashOnHand)}`,
+    liquidityLabel,
     netCashFlow == null ? 'Cash flow pending' : `Cash flow ${cashFlowLabel}`,
     `Debt pressure ${debtPressure}`,
   ].join('. ') + '.';

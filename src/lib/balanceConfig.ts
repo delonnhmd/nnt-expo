@@ -61,7 +61,7 @@ export const BALANCE = {
 
   // ─── Warning / pressure thresholds ────────────────────────────────────────────
   THRESHOLDS: {
-    LOW_CASH_WARNING_XGP: 200,   // show low-cash warning below this balance
+    LOW_CASH_WARNING_XGP: 300,   // show low-cash warning before one bad day becomes a crisis
     DEBT_HIGH_RATIO: 0.5,        // debt > 50 % of cash = high pressure
     DEBT_CRITICAL_RATIO: 1.0,    // debt >= cash = critical pressure
   },

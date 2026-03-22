@@ -37,12 +37,24 @@ export default function DailyBriefCard({
   impactBullets?: string[];
 }) {
   const bullets = (impactBullets || []).filter(Boolean).slice(0, 3);
+  const recommendedActions = (dashboard.recommended_actions || []).filter(Boolean).slice(0, 3);
 
   return (
     <View style={styles.card}>
       <Text style={styles.headerLabel}>Daily Brief</Text>
       <Text style={styles.headline}>{dashboard.headline || 'Today at Gold Penny'}</Text>
       <Text style={styles.summary}>{dashboard.daily_brief || 'No summary available.'}</Text>
+      {recommendedActions.length > 0 ? (
+        <View style={styles.recommendationBox}>
+          <Text style={styles.recommendationTitle}>Best Next Moves</Text>
+          {recommendedActions.map((action, index) => (
+            <View key={`${action.action_key}_${index}`} style={styles.recommendationItem}>
+              <Text style={styles.recommendationAction}>{action.title}</Text>
+              <Text style={styles.recommendationReason}>{action.reason}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
       {bullets.length > 0 ? (
         <View style={styles.impactBox}>
           <Text style={styles.impactTitle}>Driving Signals</Text>
@@ -143,6 +155,34 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8fafc',
     padding: 10,
     gap: 4,
+  },
+  recommendationBox: {
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    borderRadius: 10,
+    backgroundColor: '#eff6ff',
+    padding: 10,
+    gap: 8,
+  },
+  recommendationTitle: {
+    color: '#1d4ed8',
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  recommendationItem: {
+    gap: 2,
+  },
+  recommendationAction: {
+    color: '#0f172a',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  recommendationReason: {
+    color: '#334155',
+    fontSize: 12,
+    lineHeight: 17,
   },
   impactTitle: {
     color: '#475569',

@@ -257,6 +257,52 @@ function feedbackToneStyle(tone: FeedbackTone): { borderColor: string; backgroun
   return { borderColor: '#bfdbfe', backgroundColor: '#eff6ff', color: '#1e40af' };
 }
 
+function formatSignedValue(value: number, digits = 0): string {
+  return `${value > 0 ? '+' : ''}${value.toFixed(digits)}`;
+}
+
+function buildActionFeedbackMessage(
+  result: ActionExecutionResponse,
+  supplementalMessage?: string | null,
+): string {
+  const parts: string[] = [];
+  const primary = String(result.message || '').trim();
+  const summary = String(result.result_summary || '').trim();
+
+  if (primary) parts.push(primary);
+  if (summary && summary !== primary) parts.push(summary);
+  if (typeof result.cash_delta_xgp === 'number' && Number.isFinite(result.cash_delta_xgp) && result.cash_delta_xgp !== 0) {
+    parts.push(`Cash ${formatSignedValue(result.cash_delta_xgp, 2)} xgp.`);
+  }
+  if (typeof result.stress_delta === 'number' && Number.isFinite(result.stress_delta) && result.stress_delta !== 0) {
+    parts.push(`Stress ${formatSignedValue(result.stress_delta)}.`);
+  }
+  if (typeof result.health_delta === 'number' && Number.isFinite(result.health_delta) && result.health_delta !== 0) {
+    parts.push(`Health ${formatSignedValue(result.health_delta)}.`);
+  }
+  if (supplementalMessage) parts.push(supplementalMessage);
+
+  return parts.join(' ');
+}
+
+function buildEndDayFeedbackMessage(result: EndDayResponse): string {
+  const parts: string[] = [];
+  const headline = String(result.summary_headline || result.message || 'Day settled successfully.').trim();
+
+  if (headline) parts.push(headline);
+  if (typeof result.ending_cash_xgp === 'number' && Number.isFinite(result.ending_cash_xgp)) {
+    parts.push(`Ending cash ${result.ending_cash_xgp.toFixed(2)} xgp.`);
+  }
+  if (typeof result.stress_change === 'number' && Number.isFinite(result.stress_change) && result.stress_change !== 0) {
+    parts.push(`Stress ${formatSignedValue(result.stress_change)}.`);
+  }
+  if (typeof result.health_change === 'number' && Number.isFinite(result.health_change) && result.health_change !== 0) {
+    parts.push(`Health ${formatSignedValue(result.health_change)}.`);
+  }
+
+  return parts.join(' ');
+}
+
 function summarizeStatusLabel(states: SectionState<unknown>[]): string | null {
   const statuses = states.map((state) => state.status);
   if (statuses.some((status) => status === 'error')) return 'partial';
@@ -1833,9 +1879,7 @@ export default function GameDashboardPage({
       });
       setFeedback({
         tone: 'success',
-        message: supplementalMessage
-          ? `${result.message}. ${result.result_summary} ${supplementalMessage}`
-          : `${result.message}. ${result.result_summary}`,
+        message: buildActionFeedbackMessage(result, supplementalMessage),
       });
     } catch (error) {
       const message = normalizeError(error);
@@ -1898,9 +1942,7 @@ export default function GameDashboardPage({
       });
       setFeedback({
         tone: 'success',
-        message: supplementalMessage
-          ? `${result.message}. ${result.result_summary} ${supplementalMessage}`
-          : `${result.message}. ${result.result_summary}`,
+        message: buildActionFeedbackMessage(result, supplementalMessage),
       });
     } catch (error) {
       const message = normalizeError(error);
@@ -1960,7 +2002,7 @@ export default function GameDashboardPage({
       });
       setFeedback({
         tone: 'success',
-        message: result.summary_headline || result.message || 'Day settled successfully.',
+        message: buildEndDayFeedbackMessage(result),
       });
       const refreshResults = await Promise.allSettled([
         loadOnboardingBundle(),
