@@ -2385,11 +2385,13 @@ export default function GameDashboardPage({
     () => [
       {
         key: 'home',
-        label: 'Home',
+        label: 'Brief',
         onPress: () => {
           setActiveShellTab('home');
           collapseAllSecondaryGroups();
-          scrollRef.current?.scrollTo({ y: 0, animated: true });
+          requestAnimationFrame(() => {
+            scrollToSection('daily_brief');
+          });
         },
       },
       {
@@ -2397,7 +2399,13 @@ export default function GameDashboardPage({
         label: 'Actions',
         onPress: () => {
           setActiveShellTab('actions');
-          scrollRef.current?.scrollTo({ y: 0, animated: true });
+          setExpandedPrimarySections((prev) => ({
+            ...prev,
+            action_hub: true,
+          }));
+          requestAnimationFrame(() => {
+            scrollToSection('action_hub');
+          });
         },
       },
       {
@@ -2406,6 +2414,9 @@ export default function GameDashboardPage({
         onPress: () => {
           setActiveShellTab('progress');
           setExpandedSecondaryGroups((prev) => ({ ...prev, progression: true }));
+          requestAnimationFrame(() => {
+            scrollToSection('progression');
+          });
         },
       },
       {
@@ -2416,20 +2427,24 @@ export default function GameDashboardPage({
           setExpandedSecondaryGroups((prev) => ({
             ...prev,
             economy_overview: true,
+            planning_commitment: true,
             world_memory: true,
           }));
+          requestAnimationFrame(() => {
+            scrollToSection('economy_overview');
+          });
         },
       },
       {
         key: 'profile',
-        label: 'Profile',
+        label: 'Account',
         onPress: () => {
           setActiveShellTab('profile');
           router.push('/account/index');
         },
       },
     ],
-    [collapseAllSecondaryGroups],
+    [collapseAllSecondaryGroups, scrollToSection],
   );
 
   const isSecondaryGroupExpanded = useCallback((groupKey: SecondaryGroupKey): boolean => {
@@ -2482,12 +2497,6 @@ export default function GameDashboardPage({
     if (!effectiveActionHub) return 'Action options will load shortly.';
     return `${effectiveActionHub.recommended_actions.length} recommended, ${effectiveActionHub.available_actions.length} available, ${effectiveActionHub.blocked_actions.length} blocked.`;
   }, [effectiveActionHub]);
-  const strategySummary = useMemo(() => {
-    if (strategyRecommendationState.data) {
-      return `${strategyRecommendationState.data.recommended_plan_title}. Risk: ${strategyRecommendationState.data.biggest_risk}.`;
-    }
-    return 'One clear defensive move and one growth move for today.';
-  }, [strategyRecommendationState.data]);
   const dailyBriefSummary = useMemo(() => {
     if (!effectiveDashboard) return 'Today’s headline, top opportunity, and top risk.';
     const leadRisk = describeSignalItem(effectiveDashboard.top_risks?.[0], 'No major risk flagged');
@@ -2752,6 +2761,13 @@ export default function GameDashboardPage({
     || onboardingGuidanceState.status === 'error'
     || onboardingConfigState.status === 'error'
     || onboardingUnlockState.status === 'error';
+  const hasVisibleActionZone = Boolean(
+    isSectionVisible('business_operations')
+      || isSectionVisible('stock_market')
+      || isSectionVisible('action_hub')
+      || (randomEvent.activeEvent && dailySession.sessionStatus === 'active'),
+  );
+  const hasVisibleSecondarySections = !secondaryHiddenByOnboarding && Object.values(secondaryGroupVisibility).some(Boolean);
 
   return (
     <AppShell
@@ -2951,6 +2967,8 @@ export default function GameDashboardPage({
           </>
         ) : null}
 
+        {hasVisibleActionZone ? <Text style={styles.layerLabel}>Action Zone</Text> : null}
+
         {activeBusinessRecord
           ? wrapSection(
               'business_operations',
@@ -3052,25 +3070,6 @@ export default function GameDashboardPage({
             )
           : null}
 
-        {isSectionVisible('strategic_recommendation') && (strategyRecommendationState.status === 'loading' || strategyRecommendationState.status === 'idle') ? (
-          <LoadingStateCard label="Loading strategy recommendation..." />
-        ) : null}
-        {isSectionVisible('strategic_recommendation') && strategyRecommendationState.status === 'error' ? (
-          <ErrorStateCard
-            title="Strategy recommendation unavailable"
-            message={strategyRecommendationState.error || undefined}
-            onRetry={loadStrategyRecommendation}
-          />
-        ) : null}
-        {isSectionVisible('strategic_recommendation') && strategyRecommendationState.status === 'ready' && strategyRecommendationState.data ? (
-          wrapSection(
-            'strategic_recommendation',
-            <PrimaryDashboardSection title="Strategy Recommendation" summary={strategySummary}>
-              <StrategyRecommendationCard recommendation={strategyRecommendationState.data} />
-            </PrimaryDashboardSection>,
-          )
-        ) : null}
-
         {isSectionVisible('action_hub') && (actionState.status === 'loading' || actionState.status === 'idle') ? (
           <LoadingStateCard label="Loading action hub..." />
         ) : null}
@@ -3115,6 +3114,8 @@ export default function GameDashboardPage({
             </PrimaryDashboardSection>,
           )
         ) : null}
+
+        {hasVisibleSecondarySections ? <Text style={styles.layerLabel}>Deep Dives</Text> : null}
 
         {!secondaryHiddenByOnboarding && secondaryGroupVisibility.economy_overview ? (
           wrapSection(
@@ -3283,6 +3284,20 @@ export default function GameDashboardPage({
               expanded={isSecondaryGroupExpanded('planning_commitment')}
               onToggle={() => toggleSecondaryGroup('planning_commitment')}
             >
+              {isSectionAllowedByOnboarding('strategic_recommendation') && (strategyRecommendationState.status === 'loading' || strategyRecommendationState.status === 'idle') ? (
+                <LoadingStateCard label="Loading strategy recommendation..." />
+              ) : null}
+              {isSectionAllowedByOnboarding('strategic_recommendation') && strategyRecommendationState.status === 'error' ? (
+                <ErrorStateCard
+                  title="Strategy recommendation unavailable"
+                  message={strategyRecommendationState.error || undefined}
+                  onRetry={loadStrategyRecommendation}
+                />
+              ) : null}
+              {isSectionAllowedByOnboarding('strategic_recommendation') && strategyRecommendationState.status === 'ready' && strategyRecommendationState.data ? (
+                <StrategyRecommendationCard recommendation={strategyRecommendationState.data} />
+              ) : null}
+
               {isSectionAllowedByOnboarding('strategic_planning') && (shortHorizonPlansState.status === 'loading' || shortHorizonPlansState.status === 'idle') ? (
                 <LoadingStateCard label="Loading short-horizon plans..." />
               ) : null}
@@ -3611,6 +3626,15 @@ const styles = StyleSheet.create({
   },
   sectionShell: {
     gap: theme.spacing.sm,
+  },
+  layerLabel: {
+    color: theme.color.textSecondary,
+    ...theme.typography.caption,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    paddingHorizontal: theme.spacing.xs,
+    marginTop: theme.spacing.xs,
   },
   highlightSection: {
     borderWidth: 2,
