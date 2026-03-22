@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { theme } from '@/design/theme';
 import { creditTone, formatMoney, healthTone, stressTone } from '@/lib/gameplayFormatters';
+import { GameplayEconomyState } from '@/types/economy';
 import { DashboardStatSnapshot } from '@/types/gameplay';
 
 function StatTile({
@@ -22,12 +23,31 @@ function StatTile({
   );
 }
 
-export default function PlayerStatsBar({ stats }: { stats: DashboardStatSnapshot }) {
+export default function PlayerStatsBar({
+  stats,
+  economy,
+}: {
+  stats: DashboardStatSnapshot;
+  economy?: GameplayEconomyState | null;
+}) {
+  const cashOnHand = economy?.cashOnHand ?? stats.cash_xgp;
+  const debtAmount = economy?.debtAmount ?? stats.debt_xgp;
+  const netWorthAmount = economy?.netWorthAmount ?? stats.net_worth_xgp;
+  const cashFlowTone =
+    economy?.netCashFlow == null
+      ? theme.color.textSecondary
+      : economy.netCashFlow < 0
+        ? '#b91c1c'
+        : economy.netCashFlow > 0
+          ? '#166534'
+          : theme.color.textSecondary;
+
   return (
     <View style={styles.container}>
-      <StatTile label="Cash" value={formatMoney(stats.cash_xgp)} />
-      <StatTile label="Debt" value={formatMoney(stats.debt_xgp)} tone={stats.debt_xgp > 0 ? '#b91c1c' : '#166534'} />
-      <StatTile label="Net Worth" value={formatMoney(stats.net_worth_xgp)} />
+      <StatTile label="Cash" value={formatMoney(cashOnHand)} />
+      <StatTile label="Debt" value={formatMoney(debtAmount)} tone={debtAmount > 0 ? '#b91c1c' : '#166534'} />
+      <StatTile label="Net Worth" value={formatMoney(netWorthAmount)} />
+      {economy ? <StatTile label="Cash Flow" value={economy.cashFlowLabel} tone={cashFlowTone} /> : null}
       <StatTile label="Stress" value={`${Math.round(stats.stress)}`} tone={stressTone(stats.stress)} />
       <StatTile label="Health" value={`${Math.round(stats.health)}`} tone={healthTone(stats.health)} />
       <StatTile label="Credit" value={`${Math.round(stats.credit_score)}`} tone={creditTone(stats.credit_score)} />

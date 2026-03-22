@@ -53,6 +53,7 @@ import PageContainer from '@/components/layout/PageContainer';
 import FadeInView from '@/components/motion/FadeInView';
 import SecondaryButton from '@/components/ui/SecondaryButton';
 import { ActionExecutionGuard, useDailySession } from '@/hooks/useDailySession';
+import { useEconomyState } from '@/hooks/useEconomyState';
 import {
   activateCommitment,
   cancelCommitment,
@@ -110,6 +111,7 @@ import {
 import {
   ActionExecutionResponse,
   ActionPreviewResponse,
+  DashboardSignalItem,
   DailyActionHubResponse,
   DailyActionItem,
   EndDayResponse,
@@ -307,6 +309,13 @@ function deriveCommitmentFeedback(
   }
 
   return null;
+}
+
+function describeSignalItem(item: DashboardSignalItem | null | undefined, fallback: string): string {
+  if (!item) return fallback;
+  const title = String(item.title || '').trim();
+  const description = String(item.description || '').trim();
+  return title || description || fallback;
 }
 
 const SECONDARY_GROUP_SECTION_KEYS = new Set<string>([
@@ -1331,6 +1340,7 @@ export default function GameDashboardPage({
   }, [actionState.data, applySessionBlockers]);
 
   const notificationCount = notificationsState.data?.notifications.length || 0;
+  const economyState = useEconomyState(dashboardState.data, eodState.data);
 
   const openPreview = useCallback(
     async (action: DailyActionItem) => {
@@ -1854,15 +1864,11 @@ export default function GameDashboardPage({
   }, [strategyRecommendationState.data]);
   const dailyBriefSummary = useMemo(() => {
     if (!dashboardState.data) return 'Today’s headline, top opportunity, and top risk.';
-    const leadRisk = dashboardState.data.top_risks?.[0] || 'No major risk flagged';
-    const leadOpportunity = dashboardState.data.top_opportunities?.[0] || 'No major opportunity flagged';
+    const leadRisk = describeSignalItem(dashboardState.data.top_risks?.[0], 'No major risk flagged');
+    const leadOpportunity = describeSignalItem(dashboardState.data.top_opportunities?.[0], 'No major opportunity flagged');
     return `${leadOpportunity}. Risk: ${leadRisk}.`;
   }, [dashboardState.data]);
-  const statsSummary = useMemo(() => {
-    if (!dashboardState.data) return 'Cash, debt, stress, health, and credit at a glance.';
-    const { cash_xgp, debt_xgp, stress, health } = dashboardState.data.stats;
-    return `Cash ${cash_xgp} | Debt ${debt_xgp} | Stress ${stress} | Health ${health}`;
-  }, [dashboardState.data]);
+  const statsSummary = useMemo(() => economyState.summaryLine, [economyState.summaryLine]);
 
   const economyStatusLabel = useMemo(
     () =>
@@ -2077,8 +2083,8 @@ export default function GameDashboardPage({
             {isSectionVisible('player_stats')
               ? wrapSection(
                 'player_stats',
-                <PrimaryDashboardSection title="Player Snapshot" summary={statsSummary}>
-                  <PlayerStatsBar stats={dashboardState.data.stats} />
+                <PrimaryDashboardSection title="Player Snapshot" summary={statsSummary} statusLabel={economyState.statusLabel}>
+                  <PlayerStatsBar stats={dashboardState.data.stats} economy={economyState} />
                 </PrimaryDashboardSection>,
               )
               : null}
