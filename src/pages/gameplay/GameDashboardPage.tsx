@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { router } from 'expo-router';
-import { RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import ActionHistoryPanel from '@/components/gameplay/ActionHistoryPanel';
 import ActionHubPanel from '@/components/gameplay/ActionHubPanel';
@@ -52,6 +52,7 @@ import AppShell from '@/components/layout/AppShell';
 import ContentStack from '@/components/layout/ContentStack';
 import PageContainer from '@/components/layout/PageContainer';
 import FadeInView from '@/components/motion/FadeInView';
+import PrimaryButton from '@/components/ui/PrimaryButton';
 import SecondaryButton from '@/components/ui/SecondaryButton';
 import { ActionExecutionGuard, useDailySession } from '@/hooks/useDailySession';
 import { useDailyProgression } from '@/hooks/useDailyProgression';
@@ -141,7 +142,7 @@ import {
   AvailableCommitmentItem,
 } from '@/types/commitment';
 import { PlayerBusinessesResponse } from '@/types/business';
-import { StockMarketSnapshotResponse } from '@/types/stocks';
+import { StockMarketItem, StockMarketSnapshotResponse, StockTradeExecutionResponse } from '@/types/stocks';
 import {
   BusinessMarginsResponse,
   CommutePressureResponse,
@@ -304,6 +305,52 @@ function buildEndDayFeedbackMessage(result: EndDayResponse): string {
     parts.push(`Health ${formatSignedValue(result.health_change)}.`);
   }
 
+  return parts.join(' ');
+}
+
+function buildPendingActionFeedback(action: DailyActionItem): string {
+  const canonicalKey = canonicalThumbActionKey(action.action_key);
+  if (canonicalKey === 'work_shift') return 'Working now. Income update is on the way.';
+  if (canonicalKey === 'operate_business') return 'Running your business. Today\'s cash flow is updating.';
+  if (canonicalKey === 'recovery_action') return 'Recovery started. Stress and health are updating.';
+  return `${action.title} in progress. Applying today\'s result now.`;
+}
+
+function buildPendingEndDayFeedback(dayNumber: number | null | undefined): string {
+  return dayNumber != null
+    ? `Closing Day ${dayNumber}. Earnings, expenses, and new warnings are being settled.`
+    : 'Closing the day. Earnings, expenses, and new warnings are being settled.';
+}
+
+function formatPercentSigned(value: number): string {
+  return `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`;
+}
+
+function buildPendingStockTradeFeedback(stock: StockMarketItem | null | undefined, side: 'buy' | 'sell', shares: number): string {
+  const actionWord = side === 'buy' ? 'Buying' : 'Selling';
+  const stockLabel = stock?.stock_name || stock?.stock_id || 'stock';
+  const trend = stock && Number.isFinite(stock.daily_change_pct)
+    ? ` Stock ${formatPercentSigned(stock.daily_change_pct)} today.`
+    : '';
+  return `${actionWord} ${shares} share${shares === 1 ? '' : 's'} of ${stockLabel}.${trend}`;
+}
+
+function buildStockTradeFeedbackMessage(
+  result: StockTradeExecutionResponse,
+  side: 'buy' | 'sell',
+  stock?: StockMarketItem | null,
+): string {
+  const actionWord = side === 'buy' ? 'Bought' : 'Sold';
+  const stockLabel = stock?.stock_name || result.stock_id;
+  const parts = [`${actionWord} ${result.shares} share${result.shares === 1 ? '' : 's'} of ${stockLabel}.`];
+
+  if (stock && Number.isFinite(stock.daily_change_pct)) {
+    parts.push(`Stock ${formatPercentSigned(stock.daily_change_pct)} today.`);
+  }
+
+  parts.push(`Price ${result.execution_price.toFixed(2)} xgp.`);
+  parts.push(`Fee ${result.fee_amount.toFixed(2)} xgp.`);
+  parts.push(`Cash ${result.remaining_cash_xgp.toFixed(2)} xgp.`);
   return parts.join(' ');
 }
 
@@ -1897,6 +1944,7 @@ export default function GameDashboardPage({
     executeActionGuardRef.current = true;
     setExecutingAction(true);
     dailySession.setPendingExecution(true);
+    setFeedback({ tone: 'info', message: buildPendingActionFeedback(action) });
     try {
       const result = await onExecuteAction(action.action_key, action.parameters || {});
       const consumed = Math.max(1, Math.round(Number(result.time_cost_units) || guard.timeCostUnits));
@@ -1984,6 +2032,7 @@ export default function GameDashboardPage({
     executeActionGuardRef.current = true;
     setExecutingAction(true);
     dailySession.setPendingExecution(true);
+    setFeedback({ tone: 'info', message: 'Running your business. Today\'s result is being calculated.' });
     try {
       const result = await onExecuteAction('operate_business', {});
       const consumed = Math.max(1, Math.round(Number(result.time_cost_units) || guard.timeCostUnits));
@@ -2046,6 +2095,7 @@ export default function GameDashboardPage({
     endDayGuardRef.current = true;
     setEndingDay(true);
     dailySession.setPendingExecution(true);
+    setFeedback({ tone: 'info', message: buildPendingEndDayFeedback(dailyProgression.currentGameDay) });
     try {
       const result = await endDay(playerId);
       setLastEndDayResult(result);
@@ -2616,6 +2666,8 @@ export default function GameDashboardPage({
 
     stockTradeGuardRef.current = true;
     setPendingStockTrade({ stockId, side });
+    const stock = stockMarketState.data?.stocks.find((entry) => entry.stock_id === stockId) || null;
+    setFeedback({ tone: 'info', message: buildPendingStockTradeFeedback(stock, side, shares) });
     try {
       const result = side === 'buy'
         ? await buyStock(playerId, stockId, shares)
@@ -2627,12 +2679,9 @@ export default function GameDashboardPage({
       ]);
       recordSettledFailures('stock_trade_refresh', refreshResults);
 
-      const detail = side === 'buy'
-        ? `Bought ${result.shares} share(s) of ${result.stock_id}`
-        : `Sold ${result.shares} share(s) of ${result.stock_id}`;
       setFeedback({
         tone: 'success',
-        message: `${detail} at ${result.execution_price.toFixed(2)} xgp. Fee ${result.fee_amount.toFixed(2)} xgp. Cash ${result.remaining_cash_xgp.toFixed(2)} xgp.`,
+        message: buildStockTradeFeedbackMessage(result, side, stock),
       });
     } catch (error) {
       recordError('gameplay', 'Stock trade failed.', {
@@ -2645,7 +2694,7 @@ export default function GameDashboardPage({
       stockTradeGuardRef.current = false;
       setPendingStockTrade(null);
     }
-  }, [dailySession.pendingExecution, dailySession.sessionStatus, endingDay, executingAction, loadDashboard, loadStockMarket, playerId]);
+  }, [dailySession.pendingExecution, dailySession.sessionStatus, endingDay, executingAction, loadDashboard, loadStockMarket, playerId, stockMarketState.data]);
 
   const handleQuickWorkAction = useCallback(() => {
     if (workQuickAction) {
@@ -2749,6 +2798,10 @@ export default function GameDashboardPage({
   );
 
   const feedbackStyle = feedback ? feedbackToneStyle(feedback.tone) : null;
+  const dashboardRefreshing = dashboardState.status === 'loading' && Boolean(effectiveDashboard);
+  const actionHubRefreshing = actionState.status === 'loading' && Boolean(effectiveActionHub);
+  const stockMarketRefreshing = stockMarketState.status === 'loading' && Boolean(stockMarketState.data);
+  const showingRefreshNotice = refreshing || dashboardRefreshing || actionHubRefreshing || stockMarketRefreshing;
   const onboardingStepKey = onboardingGuidanceState.data?.step_key || onboardingState.data?.current_step_key || null;
   const preferredGuidanceActionKey = onboardingConfigState.data?.highlighted_action_key
     || onboardingGuidanceState.data?.required_action_key
@@ -2882,18 +2935,26 @@ export default function GameDashboardPage({
         >
           <ContentStack gap={theme.spacing.md}>
         {feedback && feedbackStyle && !isMobile ? (
-          <View
-            style={[
-              styles.feedbackBox,
-              {
-                borderColor: feedbackStyle.borderColor,
-                backgroundColor: feedbackStyle.backgroundColor,
-              },
-            ]}
-          >
-            <Text style={[styles.feedbackLabel, { color: feedbackStyle.color }]}>{feedbackToneLabel(feedback.tone)}</Text>
-            <Text style={[styles.feedbackText, { color: feedbackStyle.color }]}>{feedback.message}</Text>
-          </View>
+          <FadeInView key={`${feedback.tone}:${feedback.message}`} slide={6}>
+            <View
+              style={[
+                styles.feedbackBox,
+                {
+                  borderColor: feedbackStyle.borderColor,
+                  backgroundColor: feedbackStyle.backgroundColor,
+                },
+              ]}
+            >
+              <Text style={[styles.feedbackLabel, { color: feedbackStyle.color }]}>{feedbackToneLabel(feedback.tone)}</Text>
+              <Text style={[styles.feedbackText, { color: feedbackStyle.color }]}>{feedback.message}</Text>
+            </View>
+          </FadeInView>
+        ) : null}
+
+        {showingRefreshNotice && !endingDay ? (
+          <FadeInView key={`refresh-${String(showingRefreshNotice)}`} slide={4}>
+            <LoadingStateCard label="Refreshing the latest state without interrupting play..." compact />
+          </FadeInView>
         ) : null}
 
         {!isMobile && isSectionVisible('day_controls') ? wrapSection(
@@ -2909,27 +2970,27 @@ export default function GameDashboardPage({
               </Text>
             </View>
             <View style={styles.dayControlButtons}>
-              <TouchableOpacity
-                style={[styles.primaryActionButton, !dailyProgression.canAdvanceDay ? styles.buttonDisabled : null]}
+              <PrimaryButton
+                style={styles.dayControlPrimaryButton}
+                label="End Day"
                 onPress={handleEndDay}
-                disabled={!dailyProgression.canAdvanceDay || endingDay}
-              >
-                <Text style={styles.primaryActionButtonText}>{endingDay ? 'Ending...' : 'End Day'}</Text>
-              </TouchableOpacity>
+                disabled={!dailyProgression.canAdvanceDay || startingNextDayRef.current}
+                loading={endingDay}
+              />
               {dailySession.sessionStatus === 'ended' ? (
-                <TouchableOpacity
-                  style={styles.secondaryActionButton}
+                <SecondaryButton
+                  style={styles.dayControlSecondaryButton}
+                  label="Start Next Day"
                   onPress={handleStartNextDay}
                   disabled={refreshing || dailyProgression.isAdvancingDay}
-                >
-                  <Text style={styles.secondaryActionButtonText}>Start Next Day</Text>
-                </TouchableOpacity>
+                  loading={dailyProgression.isAdvancingDay}
+                />
               ) : null}
             </View>
           </View>,
         ) : null}
 
-        {dashboardState.status === 'loading' || dashboardState.status === 'idle' ? (
+        {!effectiveDashboard && (dashboardState.status === 'loading' || dashboardState.status === 'idle') ? (
           <LoadingStateCard label="Loading dashboard..." />
         ) : null}
         {dashboardState.status === 'error' ? (
@@ -2946,12 +3007,13 @@ export default function GameDashboardPage({
           />
         ) : null}
 
-        {dashboardState.status === 'ready' && effectiveDashboard ? (
+        {effectiveDashboard ? (
           <>
             {isSectionVisible('daily_brief')
               ? wrapSection(
                 'daily_brief',
                 <PrimaryDashboardSection title="Daily Brief" summary={dailyBriefSummary}>
+                  {dashboardRefreshing ? <LoadingStateCard label="Updating brief..." compact /> : null}
                   <DailyBriefCard dashboard={effectiveDashboard} impactBullets={dailyBriefImpactBullets} />
                 </PrimaryDashboardSection>,
               )
@@ -2960,6 +3022,7 @@ export default function GameDashboardPage({
               ? wrapSection(
                 'player_stats',
                 <PrimaryDashboardSection title="Player Snapshot" summary={statsSummary} statusLabel={economyState.statusLabel}>
+                  {dashboardRefreshing ? <LoadingStateCard label="Updating snapshot..." compact /> : null}
                   <PlayerStatsBar stats={effectiveDashboard.stats} economy={economyState} currentGameDay={dailyProgression.currentGameDay} jobIncome={jobIncome} expenseDebt={expenseDebt} />
                 </PrimaryDashboardSection>,
               )
@@ -3011,7 +3074,7 @@ export default function GameDashboardPage({
           )
         ) : null}
 
-        {isSectionVisible('stock_market') && (stockMarketState.status === 'loading' || stockMarketState.status === 'idle') ? (
+        {isSectionVisible('stock_market') && !stockMarketState.data && (stockMarketState.status === 'loading' || stockMarketState.status === 'idle') ? (
           <LoadingStateCard label="Loading stock market..." />
         ) : null}
         {isSectionVisible('stock_market') && stockMarketState.status === 'error' ? (
@@ -3021,7 +3084,7 @@ export default function GameDashboardPage({
             onRetry={loadStockMarket}
           />
         ) : null}
-        {isSectionVisible('stock_market') && stockMarketState.status === 'ready' && stockMarketState.data ? (
+        {isSectionVisible('stock_market') && stockMarketState.data ? (
           wrapSection(
             'stock_market',
             <PrimaryDashboardSection
@@ -3031,6 +3094,7 @@ export default function GameDashboardPage({
               expanded={isPrimarySectionExpanded('stock_market')}
               onToggle={() => togglePrimarySection('stock_market')}
             >
+              {stockMarketRefreshing ? <LoadingStateCard label="Refreshing stock prices..." compact /> : null}
               <StockMarketCard
                 market={stockMarketState.data}
                 sessionActive={dailySession.sessionStatus === 'active'}
@@ -3070,7 +3134,7 @@ export default function GameDashboardPage({
             )
           : null}
 
-        {isSectionVisible('action_hub') && (actionState.status === 'loading' || actionState.status === 'idle') ? (
+        {isSectionVisible('action_hub') && !effectiveActionHub && (actionState.status === 'loading' || actionState.status === 'idle') ? (
           <LoadingStateCard label="Loading action hub..." />
         ) : null}
         {isSectionVisible('action_hub') && actionState.status === 'error' ? (
@@ -3086,7 +3150,7 @@ export default function GameDashboardPage({
             subtitle="Check back after the next simulation cycle."
           />
         ) : null}
-        {isSectionVisible('action_hub') && actionState.status === 'ready' && effectiveActionHub ? (
+        {isSectionVisible('action_hub') && effectiveActionHub ? (
           wrapSection(
             'action_hub',
             <PrimaryDashboardSection
@@ -3096,6 +3160,7 @@ export default function GameDashboardPage({
               expanded={isPrimarySectionExpanded('action_hub')}
               onToggle={() => togglePrimarySection('action_hub')}
             >
+              {actionHubRefreshing ? <LoadingStateCard label="Refreshing available actions..." compact /> : null}
               <ActionHubPanel
                 hub={effectiveActionHub}
                 onPreviewAction={openPreview}
@@ -3561,7 +3626,9 @@ export default function GameDashboardPage({
         ) : null}
 
         {isSectionVisible('end_of_day_summary') && (eodState.status === 'loading' || eodState.status === 'idle') && dailySession.sessionStatus === 'ended' ? (
-          <LoadingStateCard label="Loading end-of-day summary..." />
+          <FadeInView key={`eod-loading-${dailyProgression.currentGameDay}`} slide={8}>
+            <LoadingStateCard label="Settling the day and gathering results..." />
+          </FadeInView>
         ) : null}
         {isSectionVisible('end_of_day_summary') && eodState.status === 'error' && dailySession.sessionStatus === 'ended' ? (
           <ErrorStateCard
@@ -3571,16 +3638,18 @@ export default function GameDashboardPage({
           />
         ) : null}
         {isSectionVisible('end_of_day_summary') && eodState.status === 'ready' && eodState.data
-          ? wrapSection('end_of_day_summary', <EndOfDaySummaryCard summary={eodState.data} />)
+          ? wrapSection('end_of_day_summary', <FadeInView key={`eod-summary-${eodState.data.as_of_date}`} slide={10}><EndOfDaySummaryCard summary={eodState.data} /></FadeInView>)
           : null}
 
         {isSectionVisible('end_of_day_summary') && lastEndDayResult && eodState.status !== 'ready' ? (
-          <View style={styles.fallbackSummaryCard}>
-            <Text style={styles.fallbackSummaryTitle}>Day Settled</Text>
-            <Text style={styles.fallbackSummaryText}>
-              {lastEndDayResult.summary_headline || lastEndDayResult.summary || lastEndDayResult.message}
-            </Text>
-          </View>
+          <FadeInView key={`eod-fallback-${lastEndDayResult.settled_day}`} slide={10}>
+            <View style={styles.fallbackSummaryCard}>
+              <Text style={styles.fallbackSummaryTitle}>Day Settled</Text>
+              <Text style={styles.fallbackSummaryText}>
+                {lastEndDayResult.summary_headline || lastEndDayResult.summary || lastEndDayResult.message}
+              </Text>
+            </View>
+          </FadeInView>
         ) : null}
 
           </ContentStack>
@@ -3696,29 +3765,11 @@ const styles = StyleSheet.create({
     gap: theme.spacing.sm,
     flexWrap: 'wrap',
   },
-  primaryActionButton: {
-    borderRadius: theme.radius.md,
-    paddingVertical: 9,
-    paddingHorizontal: 12,
-    backgroundColor: theme.color.accent,
-    minHeight: 44,
-    justifyContent: 'center',
+  dayControlPrimaryButton: {
+    minWidth: 132,
   },
-  primaryActionButtonText: {
-    color: '#ffffff',
-    ...theme.typography.label,
-  },
-  secondaryActionButton: {
-    borderRadius: theme.radius.md,
-    paddingVertical: 9,
-    paddingHorizontal: 12,
-    backgroundColor: theme.color.textPrimary,
-    minHeight: 44,
-    justifyContent: 'center',
-  },
-  secondaryActionButtonText: {
-    color: '#ffffff',
-    ...theme.typography.label,
+  dayControlSecondaryButton: {
+    minWidth: 152,
   },
   buttonDisabled: {
     opacity: 0.45,

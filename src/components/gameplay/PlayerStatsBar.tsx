@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
+import HighlightOnChangeView from '@/components/motion/HighlightOnChangeView';
 import { theme } from '@/design/theme';
 import { creditTone, formatMoney, healthTone, stressTone } from '@/lib/gameplayFormatters';
 import { type ExpenseDebtContract } from '@/hooks/useExpenseDebt';
@@ -21,11 +22,11 @@ function MetricTile({
   tone?: string;
 }) {
   return (
-    <View style={styles.metricTile}>
+    <HighlightOnChangeView watchValue={`${label}:${value}:${note || ''}`} style={styles.metricTile}>
       <Text style={styles.metricLabel}>{label}</Text>
       <Text style={[styles.metricValue, tone ? { color: tone } : null]} numberOfLines={1}>{value}</Text>
       {note ? <Text style={styles.metricNote} numberOfLines={2}>{note}</Text> : null}
-    </View>
+    </HighlightOnChangeView>
   );
 }
 
@@ -39,10 +40,10 @@ function DetailPill({
   tone?: string;
 }) {
   return (
-    <View style={styles.detailPill}>
+    <HighlightOnChangeView watchValue={`${label}:${value}`} style={styles.detailPill}>
       <Text style={styles.detailLabel}>{label}</Text>
       <Text style={[styles.detailValue, tone ? { color: tone } : null]} numberOfLines={1}>{value}</Text>
-    </View>
+    </HighlightOnChangeView>
   );
 }
 

@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import BottomActionBar from '@/components/layout/BottomActionBar';
+import FadeInView from '@/components/motion/FadeInView';
 import PrimaryButton from '@/components/ui/PrimaryButton';
 import SecondaryButton from '@/components/ui/SecondaryButton';
 import { theme } from '@/design/theme';
@@ -65,20 +66,22 @@ export default function ThumbReachActionDock({
       </View>
 
       {feedback && feedbackStyle ? (
-        <View
-          style={[
-            styles.feedbackBox,
-            {
-              borderColor: feedbackStyle.borderColor,
-              backgroundColor: feedbackStyle.backgroundColor,
-            },
-          ]}
-        >
-          <Text style={[styles.feedbackLabel, { color: feedbackStyle.color }]}>Latest result</Text>
-          <Text style={[styles.feedbackText, { color: feedbackStyle.color }]} numberOfLines={3}>
-            {feedback.message}
-          </Text>
-        </View>
+        <FadeInView key={`${feedback.tone}:${feedback.message}`} slide={6}>
+          <View
+            style={[
+              styles.feedbackBox,
+              {
+                borderColor: feedbackStyle.borderColor,
+                backgroundColor: feedbackStyle.backgroundColor,
+              },
+            ]}
+          >
+            <Text style={[styles.feedbackLabel, { color: feedbackStyle.color }]}>Latest result</Text>
+            <Text style={[styles.feedbackText, { color: feedbackStyle.color }]} numberOfLines={3}>
+              {feedback.message}
+            </Text>
+          </View>
+        </FadeInView>
       ) : (
         <Text style={styles.hintText}>Read the brief, take one clear move, then close the day.</Text>
       )}
@@ -111,6 +114,7 @@ export default function ThumbReachActionDock({
             label={advanceAction.label}
             onPress={advanceAction.onPress}
             disabled={advanceAction.disabled}
+            loading={advanceAction.loading}
             style={[
               styles.primaryButton,
               highlightedActionId === advanceAction.id ? styles.highlightedButton : null,
@@ -140,6 +144,7 @@ export default function ThumbReachActionDock({
               label={action.label}
               onPress={action.onPress}
               disabled={action.disabled}
+              loading={action.loading}
               style={[
                 styles.secondaryButton,
                 highlightedActionId === action.id ? styles.highlightedButton : null,

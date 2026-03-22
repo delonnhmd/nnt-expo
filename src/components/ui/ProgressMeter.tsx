@@ -1,6 +1,7 @@
-import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { Animated, StyleSheet, Text, View } from 'react-native';
 
+import { motion, useReducedMotion } from '@/design/motion';
 import { theme } from '@/design/theme';
 
 export default function ProgressMeter({
@@ -11,12 +12,38 @@ export default function ProgressMeter({
   label?: string;
 }) {
   const pct = Math.round(Math.max(0, Math.min(1, progress)) * 100);
+  const reduced = useReducedMotion();
+  const animatedProgress = useRef(new Animated.Value(pct)).current;
+
+  useEffect(() => {
+    if (reduced) {
+      animatedProgress.setValue(pct);
+      return;
+    }
+
+    Animated.timing(animatedProgress, {
+      toValue: pct,
+      duration: motion.duration.base,
+      easing: motion.easing.standard,
+      useNativeDriver: false,
+    }).start();
+  }, [animatedProgress, pct, reduced]);
 
   return (
     <View style={styles.wrap}>
       {label ? <Text style={styles.label}>{label}</Text> : null}
       <View style={styles.track}>
-        <View style={[styles.fill, { width: `${pct}%` }]} />
+        <Animated.View
+          style={[
+            styles.fill,
+            {
+              width: animatedProgress.interpolate({
+                inputRange: [0, 100],
+                outputRange: ['0%', '100%'],
+              }),
+            },
+          ]}
+        />
       </View>
       <Text style={styles.meta}>{pct}%</Text>
     </View>

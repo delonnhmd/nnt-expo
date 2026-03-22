@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
+import HighlightOnChangeView from '@/components/motion/HighlightOnChangeView';
 import { theme } from '@/design/theme';
 import { PlayerDashboardResponse } from '@/types/gameplay';
 
@@ -27,21 +28,27 @@ export default function DailyBriefCard({
     ? leadOpportunity
     : dashboard.top_risks[1] || dashboard.top_opportunities[1] || null;
   const summary = firstMeaningfulLine(dashboard.daily_brief);
+  const heroWatchValue = `${dashboard.headline || ''}|${summary}`;
+  const primarySignalWatchValue = `${primarySignal?.title || ''}|${primarySignal?.description || ''}`;
+  const secondarySignalWatchValue = `${secondarySignal?.title || ''}|${secondarySignal?.description || ''}`;
 
   return (
     <View style={styles.card}>
-      <View style={styles.heroBlock}>
+      <HighlightOnChangeView watchValue={heroWatchValue} style={styles.heroBlock}>
         <Text style={styles.headerLabel}>Daily Brief</Text>
         <Text style={styles.headline}>{dashboard.headline || 'Today at Gold Penny'}</Text>
         <Text style={styles.summary} numberOfLines={3}>{summary}</Text>
-      </View>
+      </HighlightOnChangeView>
 
       {primarySignal ? (
-        <View style={[styles.primarySignalBox, leadRisk ? styles.primarySignalRisk : styles.primarySignalOpportunity]}>
+        <HighlightOnChangeView
+          watchValue={primarySignalWatchValue}
+          style={[styles.primarySignalBox, leadRisk ? styles.primarySignalRisk : styles.primarySignalOpportunity]}
+        >
           <Text style={styles.primarySignalLabel}>{leadRisk ? 'Watch now' : 'Best opening'}</Text>
           <Text style={styles.primarySignalTitle} numberOfLines={2}>{primarySignal.title}</Text>
           <Text style={styles.primarySignalText} numberOfLines={2}>{primarySignal.description}</Text>
-        </View>
+        </HighlightOnChangeView>
       ) : null}
 
       <View style={styles.bottomGrid}>
@@ -66,7 +73,7 @@ export default function DailyBriefCard({
           )}
         </View>
 
-        <View style={styles.secondarySignalBox}>
+        <HighlightOnChangeView watchValue={secondarySignalWatchValue || 'brief-status'} style={styles.secondarySignalBox}>
           <Text style={styles.secondarySignalTitle}>{secondarySignal ? 'Secondary signal' : 'Brief status'}</Text>
           {secondarySignal ? (
             <>
@@ -78,7 +85,7 @@ export default function DailyBriefCard({
               No second major signal is standing out. Use cash pressure and the main brief to guide the day.
             </Text>
           )}
-        </View>
+        </HighlightOnChangeView>
       </View>
 
       {bullets.length > 0 ? (

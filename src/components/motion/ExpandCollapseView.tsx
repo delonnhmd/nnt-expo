@@ -15,20 +15,38 @@ export default function ExpandCollapseView({
 }) {
   const reduced = useReducedMotion();
   const anim = useRef(new Animated.Value(expanded ? 1 : 0)).current;
+  const translateY = useRef(new Animated.Value(expanded ? 0 : -10)).current;
+  const scaleY = useRef(new Animated.Value(expanded ? 1 : 0.98)).current;
 
   useEffect(() => {
     if (reduced) {
       anim.setValue(expanded ? 1 : 0);
+      translateY.setValue(0);
+      scaleY.setValue(1);
       return;
     }
 
-    Animated.timing(anim, {
-      toValue: expanded ? 1 : 0,
-      duration: motion.duration.base,
-      easing: motion.easing.gentle,
-      useNativeDriver: false,
-    }).start();
-  }, [anim, expanded, reduced]);
+    Animated.parallel([
+      Animated.timing(anim, {
+        toValue: expanded ? 1 : 0,
+        duration: motion.duration.base,
+        easing: motion.easing.gentle,
+        useNativeDriver: false,
+      }),
+      Animated.timing(translateY, {
+        toValue: expanded ? 0 : -10,
+        duration: motion.duration.base,
+        easing: motion.easing.gentle,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scaleY, {
+        toValue: expanded ? 1 : 0.98,
+        duration: motion.duration.base,
+        easing: motion.easing.standard,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [anim, expanded, reduced, scaleY, translateY]);
 
   const style = useMemo(
     () => ({
@@ -38,8 +56,9 @@ export default function ExpandCollapseView({
         outputRange: [0, maxHeight],
       }),
       overflow: 'hidden' as const,
+      transform: [{ translateY }, { scaleY }],
     }),
-    [anim, maxHeight],
+    [anim, maxHeight, scaleY, translateY],
   );
 
   return (

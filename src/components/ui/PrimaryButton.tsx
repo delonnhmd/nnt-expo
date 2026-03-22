@@ -26,11 +26,12 @@ export default function PrimaryButton({
         styles.button,
         style,
         blocked ? styles.disabled : null,
+        loading ? styles.loading : null,
         pressed && !blocked ? styles.pressed : null,
       ]}
     >
       {loading ? <ActivityIndicator size="small" color="#ffffff" /> : null}
-      <Text style={styles.text}>{loading ? 'Loading...' : label}</Text>
+      <Text style={styles.text}>{loading ? label : label}</Text>
     </Pressable>
   );
 }
@@ -50,11 +51,14 @@ const styles = StyleSheet.create({
     ...theme.shadow.sm,
   },
   disabled: {
-    opacity: 0.45,
+    opacity: 0.5,
+  },
+  loading: {
+    opacity: 0.82,
   },
   pressed: {
-    opacity: 0.9,
-    transform: [{ scale: 0.99 }],
+    opacity: 0.94,
+    transform: [{ scale: 0.975 }],
   },
   text: {
     color: '#ffffff',
