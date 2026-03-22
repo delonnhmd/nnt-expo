@@ -2,7 +2,7 @@
   "expo": {
     "name": "Gold Penny",
     "description": "Gold Penny is a daily strategy game from Penny Float.",
-    "slug": "gold-penny-expo",
+    "slug": "nnt-expo",
     "scheme": "goldpenny",
     "version": "1.0.1",
     "orientation": "portrait",
@@ -65,6 +65,7 @@
       "favicon": "./src/assets/images/favicon.png"
     },
     "extra": {
+      "router": {},
       "eas": {
         "projectId": "8b821dd0-43c9-43cf-854d-2942239acf2c"
       }
@@ -72,6 +73,7 @@
     "plugins": [
       "expo-router",
       "expo-web-browser"
-    ]
+    ],
+    "owner": "nntpress"
   }
 }
