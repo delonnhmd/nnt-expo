@@ -55,6 +55,7 @@ import SecondaryButton from '@/components/ui/SecondaryButton';
 import { ActionExecutionGuard, useDailySession } from '@/hooks/useDailySession';
 import { useDailyProgression } from '@/hooks/useDailyProgression';
 import { useEconomyState } from '@/hooks/useEconomyState';
+import { useExpenseDebt } from '@/hooks/useExpenseDebt';
 import { useJobIncome } from '@/hooks/useJobIncome';
 import {
   activateCommitment,
@@ -1343,6 +1344,7 @@ export default function GameDashboardPage({
 
   const notificationCount = notificationsState.data?.notifications.length || 0;
   const economyState = useEconomyState(dashboardState.data, eodState.data);
+  const expenseDebt = useExpenseDebt(dashboardState.data, eodState.data);
   const jobIncome = useJobIncome(dashboardState.data, eodState.data);
   const dailyProgression = useDailyProgression(
     playerId,
@@ -2095,7 +2097,7 @@ export default function GameDashboardPage({
               ? wrapSection(
                 'player_stats',
                 <PrimaryDashboardSection title="Player Snapshot" summary={statsSummary} statusLabel={economyState.statusLabel}>
-                  <PlayerStatsBar stats={dashboardState.data.stats} economy={economyState} currentGameDay={dailyProgression.currentGameDay} jobIncome={jobIncome} />
+                  <PlayerStatsBar stats={dashboardState.data.stats} economy={economyState} currentGameDay={dailyProgression.currentGameDay} jobIncome={jobIncome} expenseDebt={expenseDebt} />
                 </PrimaryDashboardSection>,
               )
               : null}

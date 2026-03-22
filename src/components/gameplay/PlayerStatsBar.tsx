@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { theme } from '@/design/theme';
 import { creditTone, formatMoney, healthTone, stressTone } from '@/lib/gameplayFormatters';
+import { type ExpenseDebtContract } from '@/hooks/useExpenseDebt';
 import { type JobIncomeContract } from '@/hooks/useJobIncome';
 import { GameplayEconomyState } from '@/types/economy';
 import { DashboardStatSnapshot } from '@/types/gameplay';
@@ -29,11 +30,13 @@ export default function PlayerStatsBar({
   economy,
   currentGameDay,
   jobIncome,
+  expenseDebt,
 }: {
   stats: DashboardStatSnapshot;
   economy?: GameplayEconomyState | null;
   currentGameDay?: number | null;
   jobIncome?: JobIncomeContract | null;
+  expenseDebt?: ExpenseDebtContract | null;
 }) {
   const cashOnHand = economy?.cashOnHand ?? stats.cash_xgp;
   const debtAmount = economy?.debtAmount ?? stats.debt_xgp;
@@ -63,6 +66,20 @@ export default function PlayerStatsBar({
           label="Income"
           value={jobIncome.dailyIncomeLabel}
           tone={jobIncome.incomeAmount > 0 ? '#166534' : theme.color.textSecondary}
+        />
+      ) : null}
+      {expenseDebt?.expenseAmount != null ? (
+        <StatTile
+          label="Expenses"
+          value={expenseDebt.expenseLabel}
+          tone={expenseDebt.expenseAmount > 0 ? '#b45309' : theme.color.textSecondary}
+        />
+      ) : null}
+      {expenseDebt?.debtWarning ? (
+        <StatTile
+          label="Pressure"
+          value={expenseDebt.debtPressure.charAt(0).toUpperCase() + expenseDebt.debtPressure.slice(1)}
+          tone={expenseDebt.debtPressure === 'critical' ? '#b91c1c' : '#b45309'}
         />
       ) : null}
       <StatTile label="Region" value={stats.region_key || 'Unknown'} />
