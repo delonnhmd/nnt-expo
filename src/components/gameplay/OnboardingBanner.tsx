@@ -1,8 +1,23 @@
 import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
-import { onboardingStatusLabel, onboardingStatusTone } from '@/lib/onboardingFormatters';
+import PrimaryButton from '@/components/ui/PrimaryButton';
+import SecondaryButton from '@/components/ui/SecondaryButton';
 import { OnboardingGuidanceResponse, OnboardingStateResponse } from '@/types/onboarding';
+
+function primaryLabel(stepKey: string): string | null {
+  if (stepKey === 'welcome_core_premise') return 'Start Here';
+  if (stepKey === 'read_todays_brief') return 'Show Actions';
+  return null;
+}
+
+function stepHint(stepKey: string, guidance: OnboardingGuidanceResponse | null): string {
+  if (stepKey === 'welcome_core_premise') return 'You only need one short day to learn the loop.';
+  if (stepKey === 'read_todays_brief') return 'Look for one risk and one opportunity, then act.';
+  if (stepKey === 'first_income_action') return 'Tap Work in the lower action bar to earn real cash.';
+  if (stepKey === 'end_first_day') return 'Tap End Day in the lower action bar to lock the result.';
+  return guidance?.blocker_reason || 'Follow the highlighted next step.';
+}
 
 export default function OnboardingBanner({
   state,
@@ -10,67 +25,46 @@ export default function OnboardingBanner({
   busy,
   onAdvance,
   onSkip,
-  onComplete,
 }: {
   state: OnboardingStateResponse;
   guidance: OnboardingGuidanceResponse | null;
   busy?: boolean;
   onAdvance?: (actionKey?: string | null) => void;
   onSkip?: () => void;
-  onComplete?: () => void;
 }) {
-  const status = onboardingStatusLabel(state.onboarding_status);
-  const tone = onboardingStatusTone(state.onboarding_status);
-  const canComplete = String(state.current_step_key || '') === 'unlock_deeper_systems';
+  const stepKey = String(guidance?.step_key || state.current_step_key || 'welcome_core_premise');
+  const buttonLabel = primaryLabel(stepKey);
+  const title = guidance?.title || state.current_step_title || 'First Day Guide';
+  const body = guidance?.body || state.current_step_body || 'Read the Daily Brief, take one action, then end the day.';
+  const hint = stepHint(stepKey, guidance);
 
   return (
-    <View style={[styles.card, { borderColor: tone }]}>
+    <View style={styles.card}>
       <View style={styles.headerRow}>
         <Text style={styles.title}>First Session Guide</Text>
-        <Text style={[styles.status, { color: tone }]}>{status}</Text>
+        <Text style={styles.stepPill}>{state.progress_label || '1/4 steps'}</Text>
       </View>
 
-      <Text style={styles.stepTitle}>{guidance?.title || state.current_step_title}</Text>
-      <Text style={styles.body}>{guidance?.body || state.current_step_body}</Text>
-
-      {guidance?.blocker_reason ? (
-        <View style={styles.blockerBox}>
-          <Text style={styles.blockerText}>{guidance.blocker_reason}</Text>
-        </View>
-      ) : null}
-
-      <View style={styles.metaRow}>
-        <Text style={styles.metaLabel}>Required:</Text>
-        <Text style={styles.metaValue}>{guidance?.required_action_key || 'Continue playing'}</Text>
-      </View>
+      <Text style={styles.stepTitle}>{title}</Text>
+      <Text style={styles.body}>{body}</Text>
+      <Text style={styles.hint}>{hint}</Text>
 
       <View style={styles.actionsRow}>
-        {onAdvance ? (
-          <TouchableOpacity
-            style={[styles.primaryButton, busy ? styles.buttonDisabled : null]}
+        {buttonLabel && onAdvance ? (
+          <PrimaryButton
+            label={buttonLabel}
             onPress={() => onAdvance(guidance?.required_action_key)}
             disabled={Boolean(busy)}
-          >
-            <Text style={styles.primaryButtonText}>Mark Step Done</Text>
-          </TouchableOpacity>
-        ) : null}
-        {canComplete && onComplete ? (
-          <TouchableOpacity
-            style={[styles.secondaryButton, busy ? styles.buttonDisabled : null]}
-            onPress={onComplete}
-            disabled={Boolean(busy)}
-          >
-            <Text style={styles.secondaryButtonText}>Complete Onboarding</Text>
-          </TouchableOpacity>
+            style={styles.primaryButton}
+          />
         ) : null}
         {guidance?.can_skip && onSkip ? (
-          <TouchableOpacity
-            style={[styles.skipButton, busy ? styles.buttonDisabled : null]}
+          <SecondaryButton
+            label="Skip"
             onPress={onSkip}
             disabled={Boolean(busy)}
-          >
-            <Text style={styles.skipButtonText}>Skip</Text>
-          </TouchableOpacity>
+            style={styles.skipButton}
+          />
         ) : null}
       </View>
     </View>
@@ -80,8 +74,9 @@ export default function OnboardingBanner({
 const styles = StyleSheet.create({
   card: {
     borderWidth: 1,
+    borderColor: '#bfdbfe',
     borderRadius: 12,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#eff6ff',
     padding: 14,
     gap: 8,
   },
@@ -93,17 +88,20 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   title: {
-    color: '#0f172a',
-    fontSize: 16,
+    color: '#1e40af',
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  stepPill: {
+    color: '#1d4ed8',
+    fontSize: 11,
     fontWeight: '800',
   },
-  status: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
   stepTitle: {
-    color: '#1e293b',
-    fontSize: 14,
+    color: '#0f172a',
+    fontSize: 16,
     fontWeight: '700',
   },
   body: {
@@ -111,33 +109,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
-  blockerBox: {
-    borderWidth: 1,
-    borderColor: '#fecaca',
-    backgroundColor: '#fef2f2',
-    borderRadius: 10,
-    padding: 10,
-  },
-  blockerText: {
-    color: '#7f1d1d',
+  hint: {
+    color: '#1e3a8a',
     fontSize: 12,
     lineHeight: 17,
-    fontWeight: '600',
-  },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    flexWrap: 'wrap',
-  },
-  metaLabel: {
-    color: '#64748b',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  metaValue: {
-    color: '#334155',
-    fontSize: 12,
     fontWeight: '600',
   },
   actionsRow: {
@@ -147,41 +122,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   primaryButton: {
-    borderRadius: 9,
-    backgroundColor: '#1d4ed8',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  primaryButtonText: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  secondaryButton: {
-    borderRadius: 9,
-    backgroundColor: '#0f766e',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  secondaryButtonText: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: '700',
+    flexGrow: 1,
+    minWidth: 132,
   },
   skipButton: {
-    borderRadius: 9,
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    backgroundColor: '#ffffff',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  skipButtonText: {
-    color: '#475569',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  buttonDisabled: {
-    opacity: 0.5,
+    minWidth: 92,
   },
 });

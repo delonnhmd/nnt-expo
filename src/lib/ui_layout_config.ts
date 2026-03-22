@@ -69,7 +69,7 @@ export const UI_LAYOUT_CONFIG = {
   primarySections: PRIMARY_SECTION_KEYS,
   secondaryGroups: SECONDARY_GROUP_CONFIGS,
   onboarding: {
-    hideSecondaryDuringOnboarding: false,
+    hideSecondaryDuringOnboarding: true,
     forceCollapseSecondary: true,
   },
   hideByDefault: [

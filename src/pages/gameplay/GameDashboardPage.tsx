@@ -29,9 +29,6 @@ import MarketOverviewCard from '@/components/gameplay/MarketOverviewCard';
 import NotificationsDrawer from '@/components/gameplay/NotificationsDrawer';
 import LocalPressureCard from '@/components/gameplay/LocalPressureCard';
 import OnboardingBanner from '@/components/gameplay/OnboardingBanner';
-import OnboardingCoachmark from '@/components/gameplay/OnboardingCoachmark';
-import OnboardingProgressCard from '@/components/gameplay/OnboardingProgressCard';
-import OnboardingUnlockPreviewCard from '@/components/gameplay/OnboardingUnlockPreviewCard';
 import PatternInsightsCard from '@/components/gameplay/PatternInsightsCard';
 import PlayerStatsBar from '@/components/gameplay/PlayerStatsBar';
 import RandomEventCard from '@/components/gameplay/RandomEventCard';
@@ -51,7 +48,6 @@ import ThumbReachActionDock from '@/components/gameplay/ThumbReachActionDock';
 import WeeklySummaryCard from '@/components/gameplay/WeeklySummaryCard';
 import WeeklyMissionsCard from '@/components/gameplay/WeeklyMissionsCard';
 import WorldNarrativeCard from '@/components/gameplay/WorldNarrativeCard';
-import FirstSessionSummaryCard from '@/components/gameplay/FirstSessionSummaryCard';
 import AppShell from '@/components/layout/AppShell';
 import ContentStack from '@/components/layout/ContentStack';
 import PageContainer from '@/components/layout/PageContainer';
@@ -102,7 +98,6 @@ import {
 import { getProgressionSummary } from '@/lib/api/progression';
 import {
   advanceOnboarding,
-  completeOnboarding,
   getOnboardingDashboardConfig,
   getOnboardingGuidance,
   getOnboardingState,
@@ -329,6 +324,13 @@ function canonicalThumbActionKey(actionKey: GameplayActionKey): string {
   if (raw.includes('rest') || raw.includes('recover') || raw.includes('sleep')) return 'recovery_action';
   if (raw === 'work_shift' || raw.includes('work') || raw.includes('shift')) return 'work_shift';
   return raw;
+}
+
+function onboardingDockActionId(stepKey: string | null | undefined): string | null {
+  const key = String(stepKey || '').trim();
+  if (key === 'first_income_action') return 'work';
+  if (key === 'end_first_day') return 'advance_day';
+  return null;
 }
 
 function deriveProgressionFeedback(
@@ -578,7 +580,6 @@ export default function GameDashboardPage({
   const [onboardingConfigState, setOnboardingConfigState] = useState<SectionState<OnboardingDashboardConfigResponse>>(initialSection);
   const [onboardingUnlockState, setOnboardingUnlockState] = useState<SectionState<OnboardingUnlockScheduleResponse>>(initialSection);
   const [onboardingBusy, setOnboardingBusy] = useState(false);
-  const [coachmarkDismissed, setCoachmarkDismissed] = useState(false);
 
   const [refreshing, setRefreshing] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -1386,13 +1387,17 @@ export default function GameDashboardPage({
     setOnboardingGuidanceState({ status: 'ready', data: payload.guidance, error: null });
     setOnboardingConfigState({ status: 'ready', data: payload.dashboard_config, error: null });
     setOnboardingUnlockState({ status: 'ready', data: payload.unlock_schedule, error: null });
-    setCoachmarkDismissed(false);
   }, []);
 
+  const hasOnboardingBundle = onboardingState.status === 'ready'
+    && onboardingGuidanceState.status === 'ready'
+    && onboardingConfigState.status === 'ready'
+    && onboardingUnlockState.status === 'ready';
+
   const onboardingStatus = String(
-    onboardingState.data?.onboarding_status ||
-    onboardingConfigState.data?.onboarding_status ||
-    'not_started',
+    hasOnboardingBundle
+      ? onboardingState.data?.onboarding_status || onboardingConfigState.data?.onboarding_status || 'not_started'
+      : 'completed',
   ).toLowerCase();
   const onboardingActive = onboardingStatus === 'not_started' || onboardingStatus === 'in_progress';
   const visibleSectionSet = useMemo(
@@ -1612,10 +1617,6 @@ export default function GameDashboardPage({
   useEffect(() => {
     loadAll();
   }, [loadAll]);
-
-  useEffect(() => {
-    setCoachmarkDismissed(false);
-  }, [onboardingConfigState.data?.highlighted_section, onboardingState.data?.current_step_key]);
 
   const dailyProgression = useDailyProgression(
     playerId,
@@ -2256,22 +2257,6 @@ export default function GameDashboardPage({
     }
   }, [applyOnboardingActionResult, playerId]);
 
-  const handleCompleteOnboarding = useCallback(async () => {
-    if (onboardingGuardRef.current) return;
-    onboardingGuardRef.current = true;
-    setOnboardingBusy(true);
-    try {
-      const payload = await completeOnboarding(playerId);
-      applyOnboardingActionResult(payload);
-      setFeedback({ tone: 'success', message: payload.message || 'Onboarding completed.' });
-    } catch (error) {
-      setFeedback({ tone: 'error', message: normalizeError(error) });
-    } finally {
-      onboardingGuardRef.current = false;
-      setOnboardingBusy(false);
-    }
-  }, [applyOnboardingActionResult, playerId]);
-
   const isPrimarySectionExpanded = useCallback((sectionKey: MobilePrimarySectionKey): boolean => {
     if (!isMobile) return true;
     return expandedPrimarySections[sectionKey];
@@ -2304,7 +2289,7 @@ export default function GameDashboardPage({
     });
   }, [isMobile, scrollToSection]);
 
-  const highlightedSection = onboardingActive && !coachmarkDismissed
+  const highlightedSection = onboardingActive
     ? onboardingConfigState.data?.highlighted_section || null
     : null;
   const highlightedSecondaryGroup = useMemo(() => {
@@ -2730,6 +2715,12 @@ export default function GameDashboardPage({
   );
 
   const feedbackStyle = feedback ? feedbackToneStyle(feedback.tone) : null;
+  const onboardingStepKey = onboardingGuidanceState.data?.step_key || onboardingState.data?.current_step_key || null;
+  const highlightedDockActionId = onboardingActive ? onboardingDockActionId(onboardingStepKey) : null;
+  const onboardingLoadFailed = onboardingState.status === 'error'
+    || onboardingGuidanceState.status === 'error'
+    || onboardingConfigState.status === 'error'
+    || onboardingUnlockState.status === 'error';
 
   return (
     <AppShell
@@ -2747,54 +2738,87 @@ export default function GameDashboardPage({
         </View>
       )}
       footer={isMobile ? (
-        <ThumbReachActionDock
-          dayNumber={dailyProgression.currentGameDay}
-          remainingTimeUnits={dailySession.remainingTimeUnits}
-          totalTimeUnits={dailySession.totalTimeUnits}
-          sessionStatus={dailySession.sessionStatus}
-          feedback={feedback}
-          primaryAction={{
-            label: workQuickAction?.title || 'Work',
-            onPress: handleQuickWorkAction,
-            disabled: Boolean(workQuickAction && !workQuickGuard?.allowed),
-            emphasis: 'primary',
-          }}
-          advanceAction={dailySession.sessionStatus === 'ended'
-            ? {
-                label: dailyProgression.isAdvancingDay ? 'Starting...' : 'Start Next Day',
-                onPress: handleStartNextDay,
-                disabled: refreshing || dailyProgression.isAdvancingDay,
-                emphasis: 'primary',
-              }
-            : {
-                label: endingDay ? 'Ending...' : 'End Day',
-                onPress: handleEndDay,
-                disabled: !dailyProgression.canAdvanceDay || endingDay,
-                emphasis: 'secondary',
+        <View style={styles.footerStack}>
+          {onboardingActive && onboardingState.data && onboardingGuidanceState.data ? (
+            <OnboardingBanner
+              state={onboardingState.data}
+              guidance={onboardingGuidanceState.data}
+              busy={onboardingBusy}
+              onAdvance={(actionKey) => {
+                if (String(onboardingStepKey || '') === 'read_todays_brief') {
+                  void handleAdvanceOnboarding(actionKey);
+                  openPrimarySection('action_hub');
+                  return;
+                }
+                void handleAdvanceOnboarding(actionKey);
               }}
-          secondaryActions={[
-            {
-              label: activeBusinessRecord ? 'Run Business' : 'Business',
-              onPress: handleQuickBusinessAction,
-              disabled: Boolean(activeBusinessRecord && businessQuickGuard && !businessQuickGuard.allowed),
-            },
-            {
-              label: randomEvent.activeEvent && randomEvent.availableRecoveryActions.length > 0 ? 'Recover Event' : 'Recover',
-              onPress: handleQuickRecoveryAction,
-              disabled: Boolean(!randomEvent.activeEvent && recoveryQuickAction && !recoveryQuickGuard?.allowed),
-            },
-            {
-              label: 'Stocks',
-              onPress: handleQuickStockAction,
-              disabled: stockMarketState.status === 'loading',
-            },
-            {
-              label: 'Jobs',
-              onPress: handleQuickJobAction,
-              disabled: Boolean(switchJobQuickAction && !switchJobQuickGuard?.allowed),
-            },
-          ]}
-        />
+              onSkip={handleSkipOnboarding}
+            />
+          ) : null}
+          {onboardingLoadFailed && !onboardingActive ? (
+            <View style={styles.onboardingFallbackBox}>
+              <Text style={styles.onboardingFallbackText}>
+                Tutorial unavailable right now. Read the Daily Brief, take one action, then end the day.
+              </Text>
+            </View>
+          ) : null}
+          <ThumbReachActionDock
+            dayNumber={dailyProgression.currentGameDay}
+            remainingTimeUnits={dailySession.remainingTimeUnits}
+            totalTimeUnits={dailySession.totalTimeUnits}
+            sessionStatus={dailySession.sessionStatus}
+            feedback={feedback}
+            highlightedActionId={highlightedDockActionId}
+            primaryAction={{
+              id: 'work',
+              label: workQuickAction?.title || 'Work',
+              onPress: handleQuickWorkAction,
+              disabled: Boolean(workQuickAction && !workQuickGuard?.allowed),
+              emphasis: 'primary',
+            }}
+            advanceAction={dailySession.sessionStatus === 'ended'
+              ? {
+                  id: 'advance_day',
+                  label: dailyProgression.isAdvancingDay ? 'Starting...' : 'Start Next Day',
+                  onPress: handleStartNextDay,
+                  disabled: refreshing || dailyProgression.isAdvancingDay,
+                  emphasis: 'primary',
+                }
+              : {
+                  id: 'advance_day',
+                  label: endingDay ? 'Ending...' : 'End Day',
+                  onPress: handleEndDay,
+                  disabled: !dailyProgression.canAdvanceDay || endingDay,
+                  emphasis: 'secondary',
+                }}
+            secondaryActions={[
+              {
+                id: 'business',
+                label: activeBusinessRecord ? 'Run Business' : 'Business',
+                onPress: handleQuickBusinessAction,
+                disabled: Boolean(activeBusinessRecord && businessQuickGuard && !businessQuickGuard.allowed),
+              },
+              {
+                id: 'recovery',
+                label: randomEvent.activeEvent && randomEvent.availableRecoveryActions.length > 0 ? 'Recover Event' : 'Recover',
+                onPress: handleQuickRecoveryAction,
+                disabled: Boolean(!randomEvent.activeEvent && recoveryQuickAction && !recoveryQuickGuard?.allowed),
+              },
+              {
+                id: 'stocks',
+                label: 'Stocks',
+                onPress: handleQuickStockAction,
+                disabled: stockMarketState.status === 'loading',
+              },
+              {
+                id: 'jobs',
+                label: 'Jobs',
+                onPress: handleQuickJobAction,
+                disabled: Boolean(switchJobQuickAction && !switchJobQuickGuard?.allowed),
+              },
+            ]}
+          />
+        </View>
       ) : null}
       bottomNavItems={isMobile ? mobileNavItems : undefined}
       activeBottomNavKey={isMobile ? activeShellTab : null}
@@ -2823,41 +2847,6 @@ export default function GameDashboardPage({
             <Text style={[styles.feedbackLabel, { color: feedbackStyle.color }]}>{feedbackToneLabel(feedback.tone)}</Text>
             <Text style={[styles.feedbackText, { color: feedbackStyle.color }]}>{feedback.message}</Text>
           </View>
-        ) : null}
-
-        {onboardingState.status === 'error' ? (
-          <ErrorStateCard
-            title="Onboarding unavailable"
-            message={onboardingState.error || undefined}
-            onRetry={loadOnboardingBundle}
-          />
-        ) : null}
-        {onboardingState.data && onboardingGuidanceState.data && onboardingActive ? (
-          <>
-            <OnboardingBanner
-              state={onboardingState.data}
-              guidance={onboardingGuidanceState.data}
-              busy={onboardingBusy}
-              onAdvance={handleAdvanceOnboarding}
-              onSkip={handleSkipOnboarding}
-              onComplete={handleCompleteOnboarding}
-            />
-            {!coachmarkDismissed && onboardingConfigState.data?.highlighted_section ? (
-              <OnboardingCoachmark
-                targetSection={onboardingConfigState.data.highlighted_section}
-                message="Follow this section to complete your current onboarding step."
-                onDismiss={() => setCoachmarkDismissed(true)}
-              />
-            ) : null}
-            <OnboardingProgressCard state={onboardingState.data} />
-            {onboardingUnlockState.data ? <OnboardingUnlockPreviewCard schedule={onboardingUnlockState.data} /> : null}
-          </>
-        ) : null}
-        {onboardingState.data && !onboardingActive && onboardingUnlockState.data ? (
-          <FirstSessionSummaryCard
-            state={onboardingState.data}
-            unlockSchedule={onboardingUnlockState.data}
-          />
         ) : null}
 
         {!isMobile && isSectionVisible('day_controls') ? wrapSection(
@@ -3602,6 +3591,9 @@ const styles = StyleSheet.create({
   groupStack: {
     gap: theme.spacing.sm,
   },
+  footerStack: {
+    gap: theme.spacing.sm,
+  },
   feedbackBox: {
     borderWidth: 1,
     borderRadius: theme.radius.md,
@@ -3690,6 +3682,19 @@ const styles = StyleSheet.create({
   fallbackSummaryText: {
     color: '#1e3a8a',
     ...theme.typography.bodySm,
+  },
+  onboardingFallbackBox: {
+    borderWidth: 1,
+    borderColor: '#fde68a',
+    borderRadius: theme.radius.md,
+    backgroundColor: '#fffbeb',
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+  },
+  onboardingFallbackText: {
+    color: '#92400e',
+    ...theme.typography.bodySm,
+    fontWeight: '600',
   },
 });
 

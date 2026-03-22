@@ -9,6 +9,7 @@ import { theme } from '@/design/theme';
 type FeedbackTone = 'success' | 'error' | 'info';
 
 interface DockActionButton {
+  id: string;
   label: string;
   onPress?: () => void;
   disabled?: boolean;
@@ -32,6 +33,7 @@ export default function ThumbReachActionDock({
   totalTimeUnits,
   sessionStatus,
   feedback,
+  highlightedActionId,
   primaryAction,
   advanceAction,
   secondaryActions,
@@ -41,6 +43,7 @@ export default function ThumbReachActionDock({
   totalTimeUnits: number;
   sessionStatus: 'active' | 'ended';
   feedback?: { tone: FeedbackTone; message: string } | null;
+  highlightedActionId?: string | null;
   primaryAction: DockActionButton;
   advanceAction: DockActionButton;
   secondaryActions: DockActionButton[];
@@ -82,7 +85,10 @@ export default function ThumbReachActionDock({
           onPress={primaryAction.onPress}
           disabled={primaryAction.disabled}
           loading={primaryAction.loading}
-          style={styles.primaryButton}
+          style={[
+            styles.primaryButton,
+            highlightedActionId === primaryAction.id ? styles.highlightedButton : null,
+          ]}
         />
         {advanceAction.emphasis === 'primary' ? (
           <PrimaryButton
@@ -90,14 +96,20 @@ export default function ThumbReachActionDock({
             onPress={advanceAction.onPress}
             disabled={advanceAction.disabled}
             loading={advanceAction.loading}
-            style={styles.primaryButton}
+            style={[
+              styles.primaryButton,
+              highlightedActionId === advanceAction.id ? styles.highlightedButton : null,
+            ]}
           />
         ) : (
           <SecondaryButton
             label={advanceAction.label}
             onPress={advanceAction.onPress}
             disabled={advanceAction.disabled}
-            style={styles.primaryButton}
+            style={[
+              styles.primaryButton,
+              highlightedActionId === advanceAction.id ? styles.highlightedButton : null,
+            ]}
           />
         )}
       </View>
@@ -111,7 +123,10 @@ export default function ThumbReachActionDock({
               onPress={action.onPress}
               disabled={action.disabled}
               loading={action.loading}
-              style={styles.secondaryButton}
+              style={[
+                styles.secondaryButton,
+                highlightedActionId === action.id ? styles.highlightedButton : null,
+              ]}
             />
           ) : (
             <SecondaryButton
@@ -119,7 +134,10 @@ export default function ThumbReachActionDock({
               label={action.label}
               onPress={action.onPress}
               disabled={action.disabled}
-              style={styles.secondaryButton}
+              style={[
+                styles.secondaryButton,
+                highlightedActionId === action.id ? styles.highlightedButton : null,
+              ]}
             />
           )
         ))}
@@ -182,5 +200,9 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     flexBasis: '30%',
     minWidth: 92,
+  },
+  highlightedButton: {
+    borderColor: '#1d4ed8',
+    borderWidth: 2,
   },
 });
