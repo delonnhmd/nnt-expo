@@ -109,18 +109,92 @@ All 15 files had identical changes applied:
 
 ---
 
-## 4. No-Change Files (already correct)
+## 4. Gameplay-Layer Persistence Audit
 
-| File | Reason |
+A full audit of all remaining AsyncStorage usage outside `src/lib/api/` was performed.
+Four locations were identified: `apiClient.ts` (canonical), `useDailyProgression.ts`,
+`app/gameplay/index.tsx`, and `app/(tabs)/settings.tsx`.
+
+### 4a. `src/hooks/useDailyProgression.ts` — No changes needed
+
+| Check | Result |
 |---|---|
-| `src/hooks/useDailyProgression.ts` | Already uses `goldpenny:gameplay:day:${playerId}` namespaced keys; proper error handling; `initialized.current` guard |
-| `src/hooks/useDailySession.ts` | Pure in-memory state; no AsyncStorage usage |
-| `app/gameplay/index.tsx` | Already uses `goldpenny:gameplay:lastPlayerId`; has legacy `gameplay:lastPlayerId` read-only fallback |
-| `app/(tabs)/settings.tsx` | `backend:override`, `admin:token`, `admin:address` kept as-is (functional); exported as constants in `apiClient.ts` |
+| Key naming | ✅ Player-scoped namespaced keys: `goldpenny:gameplay:day:${playerId}`, `goldpenny:gameplay:lastProcessedDay:${playerId}` |
+| Double-load guard | ✅ `initialized.current` ref prevents redundant reads on re-mount |
+| Hydration safety | ✅ `Promise.all` parallel load; `parseInt` + `isFinite` + `>= DEFAULT_START_DAY` validation; safe defaults on all parse failures |
+| Write timing | ✅ `markDayAdvanced()` uses `isAdvancingDay` flag to prevent concurrent writes; `markDayStarted()` uses intentional fire-and-forget `.catch(() => {})` |
+| Failure tolerance | ✅ Full `try/catch` on load; silently degrades to defaults on error |
+| Naming integrity | ✅ No NNT/GNNT/nnt-token references |
+
+### 4b. `app/gameplay/index.tsx` — No changes needed
+
+| Check | Result |
+|---|---|
+| Key naming | ✅ `PLAYER_ID_STORAGE_KEY = 'goldpenny:gameplay:lastPlayerId'` (canonical, namespaced, local constant) |
+| Legacy migration | ✅ `LEGACY_PLAYER_ID_STORAGE_KEY = 'gameplay:lastPlayerId'` — read-only fallback on load; new writes always go to canonical key |
+| Hydration safety | ✅ `try/catch` on read; falls back to empty string on failure; validation (`trim()`) before use |
+| Write safety | ✅ `try/catch` on write; write failure is non-fatal (persistence marked optional in comment) |
+| Naming integrity | ✅ No NNT/GNNT/nnt-token references |
+
+### 4c. `app/(tabs)/settings.tsx` — Constants import added
+
+**Issue found:** All three admin/backend key strings were hardcoded inline as string literals
+(`'backend:override'`, `'admin:token'`, `'admin:address'`) across 11 call sites, including
+the `multiRemove` array. These exact strings are already exported as constants from
+`apiClient.ts` (`KEY_BACKEND_OVERRIDE`, `KEY_ADMIN_TOKEN`, `KEY_ADMIN_ADDRESS`).
+
+Using string literals creates a silent drift risk: a key renamed in `apiClient.ts` (the
+reader) while the literal persists in `settings.tsx` (the writer) would result in
+`apiClient.ts` always reading `null` with no error.
+
+**Fix applied:** Added import of `KEY_BACKEND_OVERRIDE`, `KEY_ADMIN_TOKEN`,
+`KEY_ADMIN_ADDRESS` from `@/lib/apiClient` and replaced all 11 occurrences of inline
+string literals with the constants. Other logic in `settings.tsx` unchanged.
 
 ---
 
-## 5. Identity Key Migration Details
+## 5. No-Change Files
+
+| File | Reason |
+|---|---|
+| `src/hooks/useDailySession.ts` | Pure in-memory state; no AsyncStorage usage |
+
+---
+
+## 6. Complete Canonical AsyncStorage Key Registry
+
+All active keys written by this app, with their authoritative owner:
+
+| Key | Constant | Owner | Migrated From |
+|---|---|---|---|
+| `goldpenny:identity:uid` | `KEY_IDENTITY_UID` | `apiClient.ts` | `identity:uid` |
+| `goldpenny:gameplay:lastPlayerId` | local `PLAYER_ID_STORAGE_KEY` | `app/gameplay/index.tsx` | `gameplay:lastPlayerId` |
+| `goldpenny:gameplay:day:${playerId}` | — | `useDailyProgression.ts` | — |
+| `goldpenny:gameplay:lastProcessedDay:${playerId}` | — | `useDailyProgression.ts` | — |
+| `backend:override` | `KEY_BACKEND_OVERRIDE` | `apiClient.ts` + `settings.tsx` | — |
+| `admin:token` | `KEY_ADMIN_TOKEN` | `settings.tsx` | — |
+| `admin:address` | `KEY_ADMIN_ADDRESS` | `settings.tsx` | — |
+
+Legacy keys `identity:uid` and `gameplay:lastPlayerId` are read-only during migration;
+no new writes ever target them.
+
+---
+
+## 7. Known Gap (out of scope)
+
+`src/hooks/useBackend.ts` maintains its own in-memory `backendOverride` variable
+(defaulting to `null` on cold start) and exposes `setBackendOverride()` which is never
+called from `settings.tsx`. As a result, `useBackend`-based calls (used by `useDebt` and
+`useRegistration` — wallet auth, debt context) do not pick up the saved override across
+restarts.
+
+This is a pre-existing issue noted in Steps 45.8, 46.1, and 46.2 reports and remains out
+of scope for gameplay-layer hardening. All `src/lib/api/` modules that drive the active
+gameplay loop use `apiClient.ts`, which reads from AsyncStorage on every request.
+
+---
+
+## 8. Identity Key Migration Details
 
 **Before:** Every API file independently wrote `identity:uid` (no namespace, no central authority).  
 **After:** `apiClient.ts` is the only writer. Key promoted from `identity:uid` → `goldpenny:identity:uid` on first read after upgrade.
@@ -134,7 +208,7 @@ Migration is silent, idempotent, and runs at most once per device.
 
 ---
 
-## 6. Validation
+## 9. Validation
 
 | Check | Result |
 |---|---|
@@ -148,7 +222,7 @@ Pre-existing warnings unchanged:
 
 ---
 
-## 7. Architecture After Refactor
+## 10. Architecture After Refactor
 
 ```
 src/lib/
@@ -170,3 +244,4 @@ src/lib/
     wealthProgression.ts← imports fetchApi
     worldMemory.ts      ← imports fetchApi
 ```
+
