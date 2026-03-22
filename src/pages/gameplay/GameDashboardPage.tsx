@@ -406,6 +406,7 @@ export default function GameDashboardPage({
   // Synchronous ref guards prevent double-tap races on day transitions.
   const endDayGuardRef = useRef(false);
   const startingNextDayRef = useRef(false);
+  const previewRequestIdRef = useRef(0);
 
   const dailySession = useDailySession(playerId);
   const { isMobile } = useBreakpoint();
@@ -1172,9 +1173,10 @@ export default function GameDashboardPage({
     loadCommitmentHistory,
   ]);
 
-  const refreshAfterAction = useCallback(async (actionKey?: GameplayActionKey) => {
+  const refreshAfterAction = useCallback(async (actionKey?: GameplayActionKey): Promise<FeedbackState[]> => {
     const beforeProgression = progressionState.data;
     const beforeCommitment = commitmentSummaryState.data;
+    const followUpFeedback: FeedbackState[] = [];
     if (actionKey) {
       try {
         const payload = await advanceOnboarding(playerId, { action_key: String(actionKey) });
@@ -1226,16 +1228,17 @@ export default function GameDashboardPage({
     if (progressionResult.status === 'fulfilled') {
       const message = deriveProgressionFeedback(beforeProgression, progressionResult.value);
       if (message) {
-        setFeedback({ tone: 'success', message });
+        followUpFeedback.push({ tone: 'success', message });
       }
     }
 
     if (commitmentSummaryResult.status === 'fulfilled') {
       const commitmentFeedback = deriveCommitmentFeedback(beforeCommitment, commitmentSummaryResult.value);
       if (commitmentFeedback) {
-        setFeedback(commitmentFeedback);
+        followUpFeedback.push(commitmentFeedback);
       }
     }
+    return followUpFeedback;
   }, [
     applyOnboardingActionResult,
     commitmentSummaryState.data,
@@ -1278,14 +1281,16 @@ export default function GameDashboardPage({
     setCoachmarkDismissed(false);
   }, [onboardingConfigState.data?.highlighted_section, onboardingState.data?.current_step_key]);
 
-  const activeDayKey = useMemo(() => {
-    return (
-      dashboardState.data?.as_of_date ||
-      actionState.data?.as_of_date ||
-      eodState.data?.as_of_date ||
-      ''
-    );
-  }, [actionState.data?.as_of_date, dashboardState.data?.as_of_date, eodState.data?.as_of_date]);
+  const dailyProgression = useDailyProgression(
+    playerId,
+    dailySession.sessionStatus,
+    dailySession.pendingExecution || executingAction || endingDay,
+  );
+
+  const activeDayKey = useMemo(
+    () => `day:${dailyProgression.currentGameDay}`,
+    [dailyProgression.currentGameDay],
+  );
 
   useEffect(() => {
     if (!activeDayKey) return;
@@ -1349,19 +1354,30 @@ export default function GameDashboardPage({
   }, [actionState.data, applySessionBlockers]);
 
   const notificationCount = notificationsState.data?.notifications.length || 0;
-  const economyState = useEconomyState(dashboardState.data, eodState.data);
-  const expenseDebt = useExpenseDebt(dashboardState.data, eodState.data);
-  const jobIncome = useJobIncome(dashboardState.data, eodState.data);
-  const dailyProgression = useDailyProgression(
-    playerId,
-    dailySession.sessionStatus,
-    dailySession.pendingExecution || executingAction || endingDay,
-  );
+  const settledEndOfDay = dailySession.sessionStatus === 'ended' ? eodState.data : null;
+  const economyState = useEconomyState(dashboardState.data, settledEndOfDay);
+  const expenseDebt = useExpenseDebt(dashboardState.data, settledEndOfDay);
+  const jobIncome = useJobIncome(dashboardState.data, settledEndOfDay);
   const randomEvent = useRandomEvent(
     playerId,
     dailyProgression.currentGameDay,
     economyState.cashOnHand,
   );
+
+  const resetPreviewState = useCallback(() => {
+    previewRequestIdRef.current += 1;
+    setPreviewVisible(false);
+    setSelectedAction(null);
+    setSelectedActionGuard(null);
+    setPreviewPayload(null);
+    setPreviewError(null);
+    setPreviewLoading(false);
+  }, []);
+
+  const closePreview = useCallback(() => {
+    if (executingAction) return;
+    resetPreviewState();
+  }, [executingAction, resetPreviewState]);
 
   const openPreview = useCallback(
     async (action: DailyActionItem) => {
@@ -1374,6 +1390,8 @@ export default function GameDashboardPage({
         setFeedback({ tone: 'error', message: guard.reason || 'Action blocked right now.' });
         return;
       }
+      const requestId = previewRequestIdRef.current + 1;
+      previewRequestIdRef.current = requestId;
       setSelectedAction(action);
       setSelectedActionGuard(guard);
       setPreviewVisible(true);
@@ -1385,15 +1403,19 @@ export default function GameDashboardPage({
           action_key: action.action_key,
           parameters: action.parameters || {},
         });
+        if (previewRequestIdRef.current !== requestId) return;
         const previewTime = Number(payload.expected_time_impact?.amount);
         if (Number.isFinite(previewTime) && previewTime > 0) {
           setSelectedActionGuard(dailySession.canExecuteAction(action, previewTime));
         }
         setPreviewPayload(payload);
       } catch (error) {
+        if (previewRequestIdRef.current !== requestId) return;
         setPreviewError(normalizeError(error));
       } finally {
-        setPreviewLoading(false);
+        if (previewRequestIdRef.current === requestId) {
+          setPreviewLoading(false);
+        }
       }
     },
     [dailySession, getExecutionGuard, isOnboardingActionAllowed, onboardingActionBlockReason, playerId],
@@ -1449,8 +1471,9 @@ export default function GameDashboardPage({
 
   const handleExecuteSelectedAction = useCallback(async () => {
     if (!selectedAction) return;
+    const action = selectedAction;
 
-    const guard = selectedActionGuard || dailySession.canExecuteAction(selectedAction);
+    const guard = selectedActionGuard || dailySession.canExecuteAction(action);
     if (!guard.allowed) {
       setFeedback({ tone: 'error', message: guard.reason || 'Action blocked right now.' });
       return;
@@ -1459,13 +1482,13 @@ export default function GameDashboardPage({
     setExecutingAction(true);
     dailySession.setPendingExecution(true);
     try {
-      const result = await onExecuteAction(selectedAction.action_key, selectedAction.parameters || {});
+      const result = await onExecuteAction(action.action_key, action.parameters || {});
       const consumed = Math.max(1, Math.round(Number(result.time_cost_units) || guard.timeCostUnits));
       dailySession.consumeTime(consumed);
       dailySession.addActionToHistory({
-        action_key: selectedAction.action_key,
-        title: selectedAction.title,
-        description: selectedAction.description,
+        action_key: action.action_key,
+        title: action.title,
+        description: action.description,
         result_summary: result.result_summary,
         time_cost_units: consumed,
         success: true,
@@ -1475,18 +1498,21 @@ export default function GameDashboardPage({
           health_delta: result.health_delta,
         },
       });
-      setPreviewVisible(false);
+      resetPreviewState();
+      const followUpFeedback = await refreshAfterAction(action.action_key);
+      const supplementalMessage = followUpFeedback.map((item) => item.message).find(Boolean);
       setFeedback({
         tone: 'success',
-        message: `${result.message}. ${result.result_summary}`,
+        message: supplementalMessage
+          ? `${result.message}. ${result.result_summary} ${supplementalMessage}`
+          : `${result.message}. ${result.result_summary}`,
       });
-      await refreshAfterAction(selectedAction.action_key);
     } catch (error) {
       const message = normalizeError(error);
       dailySession.addActionToHistory({
-        action_key: selectedAction.action_key,
-        title: selectedAction.title,
-        description: selectedAction.description,
+        action_key: action.action_key,
+        title: action.title,
+        description: action.description,
         result_summary: '',
         time_cost_units: 0,
         success: false,
@@ -1497,7 +1523,7 @@ export default function GameDashboardPage({
       setExecutingAction(false);
       dailySession.setPendingExecution(false);
     }
-  }, [dailySession, onExecuteAction, refreshAfterAction, selectedAction, selectedActionGuard]);
+  }, [dailySession, onExecuteAction, refreshAfterAction, resetPreviewState, selectedAction, selectedActionGuard]);
 
   const handleEndDay = useCallback(async () => {
     // synchronous ref guard fires before any state reads to close the double-tap race window
@@ -2655,7 +2681,7 @@ export default function GameDashboardPage({
         preview={previewPayload}
         loading={previewLoading}
         error={previewError}
-        onClose={() => setPreviewVisible(false)}
+        onClose={closePreview}
         onExecuteAction={handleExecuteSelectedAction}
         executeDisabled={dailySession.sessionStatus !== 'active' || endingDay || dailySession.pendingExecution}
         executeGuard={selectedActionGuard || undefined}

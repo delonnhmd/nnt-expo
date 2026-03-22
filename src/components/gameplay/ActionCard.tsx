@@ -103,10 +103,12 @@ const styles = StyleSheet.create({
   button: {
     marginTop: 4,
     alignSelf: 'flex-start',
+    minHeight: 44,
     borderRadius: 8,
     backgroundColor: '#1d4ed8',
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 10,
+    justifyContent: 'center',
   },
   buttonDisabled: {
     opacity: 0.45,

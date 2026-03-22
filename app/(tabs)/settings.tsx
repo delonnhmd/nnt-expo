@@ -152,6 +152,7 @@ export default function SettingsScreen() {
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
           <ContentStack gap={theme.spacing.md}>
@@ -198,6 +199,8 @@ export default function SettingsScreen() {
                 onChangeText={setBackendUrl}
                 autoCapitalize="none"
                 autoCorrect={false}
+                autoComplete="url"
+                keyboardType="url"
               />
 
               <Text style={styles.inputLabel}>Admin Bearer Token</Text>
@@ -209,6 +212,8 @@ export default function SettingsScreen() {
                 onChangeText={setAdminToken}
                 autoCapitalize="none"
                 autoCorrect={false}
+                autoComplete="off"
+                secureTextEntry
               />
 
               <Text style={styles.inputLabel}>Admin Wallet Address</Text>
@@ -220,6 +225,7 @@ export default function SettingsScreen() {
                 onChangeText={setAdminAddress}
                 autoCapitalize="none"
                 autoCorrect={false}
+                autoComplete="off"
               />
 
               <View style={styles.buttonRow}>

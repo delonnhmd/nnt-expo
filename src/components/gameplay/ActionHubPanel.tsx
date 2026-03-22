@@ -24,11 +24,11 @@ function ActionSection({
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>{title}</Text>
       {actions.length > 0 ? (
-        actions.map((action) => {
+        actions.map((action, index) => {
           const executionGuard = getExecutionGuard(action);
           return (
             <ActionCard
-              key={`${title}_${action.action_key}`}
+              key={`${title}_${action.action_key}_${index}`}
               action={action}
               onPreview={onPreview}
               executionGuard={executionGuard}
