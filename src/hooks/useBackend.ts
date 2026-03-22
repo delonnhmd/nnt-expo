@@ -1,5 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { BACKEND } from '@/constants';
+// Future-only external wallet and legacy reward bridge.
+// Active Gold Penny gameplay uses the typed API modules under src/lib/api instead.
 import { error } from '@/lib/logger';
 
 let backendOverride: string | null = null;
@@ -48,9 +50,6 @@ async function fetchJson(path: string, init?: RequestInit) {
     throw e;
   }
 }
-
-let adCreditsCallCount = 0;
-let lastAdCreditsCall = 0;
 
 // Create a singleton backend instance to prevent multiple identical objects
 let backendInstance: any = null;
@@ -177,6 +176,5 @@ export function useBackend() {
     };
   }
   
-  console.log('[useBackend] Returning existing backend instance');
   return backendInstance;
 }

@@ -1,3 +1,5 @@
+// Future-only wallet-auth registration hook.
+// No active gameplay route should depend on this handshake to function.
 import { error, log } from '@/lib/logger';
 import { useState } from 'react';
 import { useBackend } from './useBackend';

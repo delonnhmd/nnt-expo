@@ -4,6 +4,15 @@ import { StyleSheet, Text, View } from 'react-native';
 import { formatDelta, formatMoney } from '@/lib/gameplayFormatters';
 import { EndOfDaySummaryResponse } from '@/types/gameplay';
 
+function tomorrowFocus(summary: EndOfDaySummaryResponse): string {
+  if (summary.tomorrow_warnings.length > 0) return summary.tomorrow_warnings[0];
+  if (summary.net_change_xgp < 0) return 'Tomorrow starts on defense. Rebuild cash before taking extra risk.';
+  if (summary.distress_state && String(summary.distress_state).toLowerCase() !== 'stable') {
+    return 'Pressure is still active. Use tomorrow to reduce risk before pushing for growth.';
+  }
+  return 'You have breathing room. Protect the cash buffer first, then choose one clear growth move.';
+}
+
 export default function EndOfDaySummaryCard({ summary }: { summary: EndOfDaySummaryResponse }) {
   return (
     <View style={styles.card}>
@@ -33,6 +42,12 @@ export default function EndOfDaySummaryCard({ summary }: { summary: EndOfDaySumm
       <Text style={styles.copy}>Credit Δ: {formatDelta(summary.credit_score_delta, 0)}</Text>
       <Text style={styles.copy}>Distress: {summary.distress_state}</Text>
 
+      <View style={styles.storyBox}>
+        <Text style={styles.storyTitle}>What changed today</Text>
+        <Text style={styles.storyText}>Biggest gain: {summary.biggest_gain}</Text>
+        <Text style={styles.storyText}>Biggest loss: {summary.biggest_loss}</Text>
+      </View>
+
       {summary.tomorrow_warnings.length > 0 ? (
         <View style={styles.warningBox}>
           <Text style={styles.warningTitle}>Tomorrow Warnings</Text>
@@ -43,6 +58,11 @@ export default function EndOfDaySummaryCard({ summary }: { summary: EndOfDaySumm
           ))}
         </View>
       ) : null}
+
+      <View style={styles.focusBox}>
+        <Text style={styles.focusTitle}>Tomorrow Focus</Text>
+        <Text style={styles.focusText}>{tomorrowFocus(summary)}</Text>
+      </View>
     </View>
   );
 }
@@ -93,6 +113,26 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
+  storyBox: {
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 10,
+    backgroundColor: '#f8fafc',
+    padding: 10,
+    gap: 4,
+  },
+  storyTitle: {
+    color: '#475569',
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  storyText: {
+    color: '#334155',
+    fontSize: 12,
+    lineHeight: 17,
+  },
   warningBox: {
     borderWidth: 1,
     borderColor: '#fecaca',
@@ -108,6 +148,26 @@ const styles = StyleSheet.create({
   },
   warningText: {
     color: '#7f1d1d',
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  focusBox: {
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    borderRadius: 10,
+    backgroundColor: '#eff6ff',
+    padding: 10,
+    gap: 4,
+  },
+  focusTitle: {
+    color: '#1e40af',
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  focusText: {
+    color: '#1e3a8a',
     fontSize: 12,
     lineHeight: 17,
   },

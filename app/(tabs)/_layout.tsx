@@ -1,7 +1,6 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
 import { View } from 'react-native';
-import TopStatusBar from '@/components/TopStatusBar';
 
 import { HapticTab } from '@/components/haptic-tab';
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -14,7 +13,6 @@ export default function TabLayout() {
 
   return (
     <View style={{ flex: 1 }}>
-      <TopStatusBar />
       <Tabs
         screenOptions={{
           tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,

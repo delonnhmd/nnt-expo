@@ -1,3 +1,5 @@
+// Future-only external wallet boundary.
+// Current Gold Penny gameplay must remain fully functional without this layer mounted.
 import { CHAIN_ID, RPC_URL, WC_METADATA, WC_PROJECT_ID } from '@/constants';
 import { log, recordError, recordInfo, recordWarning } from '@/lib/logger';
 // eslint-disable-next-line import/no-named-as-default

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
-import { KEY_ADMIN_ADDRESS, KEY_ADMIN_TOKEN, KEY_BACKEND_OVERRIDE } from '@/lib/apiClient';
+import { KEY_ADMIN_TOKEN, KEY_BACKEND_OVERRIDE } from '@/lib/apiClient';
 import * as Updates from 'expo-updates';
 
 import AppShell from '@/components/layout/AppShell';
@@ -33,7 +33,6 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 export default function SettingsScreen() {
   const [backendUrl, setBackendUrl] = useState('');
   const [adminToken, setAdminToken] = useState('');
-  const [adminAddress, setAdminAddress] = useState('');
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [applyingUpdate, setApplyingUpdate] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -51,8 +50,8 @@ export default function SettingsScreen() {
   const gameplayWebsite = 'https://goldpenny.pennyfloat.com';
 
   const hasOverrides = useMemo(
-    () => Boolean(backendUrl.trim() || adminToken.trim() || adminAddress.trim()),
-    [backendUrl, adminToken, adminAddress],
+    () => Boolean(backendUrl.trim() || adminToken.trim()),
+    [backendUrl, adminToken],
   );
 
   const loadDiagnostics = async () => {
@@ -75,14 +74,12 @@ export default function SettingsScreen() {
     loaded.current = true;
     (async () => {
       try {
-        const [url, token, addr] = await Promise.all([
+        const [url, token] = await Promise.all([
           AsyncStorage.getItem(KEY_BACKEND_OVERRIDE),
           AsyncStorage.getItem(KEY_ADMIN_TOKEN),
-          AsyncStorage.getItem(KEY_ADMIN_ADDRESS),
         ]);
         setBackendUrl(url || '');
         setAdminToken(token || '');
-        setAdminAddress(addr || '');
       } catch (error) {
         recordWarning('settings', 'Failed to hydrate saved settings.', {
           action: 'load_settings',
@@ -147,7 +144,6 @@ export default function SettingsScreen() {
     try {
       const normalizedBackend = backendUrl.trim();
       const normalizedToken = adminToken.trim();
-      const normalizedAddress = adminAddress.trim();
 
       if (normalizedBackend && !/^https?:\/\//i.test(normalizedBackend)) {
         Alert.alert('Invalid URL', 'Please enter a valid http(s) URL');
@@ -166,21 +162,13 @@ export default function SettingsScreen() {
         await AsyncStorage.removeItem(KEY_ADMIN_TOKEN);
       }
 
-      if (normalizedAddress) {
-        await AsyncStorage.setItem(KEY_ADMIN_ADDRESS, normalizedAddress);
-      } else {
-        await AsyncStorage.removeItem(KEY_ADMIN_ADDRESS);
-      }
-
       setBackendUrl(normalizedBackend);
       setAdminToken(normalizedToken);
-      setAdminAddress(normalizedAddress);
       recordInfo('settings', 'Local override settings saved.', {
         action: 'save_settings',
         context: {
           hasBackendOverride: Boolean(normalizedBackend),
           hasAdminToken: Boolean(normalizedToken),
-          hasAdminAddress: Boolean(normalizedAddress),
         },
       });
       Alert.alert('Saved', 'Advanced settings have been saved for this device.');
@@ -199,10 +187,9 @@ export default function SettingsScreen() {
   const resetOverrides = async () => {
     setSaving(true);
     try {
-      await AsyncStorage.multiRemove([KEY_BACKEND_OVERRIDE, KEY_ADMIN_TOKEN, KEY_ADMIN_ADDRESS]);
+      await AsyncStorage.multiRemove([KEY_BACKEND_OVERRIDE, KEY_ADMIN_TOKEN, 'admin:address']);
       setBackendUrl('');
       setAdminToken('');
-      setAdminAddress('');
       recordInfo('settings', 'Local overrides reset.', {
         action: 'reset_overrides',
       });
@@ -281,8 +268,8 @@ export default function SettingsScreen() {
             </SectionCard>
 
             <SectionCard
-              title="Advanced Connection Settings"
-              summary="Optional support and QA settings for server routing and authenticated maintenance requests. Most players can leave these blank."
+              title="Advanced API Settings"
+              summary="Optional support and QA overrides for server routing and authenticated maintenance requests. Gameplay does not require wallet or token setup."
             >
               <Text style={styles.inputLabel}>Server URL Override</Text>
               <TextInput
@@ -310,18 +297,6 @@ export default function SettingsScreen() {
                 secureTextEntry
               />
 
-              <Text style={styles.inputLabel}>Support Account Address</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="0x..."
-                placeholderTextColor={theme.color.muted}
-                value={adminAddress}
-                onChangeText={setAdminAddress}
-                autoCapitalize="none"
-                autoCorrect={false}
-                autoComplete="off"
-              />
-
               <View style={styles.buttonRow}>
                 <SecondaryButton
                   label="Reset Advanced Settings"
@@ -343,7 +318,7 @@ export default function SettingsScreen() {
 
             <SectionCard
               title="Recent Diagnostics"
-              summary="Recent startup, network, persistence, wallet, and gameplay issues captured on this device. Sensitive values are redacted before storage."
+              summary="Recent startup, network, persistence, gameplay, and optional integration issues captured on this device. Sensitive values are redacted before storage."
             >
               <View style={styles.buttonRow}>
                 <SecondaryButton

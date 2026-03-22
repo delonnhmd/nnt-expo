@@ -15,9 +15,6 @@ export const KEY_BACKEND_OVERRIDE = 'backend:override';
 /** Admin bearer token — set via Settings screen. */
 export const KEY_ADMIN_TOKEN = 'admin:token';
 
-/** Admin wallet/player address — set via Settings screen. */
-export const KEY_ADMIN_ADDRESS = 'admin:address';
-
 /**
  * Anonymous device identity UID — used for API tracing headers.
  * Canonical key; migrates from legacy 'identity:uid' on first read.

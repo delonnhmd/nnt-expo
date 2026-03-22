@@ -1,6 +1,3 @@
-// Gold Penny active hooks
-export * from './useBackend';
-export * from './useRegistration';
-export * from './useWallet';
-export * from './useDebt';
+// Gold Penny runtime hooks are imported directly from their feature modules.
+// Future-only wallet and legacy token hooks are intentionally not re-exported here.
 

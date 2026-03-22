@@ -17,6 +17,13 @@ function businessLabel(type: string): string {
   return type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function operationReadiness(outlook: string | null | undefined): string {
+  if (outlook === 'favorable') return 'Worth running today';
+  if (outlook === 'mixed') return 'Playable, but margins are thin';
+  if (outlook === 'pressured') return 'High-risk operating day';
+  return 'Check the latest demand and cost signals';
+}
+
 interface BusinessOperationsCardProps {
   activeRecord: PlayerBusinessRecord;
   profitSnapshot: BusinessProfitSnapshot | null;
@@ -42,6 +49,20 @@ export default function BusinessOperationsCard({
   const operateLabel = operatedToday ? 'Operated Today \u2713' : 'Run Business Today';
   const latestProfit = profitSnapshot?.latest_daily_profit_xgp;
   const trailingProfit = profitSnapshot?.trailing_7d_profit_xgp;
+  const inventoryUnits = activeRecord.inventory_produce_units + activeRecord.inventory_essentials_units + activeRecord.inventory_protein_units;
+  const readinessCopy = operationReadiness(margins?.margin_outlook);
+  const whyItMatters = margins?.short_explainer || 'Running the business turns stocked inventory into same-day cash, but weak margins can erase the upside.';
+  const recommendation = plan?.recommendation_over_horizon || (margins?.margin_outlook === 'pressured'
+    ? 'Recommended action: protect cash and inventory unless you urgently need operating income.'
+    : 'Recommended action: operate only if the expected cash gain is worth today\'s time and cost pressure.');
+  const watchItem = plan?.key_watch_item || (inventoryUnits <= 2
+    ? 'Inventory is low, so one weak run can leave you with little room to recover.'
+    : 'Watch demand and input costs before committing more inventory.');
+  const inventoryStatus = inventoryUnits <= 0
+    ? 'No inventory loaded. Restock before trying to rely on this business for cash.'
+    : inventoryUnits <= 2
+      ? 'Inventory is running low, so today\'s operating window is fragile.'
+      : null;
 
   return (
     <View style={styles.card}>
@@ -64,13 +85,13 @@ export default function BusinessOperationsCard({
         </View>
       ) : null}
 
-      {margins?.short_explainer ? (
-        <Text style={styles.explainer}>{margins.short_explainer}</Text>
-      ) : null}
+      <View style={styles.guidanceBox}>
+        <Text style={styles.guidanceTitle}>{readinessCopy}</Text>
+        <Text style={styles.explainer}>{whyItMatters}</Text>
+      </View>
 
-      {plan?.recommendation_over_horizon ? (
-        <Text style={styles.recommendation}>{plan.recommendation_over_horizon}</Text>
-      ) : null}
+      <Text style={styles.recommendation}>{recommendation}</Text>
+      <Text style={styles.watchText}>Watch item: {watchItem}</Text>
 
       {margins && (margins.risk_factors.length > 0 || margins.opportunity_factors.length > 0) ? (
         <View style={styles.bullets}>
@@ -82,6 +103,8 @@ export default function BusinessOperationsCard({
           ) : null}
         </View>
       ) : null}
+
+      {inventoryStatus ? <Text style={styles.inventoryWarning}>{inventoryStatus}</Text> : null}
 
       {activeRecord.inventory_produce_units > 0
         || activeRecord.inventory_essentials_units > 0
@@ -172,11 +195,29 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
   },
+  guidanceBox: {
+    borderWidth: 1,
+    borderColor: '#dbeafe',
+    borderRadius: 10,
+    backgroundColor: '#f8fbff',
+    padding: 10,
+    gap: 4,
+  },
+  guidanceTitle: {
+    color: '#1d4ed8',
+    fontSize: 12,
+    fontWeight: '800',
+  },
   recommendation: {
     color: '#1e40af',
     fontSize: 12,
     lineHeight: 17,
     fontWeight: '600',
+  },
+  watchText: {
+    color: '#475569',
+    fontSize: 12,
+    lineHeight: 17,
   },
   bullets: {
     gap: 3,
@@ -199,6 +240,12 @@ const styles = StyleSheet.create({
   inventoryItem: {
     color: '#475569',
     fontSize: 12,
+    fontWeight: '600',
+  },
+  inventoryWarning: {
+    color: '#b45309',
+    fontSize: 12,
+    lineHeight: 17,
     fontWeight: '600',
   },
   profitLine: {

@@ -68,6 +68,9 @@ export default function StockMarketCard({
   onSellOne: (stockId: string) => void;
   onSellAll: (stockId: string, quantity: number) => void;
 }) {
+  const hasStocks = market.stocks.length > 0;
+  const hasHoldings = market.portfolio.holdings_count > 0;
+
   return (
     <View style={styles.card}>
       <View style={styles.headerRow}>
@@ -81,6 +84,12 @@ export default function StockMarketCard({
           <Text style={styles.summaryPillLabel}>Holdings</Text>
           <Text style={styles.summaryPillValue}>{market.portfolio.holdings_count}</Text>
         </View>
+      </View>
+
+      <View style={styles.guidanceBox}>
+        <Text style={styles.guidanceTitle}>How to use this</Text>
+        <Text style={styles.guidanceText}>Stocks are optional upside. Prices update once per day from the backend close, so protect essentials and debt cash before chasing gains.</Text>
+        <Text style={styles.guidanceHint}>Every trade includes a fee, so short-term flipping needs a real edge.</Text>
       </View>
 
       <View style={styles.portfolioGrid}>
@@ -100,8 +109,16 @@ export default function StockMarketCard({
         </View>
       </View>
 
+      {!hasHoldings ? <Text style={styles.neutralHint}>No holdings yet. Buy only if your cash buffer still survives a weak day.</Text> : null}
+
       {!sessionActive ? <Text style={styles.warning}>Day ended. Start next day before placing trades.</Text> : null}
 
+      {!hasStocks ? (
+        <View style={styles.emptyBox}>
+          <Text style={styles.emptyTitle}>Quotes unavailable</Text>
+          <Text style={styles.emptyText}>No current stock quotes were returned. Refresh this section before making portfolio decisions.</Text>
+        </View>
+      ) : (
       <View style={styles.list}>
         {market.stocks.map((stock) => {
           const tradeBusy = pendingTradeStockId === stock.stock_id;
@@ -129,6 +146,12 @@ export default function StockMarketCard({
                 <Text style={styles.signalText}>{stock.sector_signal_summary}</Text>
                 <Text style={styles.volatilityBadge}>{volatilityLabelText(stock.volatility_label)}</Text>
               </View>
+
+              <Text style={styles.actionHint}>
+                {stock.holdings_quantity > 0
+                  ? 'You already hold this name. Trim or add only if the signal still fits your cash plan.'
+                  : 'Use this only if you can tolerate a short-term swing and still cover your core obligations.'}
+              </Text>
 
               <View style={styles.holdingRow}>
                 <Text style={styles.holdingText}>Held: {stock.holdings_quantity} share(s)</Text>
@@ -159,6 +182,7 @@ export default function StockMarketCard({
           );
         })}
       </View>
+      )}
     </View>
   );
 }
@@ -238,8 +262,52 @@ const styles = StyleSheet.create({
     color: '#b45309',
     fontWeight: '600',
   },
+  guidanceBox: {
+    borderWidth: 1,
+    borderColor: '#dbeafe',
+    borderRadius: theme.radius.md,
+    backgroundColor: '#f8fbff',
+    padding: theme.spacing.sm,
+    gap: theme.spacing.xxs,
+  },
+  guidanceTitle: {
+    ...theme.typography.caption,
+    color: '#1d4ed8',
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  guidanceText: {
+    ...theme.typography.bodySm,
+    color: theme.color.textPrimary,
+  },
+  guidanceHint: {
+    ...theme.typography.caption,
+    color: theme.color.textSecondary,
+    fontWeight: '600',
+  },
+  neutralHint: {
+    ...theme.typography.bodySm,
+    color: theme.color.textSecondary,
+  },
   list: {
     gap: theme.spacing.sm,
+  },
+  emptyBox: {
+    borderWidth: 1,
+    borderColor: theme.color.border,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.color.surfaceAlt,
+    padding: theme.spacing.md,
+    gap: theme.spacing.xs,
+  },
+  emptyTitle: {
+    ...theme.typography.label,
+    color: theme.color.textPrimary,
+    fontWeight: '800',
+  },
+  emptyText: {
+    ...theme.typography.bodySm,
+    color: theme.color.textSecondary,
   },
   stockRow: {
     borderWidth: 1,
@@ -291,6 +359,10 @@ const styles = StyleSheet.create({
     color: theme.color.textSecondary,
     flex: 1,
   },
+  actionHint: {
+    ...theme.typography.caption,
+    color: theme.color.textSecondary,
+  },
   volatilityBadge: {
     ...theme.typography.caption,
     color: '#1d4ed8',
@@ -313,7 +385,7 @@ const styles = StyleSheet.create({
     gap: theme.spacing.xs,
   },
   tradeButton: {
-    minHeight: 36,
+    minHeight: 42,
     minWidth: 82,
     borderRadius: theme.radius.sm,
     paddingHorizontal: theme.spacing.sm,

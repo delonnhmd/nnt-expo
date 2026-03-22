@@ -38,6 +38,7 @@ export default function DailyBriefCard({
 }) {
   const bullets = (impactBullets || []).filter(Boolean).slice(0, 3);
   const recommendedActions = (dashboard.recommended_actions || []).filter(Boolean).slice(0, 3);
+  const hasSignals = dashboard.top_opportunities.length > 0 || dashboard.top_risks.length > 0;
 
   return (
     <View style={styles.card}>
@@ -54,7 +55,12 @@ export default function DailyBriefCard({
             </View>
           ))}
         </View>
-      ) : null}
+      ) : (
+        <View style={styles.neutralBox}>
+          <Text style={styles.neutralTitle}>Best Next Move</Text>
+          <Text style={styles.neutralBody}>No direct move is flagged right now. Protect cash first, then take the lowest-risk action that improves tomorrow&apos;s position.</Text>
+        </View>
+      )}
       {bullets.length > 0 ? (
         <View style={styles.impactBox}>
           <Text style={styles.impactTitle}>Driving Signals</Text>
@@ -81,6 +87,7 @@ export default function DailyBriefCard({
           }))}
         />
       </View>
+      {!hasSignals ? <Text style={styles.footerHint}>The economy snapshot is still partial. Use the Daily Brief headline and your cash pressure as the main guide.</Text> : null}
     </View>
   );
 }
@@ -164,6 +171,26 @@ const styles = StyleSheet.create({
     padding: 10,
     gap: 8,
   },
+  neutralBox: {
+    borderWidth: 1,
+    borderColor: '#dbeafe',
+    borderRadius: 10,
+    backgroundColor: '#f8fbff',
+    padding: 10,
+    gap: 4,
+  },
+  neutralTitle: {
+    color: '#1e40af',
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  neutralBody: {
+    color: '#334155',
+    fontSize: 12,
+    lineHeight: 17,
+  },
   recommendationTitle: {
     color: '#1d4ed8',
     fontSize: 11,
@@ -195,5 +222,10 @@ const styles = StyleSheet.create({
     color: '#334155',
     fontSize: 12,
     lineHeight: 18,
+  },
+  footerHint: {
+    color: '#64748b',
+    fontSize: 12,
+    lineHeight: 17,
   },
 });
