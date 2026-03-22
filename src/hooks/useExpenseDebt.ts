@@ -2,7 +2,7 @@
 import { useMemo } from 'react';
 
 import { formatMoney } from '@/lib/gameplayFormatters';
-import { EndOfDaySummaryResponse, PlayerDashboardResponse } from '@/types/gameplay';
+import { GameplayCanonicalState } from '@/lib/gameplayRuntimeState';
 import { DebtPressureLevel, EconomyStatus } from '@/types/economy';
 import { deriveGameplayEconomyState } from '@/hooks/useEconomyState';
 
@@ -52,17 +52,16 @@ const DEFAULT_EXPENSE_DEBT: ExpenseDebtContract = {
 };
 
 function deriveExpenseDebtState(
-  dashboard: PlayerDashboardResponse | null,
-  endOfDay: EndOfDaySummaryResponse | null,
+  state: GameplayCanonicalState,
 ): ExpenseDebtContract {
-  if (!dashboard) return DEFAULT_EXPENSE_DEBT;
+  if (!state.hasDashboardSnapshot) return DEFAULT_EXPENSE_DEBT;
 
-  const economy = deriveGameplayEconomyState(dashboard, endOfDay);
+  const economy = deriveGameplayEconomyState(state);
 
   const expenseLabel = economy.expenseAmount == null ? 'Pending' : formatMoney(economy.expenseAmount);
   const debtWarning = economy.debtPressure === 'high' || economy.debtPressure === 'critical';
   const financialStressWarning = economy.economyStatus === 'strained' || economy.economyStatus === 'critical';
-  const tomorrowWarnings = Array.isArray(endOfDay?.tomorrow_warnings) ? endOfDay!.tomorrow_warnings : [];
+  const tomorrowWarnings = state.tomorrowWarnings;
 
   return {
     expenseAmount: economy.expenseAmount,
@@ -82,8 +81,7 @@ function deriveExpenseDebtState(
 }
 
 export function useExpenseDebt(
-  dashboard: PlayerDashboardResponse | null,
-  endOfDay: EndOfDaySummaryResponse | null,
+  state: GameplayCanonicalState,
 ): ExpenseDebtContract {
-  return useMemo(() => deriveExpenseDebtState(dashboard, endOfDay), [dashboard, endOfDay]);
+  return useMemo(() => deriveExpenseDebtState(state), [state]);
 }

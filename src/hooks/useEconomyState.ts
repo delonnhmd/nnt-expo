@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 
 import { formatMoney } from '@/lib/gameplayFormatters';
-import { EndOfDaySummaryResponse, PlayerDashboardResponse } from '@/types/gameplay';
+import { GameplayCanonicalState } from '@/lib/gameplayRuntimeState';
 import { DebtPressureLevel, EconomyStatus, GameplayEconomyState } from '@/types/economy';
 
 const DEFAULT_ECONOMY_STATE: GameplayEconomyState = {
@@ -56,7 +56,7 @@ function deriveEconomyStatus(
 }
 
 function deriveWarnings(
-  dashboard: PlayerDashboardResponse | null,
+  state: GameplayCanonicalState,
   debtPressure: DebtPressureLevel,
   netCashFlow: number | null,
 ): string[] {
@@ -74,7 +74,7 @@ function deriveWarnings(
     warnings.push('Current cash flow is negative after today\'s settlement.');
   }
 
-  for (const signal of dashboard?.top_risks || []) {
+  for (const signal of state.topRisks) {
     const next = describeSignal(signal);
     if (next && !warnings.includes(next)) warnings.push(next);
     if (warnings.length >= 3) break;
@@ -84,25 +84,24 @@ function deriveWarnings(
 }
 
 export function deriveGameplayEconomyState(
-  dashboard: PlayerDashboardResponse | null,
-  endOfDay: EndOfDaySummaryResponse | null,
+  state: GameplayCanonicalState,
 ): GameplayEconomyState {
-  if (!dashboard) return DEFAULT_ECONOMY_STATE;
+  if (!state.hasDashboardSnapshot) return DEFAULT_ECONOMY_STATE;
 
-  const cashOnHand = Number(dashboard.stats.cash_xgp || 0);
-  const debtAmount = Number(dashboard.stats.debt_xgp || 0);
-  const netWorthAmount = Number(dashboard.stats.net_worth_xgp || 0);
-  const incomeAmount = endOfDay ? Number(endOfDay.total_earned_xgp || 0) : null;
-  const expenseAmount = endOfDay ? Number(endOfDay.total_spent_xgp || 0) : null;
-  const netCashFlow = endOfDay ? Number(endOfDay.net_change_xgp || 0) : null;
+  const cashOnHand = state.cashOnHand;
+  const debtAmount = state.debtAmount;
+  const netWorthAmount = state.netWorthAmount;
+  const incomeAmount = state.incomeAmount;
+  const expenseAmount = state.expenseAmount;
+  const netCashFlow = state.netCashFlow;
   const debtPressure = deriveDebtPressure(cashOnHand, debtAmount, netWorthAmount);
   const economyStatus = deriveEconomyStatus(
     debtPressure,
     netCashFlow,
-    Number(dashboard.stats.stress || 0),
-    Number(dashboard.stats.health || 0),
+    state.stress,
+    state.health,
   );
-  const economyWarnings = deriveWarnings(dashboard, debtPressure, netCashFlow);
+  const economyWarnings = deriveWarnings(state, debtPressure, netCashFlow);
   const cashFlowLabel = netCashFlow == null ? 'Pending' : `${netCashFlow > 0 ? '+' : ''}${formatMoney(netCashFlow)}`;
   const summaryLine = [
     `Cash ${formatMoney(cashOnHand)}`,
@@ -127,8 +126,7 @@ export function deriveGameplayEconomyState(
 }
 
 export function useEconomyState(
-  dashboard: PlayerDashboardResponse | null,
-  endOfDay: EndOfDaySummaryResponse | null,
+  state: GameplayCanonicalState,
 ): GameplayEconomyState {
-  return useMemo(() => deriveGameplayEconomyState(dashboard, endOfDay), [dashboard, endOfDay]);
+  return useMemo(() => deriveGameplayEconomyState(state), [state]);
 }

@@ -25,7 +25,7 @@ const DEFAULT_ACTION_CAPS: Record<string, number> = BALANCE.ACTION_CAPS;
 
 /** Minimal set of fields persisted to AsyncStorage to survive mid-day reloads. */
 interface PersistedSessionState {
-  dayKey: string;
+  currentDay: number;
   remainingTimeUnits: number;
   actionCounts: Record<string, number>;
   sessionStatus: DailySessionStatus;
@@ -57,7 +57,7 @@ function clampTotalUnits(value: number | undefined): number {
 }
 
 export function useDailySession(playerId: string) {
-  const [dayKey, setDayKey] = useState<string>('');
+  const [currentDay, setCurrentDay] = useState<number | null>(null);
   const [totalTimeUnits, setTotalTimeUnits] = useState<number>(DEFAULT_TOTAL_TIME_UNITS);
   const [remainingTimeUnits, setRemainingTimeUnits] = useState<number>(DEFAULT_TOTAL_TIME_UNITS);
   const [actionsTakenToday, setActionsTakenToday] = useState<DailyActionHistoryEntry[]>([]);
@@ -77,9 +77,9 @@ export function useDailySession(playerId: string) {
 
   // Persist key session state so a mid-day reload cannot reset time units or action caps.
   useEffect(() => {
-    if (!dayKey || !sessionStorageKey) return;
+    if (currentDay == null || !sessionStorageKey) return;
     const snapshot: PersistedSessionState = {
-      dayKey,
+      currentDay,
       remainingTimeUnits,
       actionCounts: { ...restoredActionCounts },
       sessionStatus,
@@ -94,7 +94,7 @@ export function useDailySession(playerId: string) {
       recordWarning('dailySession', 'Failed to persist daily session snapshot.', {
         action: 'persist_snapshot',
         context: {
-          dayKey,
+          currentDay,
           actionCount: actionsTakenToday.length,
           remainingTimeUnits,
           sessionStatus,
@@ -103,7 +103,7 @@ export function useDailySession(playerId: string) {
       });
     });
   }, [
-    dayKey,
+    currentDay,
     remainingTimeUnits,
     restoredActionCounts,
     sessionStatus,
@@ -122,17 +122,17 @@ export function useDailySession(playerId: string) {
     return counts;
   }, [actionsTakenToday, restoredActionCounts]);
 
-  const initializeDay = useCallback((nextDayKey: string, suggestedTotalUnits?: number) => {
-    const normalizedDay = String(nextDayKey || '').trim();
-    if (!normalizedDay) return;
-    if (normalizedDay === dayKey) return;
+  const initializeDay = useCallback((nextDay: number, suggestedTotalUnits?: number) => {
+    const normalizedDay = Math.max(1, Math.round(Number(nextDay) || 0));
+    if (!Number.isFinite(normalizedDay) || normalizedDay < 1) return;
+    if (normalizedDay === currentDay) return;
     if (initializingRef.current) return;
     initializingRef.current = true;
 
     const clamped = clampTotalUnits(suggestedTotalUnits);
 
-    const freshInit = (key: string, units: number) => {
-      setDayKey(key);
+    const freshInit = (dayNumber: number, units: number) => {
+      setCurrentDay(dayNumber);
       setTotalTimeUnits(units);
       setRemainingTimeUnits(units);
       setRestoredActionCounts({});
@@ -144,7 +144,7 @@ export function useDailySession(playerId: string) {
           recordWarning('dailySession', 'Failed to clear stale session snapshot.', {
             action: 'initialize_day',
             context: {
-              dayKey: key,
+              currentDay: dayNumber,
             },
             error,
           });
@@ -163,7 +163,7 @@ export function useDailySession(playerId: string) {
         if (raw) {
           try {
             const persisted: PersistedSessionState = JSON.parse(raw);
-            if (persisted.dayKey === normalizedDay) {
+            if (persisted.currentDay === normalizedDay) {
               // Same game day found in storage — restore to prevent reload-to-reset exploits.
               const restoredUnits = Math.max(
                 0,
@@ -176,7 +176,7 @@ export function useDailySession(playerId: string) {
                 typeof persisted.actionCounts === 'object' && persisted.actionCounts !== null
                   ? (persisted.actionCounts as Record<string, number>)
                   : {};
-              setDayKey(normalizedDay);
+              setCurrentDay(normalizedDay);
               setTotalTimeUnits(restoredTotal);
               setRemainingTimeUnits(restoredUnits);
               setRestoredActionCounts(restoredCounts);
@@ -186,7 +186,7 @@ export function useDailySession(playerId: string) {
               recordInfo('dailySession', 'Restored persisted session snapshot.', {
                 action: 'initialize_day',
                 context: {
-                  dayKey: normalizedDay,
+                  currentDay: normalizedDay,
                   restoredRemainingTimeUnits: restoredUnits,
                   restoredStatus,
                   restoredActionTypes: Object.keys(restoredCounts).length,
@@ -199,7 +199,7 @@ export function useDailySession(playerId: string) {
             recordWarning('dailySession', 'Stored session snapshot was invalid.', {
               action: 'initialize_day',
               context: {
-                dayKey: normalizedDay,
+                currentDay: normalizedDay,
               },
               error,
             });
@@ -213,14 +213,14 @@ export function useDailySession(playerId: string) {
         recordWarning('dailySession', 'Failed to read persisted session snapshot.', {
           action: 'initialize_day',
           context: {
-            dayKey: normalizedDay,
+            currentDay: normalizedDay,
           },
           error,
         });
         freshInit(normalizedDay, clamped);
         initializingRef.current = false;
       });
-  }, [dayKey, sessionStorageKey]);
+  }, [currentDay, sessionStorageKey]);
 
   const estimateTimeCost = useCallback(
     (actionKey: GameplayActionKey, explicitCost?: number): number => {
@@ -293,10 +293,10 @@ export function useDailySession(playerId: string) {
     setPendingExecution(false);
   }, []);
 
-  const resetSession = useCallback((options?: { totalUnits?: number; nextDayKey?: string }) => {
+  const resetSession = useCallback((options?: { totalUnits?: number; nextDay?: number }) => {
     const clamped = clampTotalUnits(options?.totalUnits ?? totalTimeUnits);
-    if (options?.nextDayKey) {
-      setDayKey(String(options.nextDayKey));
+    if (Number.isFinite(options?.nextDay)) {
+      setCurrentDay(Math.max(1, Math.round(Number(options?.nextDay))));
     }
     setTotalTimeUnits(clamped);
     setRemainingTimeUnits(clamped);
@@ -307,7 +307,7 @@ export function useDailySession(playerId: string) {
     recordInfo('dailySession', 'Session reset for new day.', {
       action: 'reset_session',
       context: {
-        nextDayKey: options?.nextDayKey || dayKey,
+        nextDay: options?.nextDay ?? currentDay,
         totalTimeUnits: clamped,
       },
     });
@@ -317,13 +317,13 @@ export function useDailySession(playerId: string) {
         recordWarning('dailySession', 'Failed to clear session snapshot during reset.', {
           action: 'reset_session',
           context: {
-            nextDayKey: options?.nextDayKey || dayKey,
+            nextDay: options?.nextDay ?? currentDay,
           },
           error,
         });
       });
     }
-  }, [dayKey, totalTimeUnits, sessionStorageKey]);
+  }, [currentDay, totalTimeUnits, sessionStorageKey]);
 
   const progress = useMemo(() => {
     if (totalTimeUnits <= 0) return 0;
@@ -332,7 +332,7 @@ export function useDailySession(playerId: string) {
   }, [remainingTimeUnits, totalTimeUnits]);
 
   return {
-    dayKey,
+    currentDay,
     totalTimeUnits,
     remainingTimeUnits,
     actionsTakenToday,

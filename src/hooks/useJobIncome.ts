@@ -2,7 +2,7 @@
 import { useMemo } from 'react';
 
 import { formatMoney } from '@/lib/gameplayFormatters';
-import { EndOfDaySummaryResponse, PlayerDashboardResponse } from '@/types/gameplay';
+import { GameplayCanonicalState } from '@/lib/gameplayRuntimeState';
 
 export interface JobIncomeContract {
   /** Current job title from the latest dashboard snapshot. Null if not yet loaded or unassigned. */
@@ -37,19 +37,16 @@ const DEFAULT_JOB_INCOME: JobIncomeContract = {
 };
 
 function deriveJobIncomeState(
-  dashboard: PlayerDashboardResponse | null,
-  endOfDay: EndOfDaySummaryResponse | null,
+  state: GameplayCanonicalState,
 ): JobIncomeContract {
-  if (!dashboard) return DEFAULT_JOB_INCOME;
+  if (!state.hasDashboardSnapshot) return DEFAULT_JOB_INCOME;
 
-  const rawJob = String(dashboard.stats?.current_job || '').trim();
-  const currentJob = rawJob || null;
+  const currentJob = state.currentJob;
   const hasActiveJob = Boolean(currentJob);
   const workStatus: JobIncomeContract['workStatus'] = hasActiveJob ? 'working' : 'unemployed';
 
-  const incomeAmount = endOfDay != null ? Number(endOfDay.total_earned_xgp || 0) : null;
-  const rawSource = String(endOfDay?.biggest_gain || '').trim();
-  const incomeSource = rawSource || null;
+  const incomeAmount = state.incomeAmount;
+  const incomeSource = state.incomeSource;
 
   const dailyIncomeLabel =
     incomeAmount == null
@@ -90,8 +87,7 @@ function deriveJobIncomeState(
  * until both sources are loaded.
  */
 export function useJobIncome(
-  dashboard: PlayerDashboardResponse | null,
-  endOfDay: EndOfDaySummaryResponse | null,
+  state: GameplayCanonicalState,
 ): JobIncomeContract {
-  return useMemo(() => deriveJobIncomeState(dashboard, endOfDay), [dashboard, endOfDay]);
+  return useMemo(() => deriveJobIncomeState(state), [state]);
 }

@@ -59,6 +59,10 @@ import { useEconomyState } from '@/hooks/useEconomyState';
 import { useExpenseDebt } from '@/hooks/useExpenseDebt';
 import { useJobIncome } from '@/hooks/useJobIncome';
 import { useRandomEvent } from '@/hooks/useRandomEvent';
+import {
+  attachGameplayEventState,
+  createGameplayCanonicalState,
+} from '@/lib/gameplayRuntimeState';
 import { recordError, recordInfo, recordWarning } from '@/lib/logger';
 import {
   activateCommitment,
@@ -1316,16 +1320,10 @@ export default function GameDashboardPage({
     dailySession.pendingExecution || executingAction || endingDay,
   );
 
-  const activeDayKey = useMemo(
-    () => `day:${dailyProgression.currentGameDay}`,
-    [dailyProgression.currentGameDay],
-  );
-
   useEffect(() => {
-    if (!activeDayKey) return;
     const suggestedUnits = deriveSuggestedTimeUnits(dashboardState.data);
-    dailySession.initializeDay(activeDayKey, suggestedUnits);
-  }, [activeDayKey, dailySession, dashboardState.data]);
+    dailySession.initializeDay(dailyProgression.currentGameDay, suggestedUnits);
+  }, [dailyProgression.currentGameDay, dailySession, dashboardState.data]);
 
   const getExecutionGuard = useCallback((action: DailyActionItem): ActionExecutionGuard => {
     const explicit = Number(
@@ -1383,15 +1381,25 @@ export default function GameDashboardPage({
   }, [actionState.data, applySessionBlockers]);
 
   const notificationCount = notificationsState.data?.notifications.length || 0;
-  const settledEndOfDay = dailySession.sessionStatus === 'ended' ? eodState.data : null;
-  const economyState = useEconomyState(dashboardState.data, settledEndOfDay);
-  const expenseDebt = useExpenseDebt(dashboardState.data, settledEndOfDay);
-  const jobIncome = useJobIncome(dashboardState.data, settledEndOfDay);
+  const gameplayCoreState = useMemo(() => createGameplayCanonicalState({
+    playerId,
+    currentDay: dailyProgression.currentGameDay,
+    sessionStatus: dailySession.sessionStatus,
+    dashboard: dashboardState.data,
+    endOfDay: eodState.data,
+  }), [playerId, dailyProgression.currentGameDay, dailySession.sessionStatus, dashboardState.data, eodState.data]);
   const randomEvent = useRandomEvent(
     playerId,
     dailyProgression.currentGameDay,
-    economyState.cashOnHand,
+    gameplayCoreState.cashOnHand,
   );
+  const gameplayState = useMemo(
+    () => attachGameplayEventState(gameplayCoreState, randomEvent.activeEvent),
+    [gameplayCoreState, randomEvent.activeEvent],
+  );
+  const economyState = useEconomyState(gameplayState);
+  const expenseDebt = useExpenseDebt(gameplayState);
+  const jobIncome = useJobIncome(gameplayState);
 
   const resetPreviewState = useCallback(() => {
     previewRequestIdRef.current += 1;
@@ -1705,7 +1713,7 @@ export default function GameDashboardPage({
       const nextDayNumber = dailyProgression.markDayStarted();
       dailySession.resetSession({
         totalUnits: deriveSuggestedTimeUnits(dashboardState.data),
-        nextDayKey: String(nextDayNumber),
+        nextDay: nextDayNumber,
       });
       setLastEndDayResult(null);
       recordInfo('gameplay', 'Started next gameplay day.', {
