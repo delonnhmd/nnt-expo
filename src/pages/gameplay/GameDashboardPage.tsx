@@ -33,6 +33,7 @@ import OnboardingProgressCard from '@/components/gameplay/OnboardingProgressCard
 import OnboardingUnlockPreviewCard from '@/components/gameplay/OnboardingUnlockPreviewCard';
 import PatternInsightsCard from '@/components/gameplay/PatternInsightsCard';
 import PlayerStatsBar from '@/components/gameplay/PlayerStatsBar';
+import RandomEventCard from '@/components/gameplay/RandomEventCard';
 import PlayerPatternsCard from '@/components/gameplay/PlayerPatternsCard';
 import PriceTrendsCard from '@/components/gameplay/PriceTrendsCard';
 import ProgressionSummaryCard from '@/components/gameplay/ProgressionSummaryCard';
@@ -57,6 +58,7 @@ import { useDailyProgression } from '@/hooks/useDailyProgression';
 import { useEconomyState } from '@/hooks/useEconomyState';
 import { useExpenseDebt } from '@/hooks/useExpenseDebt';
 import { useJobIncome } from '@/hooks/useJobIncome';
+import { useRandomEvent } from '@/hooks/useRandomEvent';
 import {
   activateCommitment,
   cancelCommitment,
@@ -1351,6 +1353,11 @@ export default function GameDashboardPage({
     dailySession.sessionStatus,
     dailySession.pendingExecution || executingAction || endingDay,
   );
+  const randomEvent = useRandomEvent(
+    playerId,
+    dailyProgression.currentGameDay,
+    economyState.cashOnHand,
+  );
 
   const openPreview = useCallback(
     async (action: DailyActionItem) => {
@@ -2111,6 +2118,26 @@ export default function GameDashboardPage({
               : null}
           </>
         ) : null}
+
+        {randomEvent.activeEvent && dailySession.sessionStatus === 'active'
+          ? wrapSection(
+              'random_event',
+              <PrimaryDashboardSection
+                title="Today's Event"
+                summary={`${randomEvent.activeEvent.title} — ${randomEvent.activeEvent.effectSummary}`}
+              >
+                <RandomEventCard
+                  event={randomEvent.activeEvent}
+                  availableRecoveryActions={randomEvent.availableRecoveryActions}
+                  onApplyRecoveryAction={(action) => {
+                    randomEvent.applyRecoveryAction(action.recoveryActionId);
+                    setFeedback({ tone: 'info', message: `${action.label}: ${action.effectSummary}` });
+                  }}
+                  onDismiss={randomEvent.dismissEvent}
+                />
+              </PrimaryDashboardSection>,
+            )
+          : null}
 
         {isSectionVisible('strategic_recommendation') && (strategyRecommendationState.status === 'loading' || strategyRecommendationState.status === 'idle') ? (
           <LoadingStateCard label="Loading strategy recommendation..." />
