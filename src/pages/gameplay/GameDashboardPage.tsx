@@ -6,6 +6,7 @@ import ActionHistoryPanel from '@/components/gameplay/ActionHistoryPanel';
 import ActionHubPanel from '@/components/gameplay/ActionHubPanel';
 import ActionPreviewModal from '@/components/gameplay/ActionPreviewModal';
 import ActiveCommitmentCard from '@/components/gameplay/ActiveCommitmentCard';
+import BusinessOperationsCard from '@/components/gameplay/BusinessOperationsCard';
 import BusinessPlanCard from '@/components/gameplay/BusinessPlanCard';
 import BusinessMarginsCard from '@/components/gameplay/BusinessMarginsCard';
 import CommutePressureCard from '@/components/gameplay/CommutePressureCard';
@@ -75,6 +76,7 @@ import {
   refreshCommitment,
   replaceCommitment,
 } from '@/lib/api/commitment';
+import { getPlayerBusinesses } from '@/lib/api/business';
 import {
   getBusinessMargins,
   getCommutePressure,
@@ -140,6 +142,7 @@ import {
   AvailableCommitmentsResponse,
   AvailableCommitmentItem,
 } from '@/types/commitment';
+import { PlayerBusinessesResponse } from '@/types/business';
 import {
   BusinessMarginsResponse,
   CommutePressureResponse,
@@ -487,6 +490,7 @@ export default function GameDashboardPage({
   const [housingTradeoffState, setHousingTradeoffState] = useState<SectionState<HousingTradeoffResponse>>(initialSection);
   const [debtVsGrowthState, setDebtVsGrowthState] = useState<SectionState<DebtVsGrowthResponse>>(initialSection);
   const [businessPlanState, setBusinessPlanState] = useState<SectionState<BusinessPlanResponse>>(initialSection);
+  const [playerBusinessesState, setPlayerBusinessesState] = useState<SectionState<PlayerBusinessesResponse>>(initialSection);
   const [recoveryVsPushState, setRecoveryVsPushState] = useState<SectionState<RecoveryVsPushResponse>>(initialSection);
   const [strategyRecommendationState, setStrategyRecommendationState] = useState<SectionState<StrategyRecommendationResponse>>(initialSection);
   const [futurePreparationState, setFuturePreparationState] = useState<SectionState<FuturePreparationResponse>>(initialSection);
@@ -934,6 +938,24 @@ export default function GameDashboardPage({
     }
   }, [playerId]);
 
+  const loadPlayerBusinesses = useCallback(async () => {
+    setPlayerBusinessesState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const data = await getPlayerBusinesses(playerId);
+      setPlayerBusinessesState({
+        status: data.businesses.some((b) => b.is_active) ? 'ready' : 'empty',
+        data,
+        error: null,
+      });
+    } catch (error) {
+      setPlayerBusinessesState({
+        status: 'error',
+        data: null,
+        error: normalizeError(error),
+      });
+    }
+  }, [playerId]);
+
   const loadRecoveryVsPush = useCallback(async () => {
     setRecoveryVsPushState((prev) => ({ ...prev, status: 'loading', error: null }));
     try {
@@ -1356,6 +1378,7 @@ export default function GameDashboardPage({
     loadActionHub,
     loadOnboardingBundle,
     loadBusinessPlan,
+    loadPlayerBusinesses,
     loadDashboard,
     loadDebtVsGrowth,
     loadEconomyOverviewWithFallback,
@@ -1436,6 +1459,7 @@ export default function GameDashboardPage({
       loadCommitmentSummary(),
       loadCommitmentFeedback(),
       loadCommitmentHistory(),
+      loadPlayerBusinesses(),
     ]);
     recordSettledFailures('refresh_after_action', results);
     const progressionResult = results[4];
@@ -1461,6 +1485,7 @@ export default function GameDashboardPage({
     loadOnboardingBundle,
     loadActionHub,
     loadBusinessPlan,
+    loadPlayerBusinesses,
     loadDashboard,
     loadDebtVsGrowth,
     loadEconomyOverviewWithFallback,
@@ -1809,6 +1834,68 @@ export default function GameDashboardPage({
     }
   }, [dailySession, onExecuteAction, refreshAfterAction, resetPreviewState, selectedAction, selectedActionGuard]);
 
+  const handleOperateBusiness = useCallback(async () => {
+    if (executeActionGuardRef.current) return;
+    const guard = dailySession.canExecuteAction({ action_key: 'operate_business' });
+    if (!guard.allowed) {
+      setFeedback({ tone: 'error', message: guard.reason || 'Cannot operate business right now.' });
+      return;
+    }
+    executeActionGuardRef.current = true;
+    setExecutingAction(true);
+    dailySession.setPendingExecution(true);
+    try {
+      const result = await onExecuteAction('operate_business', {});
+      const consumed = Math.max(1, Math.round(Number(result.time_cost_units) || guard.timeCostUnits));
+      dailySession.consumeTime(consumed);
+      dailySession.addActionToHistory({
+        action_key: 'operate_business',
+        title: 'Run Business',
+        description: 'Operated business for the day.',
+        result_summary: result.result_summary,
+        time_cost_units: consumed,
+        success: true,
+        impact_snapshot: {
+          cash_delta_xgp: result.cash_delta_xgp,
+          stress_delta: result.stress_delta,
+          health_delta: result.health_delta,
+        },
+      });
+      const followUpFeedback = await refreshAfterAction('operate_business');
+      const supplementalMessage = followUpFeedback.map((item) => item.message).find(Boolean);
+      recordInfo('gameplay', 'Business operated successfully.', {
+        action: 'operate_business',
+        context: {},
+      });
+      setFeedback({
+        tone: 'success',
+        message: supplementalMessage
+          ? `${result.message}. ${result.result_summary} ${supplementalMessage}`
+          : `${result.message}. ${result.result_summary}`,
+      });
+    } catch (error) {
+      const message = normalizeError(error);
+      dailySession.addActionToHistory({
+        action_key: 'operate_business',
+        title: 'Run Business',
+        description: 'Operated business for the day.',
+        result_summary: '',
+        time_cost_units: 0,
+        success: false,
+        error_message: message,
+      });
+      recordError('gameplay', 'Business operation failed.', {
+        action: 'operate_business',
+        error,
+      });
+      setFeedback({ tone: 'error', message: message || 'Business operation failed.' });
+    } finally {
+      executeActionGuardRef.current = false;
+      setExecutingAction(false);
+      dailySession.setPendingExecution(false);
+    }
+  }, [dailySession, onExecuteAction, refreshAfterAction]);
+
   const handleEndDay = useCallback(async () => {
     // synchronous ref guard fires before any state reads to close the double-tap race window
     if (endDayGuardRef.current) return;
@@ -1871,6 +1958,7 @@ export default function GameDashboardPage({
         loadCommitmentSummary(),
         loadCommitmentFeedback(),
         loadCommitmentHistory(),
+        loadPlayerBusinesses(),
       ]);
       recordSettledFailures('end_day_refresh', refreshResults);
     } catch (error) {
@@ -1895,6 +1983,7 @@ export default function GameDashboardPage({
     applyOnboardingActionResult,
     loadOnboardingBundle,
     loadBusinessPlan,
+    loadPlayerBusinesses,
     loadDashboard,
     loadDebtVsGrowth,
     loadEconomyOverviewWithFallback,
@@ -2281,6 +2370,38 @@ export default function GameDashboardPage({
       ]),
     [businessMarginsState, businessPlanState],
   );
+
+  const activeBusinessRecord = useMemo(
+    () => playerBusinessesState.data?.businesses.find((b) => b.is_active) ?? null,
+    [playerBusinessesState.data],
+  );
+
+  const businessMarginForActive = useMemo(() => {
+    if (!activeBusinessRecord || !businessMarginsState.data) return null;
+    return businessMarginsState.data.items.find(
+      (i) => i.business_key === activeBusinessRecord.business_type,
+    ) ?? null;
+  }, [activeBusinessRecord, businessMarginsState.data]);
+
+  const businessPlanForActive = useMemo(() => {
+    if (!activeBusinessRecord || !businessPlanState.data) return null;
+    return businessPlanState.data.items.find(
+      (i) => i.business_key === activeBusinessRecord.business_type,
+    ) ?? null;
+  }, [activeBusinessRecord, businessPlanState.data]);
+
+  const businessOperateSummary = useMemo(() => {
+    if (!activeBusinessRecord) return null;
+    const typeLabel =
+      activeBusinessRecord.business_type === 'fruit_shop' ? 'Fruit Shop' : 'Food Truck';
+    const operatedToday = dailySession.getActionCount('operate_business') >= 1;
+    if (operatedToday) return `${typeLabel} — operated today`;
+    const marginLabel = businessMarginForActive?.margin_outlook;
+    return marginLabel
+      ? `${typeLabel} — ${String(marginLabel).replace(/_/g, ' ')}`
+      : typeLabel;
+  }, [activeBusinessRecord, businessMarginForActive, dailySession]);
+
   const planningStatusLabel = useMemo(
     () =>
       summarizeStatusLabel([
@@ -2482,6 +2603,24 @@ export default function GameDashboardPage({
               : null}
           </>
         ) : null}
+
+        {activeBusinessRecord
+          ? wrapSection(
+              'business_operations',
+              <PrimaryDashboardSection title="Your Business Today" summary={businessOperateSummary}>
+                <BusinessOperationsCard
+                  activeRecord={activeBusinessRecord}
+                  profitSnapshot={playerBusinessesState.data?.profit_snapshot ?? null}
+                  margins={businessMarginForActive}
+                  plan={businessPlanForActive}
+                  operatedToday={dailySession.getActionCount('operate_business') >= 1}
+                  sessionActive={dailySession.sessionStatus === 'active'}
+                  isExecuting={executingAction}
+                  onOperate={handleOperateBusiness}
+                />
+              </PrimaryDashboardSection>,
+            )
+          : null}
 
         {randomEvent.activeEvent && dailySession.sessionStatus === 'active'
           ? wrapSection(
