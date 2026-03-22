@@ -148,8 +148,8 @@ export function useDailyProgression(
         error,
       });
     });
-    // Allow another call only after React's event loop has processed the state update.
-    setTimeout(() => { markingDayRef.current = false; }, 0);
+    // Release the tap guard after the current microtask queue completes.
+    queueMicrotask(() => { markingDayRef.current = false; });
     return nextDay;
   }, [playerId]);
 

@@ -403,6 +403,7 @@ export async function getPlayerActions(playerId: string): Promise<DailyActionHub
 export async function previewPlayerAction(
   playerId: string,
   payload: ActionPreviewRequest,
+  init?: RequestInit,
 ): Promise<ActionPreviewResponse> {
   const raw = await fetchApiWithFallback<Record<string, unknown>>(
     [
@@ -411,6 +412,7 @@ export async function previewPlayerAction(
       `/player/${playerId}/actions/preview`,
     ],
     {
+      ...(init || {}),
       method: 'POST',
       body: JSON.stringify(payload),
     },

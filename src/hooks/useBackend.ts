@@ -22,7 +22,9 @@ function getBaseUrl() {
 async function fetchJson(path: string, init?: RequestInit) {
   const base = getBaseUrl();
   const url = `${base}${path}`;
-  console.log('[API] Request', { url, init });
+  if (__DEV__) {
+    console.log('[API] Request', { url, init });
+  }
   const res = await fetch(url, {
     ...init,
     headers: {
@@ -34,7 +36,9 @@ async function fetchJson(path: string, init?: RequestInit) {
     },
   });
   const text = await res.text();
-  console.log('[API] Response', { url, status: res.status, text });
+  if (__DEV__) {
+    console.log('[API] Response', { url, status: res.status, text });
+  }
   try {
     const json = text ? JSON.parse(text) : null;
     if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
@@ -53,7 +57,9 @@ let backendInstance: any = null;
 
 export function useBackend() {
   if (!backendInstance) {
-    console.log('[useBackend] Creating singleton backend instance');
+    if (__DEV__) {
+      console.log('[useBackend] Creating singleton backend instance');
+    }
     backendInstance = {
       backendUrl: getBaseUrl(),
       _healthCache: null as any,

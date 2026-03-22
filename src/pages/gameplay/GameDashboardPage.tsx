@@ -421,9 +421,15 @@ export default function GameDashboardPage({
   const [lastEndDayResult, setLastEndDayResult] = useState<EndDayResponse | null>(null);
 
   // Synchronous ref guards prevent double-tap races on day transitions.
+  const executeActionGuardRef = useRef(false);
   const endDayGuardRef = useRef(false);
   const startingNextDayRef = useRef(false);
+  const commitmentGuardRef = useRef(false);
+  const onboardingGuardRef = useRef(false);
   const previewRequestIdRef = useRef(0);
+  const previewAbortControllerRef = useRef<AbortController | null>(null);
+  const selectedActionRef = useRef<DailyActionItem | null>(null);
+  selectedActionRef.current = selectedAction;
 
   const dailySession = useDailySession(playerId);
   const { isMobile } = useBreakpoint();
@@ -1403,6 +1409,8 @@ export default function GameDashboardPage({
 
   const resetPreviewState = useCallback(() => {
     previewRequestIdRef.current += 1;
+    previewAbortControllerRef.current?.abort();
+    previewAbortControllerRef.current = null;
     setPreviewVisible(false);
     setSelectedAction(null);
     setSelectedActionGuard(null);
@@ -1435,10 +1443,15 @@ export default function GameDashboardPage({
       setPreviewLoading(true);
       setPreviewPayload(null);
       setPreviewError(null);
+      previewAbortControllerRef.current?.abort();
+      const abortController = new AbortController();
+      previewAbortControllerRef.current = abortController;
       try {
         const payload = await previewPlayerAction(playerId, {
           action_key: action.action_key,
           parameters: action.parameters || {},
+        }, {
+          signal: abortController.signal,
         });
         if (previewRequestIdRef.current !== requestId) return;
         const previewTime = Number(payload.expected_time_impact?.amount);
@@ -1448,6 +1461,9 @@ export default function GameDashboardPage({
         setPreviewPayload(payload);
       } catch (error) {
         if (previewRequestIdRef.current !== requestId) return;
+        if (error instanceof Error && error.name === 'AbortError') {
+          return;
+        }
         recordWarning('gameplay', 'Action preview failed.', {
           action: 'open_preview',
           context: {
@@ -1458,6 +1474,9 @@ export default function GameDashboardPage({
         setPreviewError(normalizeError(error));
       } finally {
         if (previewRequestIdRef.current === requestId) {
+          if (previewAbortControllerRef.current === abortController) {
+            previewAbortControllerRef.current = null;
+          }
           setPreviewLoading(false);
         }
       }
@@ -1515,7 +1534,12 @@ export default function GameDashboardPage({
 
   const handleExecuteSelectedAction = useCallback(async () => {
     if (!selectedAction) return;
+    if (executeActionGuardRef.current) return;
     const action = selectedAction;
+    if (selectedActionRef.current?.action_key !== action.action_key) {
+      setFeedback({ tone: 'error', message: 'Selected action changed. Review the latest preview before executing.' });
+      return;
+    }
 
     const guard = selectedActionGuard || dailySession.canExecuteAction(action);
     if (!guard.allowed) {
@@ -1523,6 +1547,7 @@ export default function GameDashboardPage({
       return;
     }
 
+    executeActionGuardRef.current = true;
     setExecutingAction(true);
     dailySession.setPendingExecution(true);
     try {
@@ -1579,6 +1604,7 @@ export default function GameDashboardPage({
       });
       setFeedback({ tone: 'error', message: message || 'Action failed.' });
     } finally {
+      executeActionGuardRef.current = false;
       setExecutingAction(false);
       dailySession.setPendingExecution(false);
     }
@@ -1753,6 +1779,8 @@ export default function GameDashboardPage({
     options?: { replaceActive?: boolean },
   ) => {
     if (!item?.commitment_key) return;
+    if (commitmentGuardRef.current) return;
+    commitmentGuardRef.current = true;
     setCommitmentBusy(true);
     try {
       const current = commitmentSummaryState.data?.active_commitment;
@@ -1781,11 +1809,14 @@ export default function GameDashboardPage({
     } catch (error) {
       setFeedback({ tone: 'error', message: normalizeError(error) });
     } finally {
+      commitmentGuardRef.current = false;
       setCommitmentBusy(false);
     }
   }, [commitmentSummaryState.data?.active_commitment, playerId, refreshCommitmentSections]);
 
   const handleCancelCommitment = useCallback(async () => {
+    if (commitmentGuardRef.current) return;
+    commitmentGuardRef.current = true;
     setCommitmentBusy(true);
     try {
       await cancelCommitment(playerId);
@@ -1794,11 +1825,14 @@ export default function GameDashboardPage({
     } catch (error) {
       setFeedback({ tone: 'error', message: normalizeError(error) });
     } finally {
+      commitmentGuardRef.current = false;
       setCommitmentBusy(false);
     }
   }, [playerId, refreshCommitmentSections]);
 
   const handleAdvanceOnboarding = useCallback(async (actionKey?: string | null) => {
+    if (onboardingGuardRef.current) return;
+    onboardingGuardRef.current = true;
     setOnboardingBusy(true);
     try {
       const payload = await advanceOnboarding(playerId, {
@@ -1809,11 +1843,14 @@ export default function GameDashboardPage({
     } catch (error) {
       setFeedback({ tone: 'error', message: normalizeError(error) });
     } finally {
+      onboardingGuardRef.current = false;
       setOnboardingBusy(false);
     }
   }, [applyOnboardingActionResult, playerId]);
 
   const handleSkipOnboarding = useCallback(async () => {
+    if (onboardingGuardRef.current) return;
+    onboardingGuardRef.current = true;
     setOnboardingBusy(true);
     try {
       const payload = await skipOnboarding(playerId);
@@ -1822,11 +1859,14 @@ export default function GameDashboardPage({
     } catch (error) {
       setFeedback({ tone: 'error', message: normalizeError(error) });
     } finally {
+      onboardingGuardRef.current = false;
       setOnboardingBusy(false);
     }
   }, [applyOnboardingActionResult, playerId]);
 
   const handleCompleteOnboarding = useCallback(async () => {
+    if (onboardingGuardRef.current) return;
+    onboardingGuardRef.current = true;
     setOnboardingBusy(true);
     try {
       const payload = await completeOnboarding(playerId);
@@ -1835,6 +1875,7 @@ export default function GameDashboardPage({
     } catch (error) {
       setFeedback({ tone: 'error', message: normalizeError(error) });
     } finally {
+      onboardingGuardRef.current = false;
       setOnboardingBusy(false);
     }
   }, [applyOnboardingActionResult, playerId]);
