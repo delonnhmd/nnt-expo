@@ -597,13 +597,14 @@ export async function executeAction(
     }
     const raw = await fetchApiWithFallback<Record<string, unknown>>(
       [
-        `/jobs/player/${playerId}/switch`,
-        `/career/player/${playerId}/switch-job`,
-        `/player/${playerId}/switch-job`,
+          `/career/player/${playerId}/job/switch`,
+          `/jobs/player/${playerId}/switch`,
+          `/career/player/${playerId}/switch-job`,
+          `/player/${playerId}/switch-job`,
       ],
       {
         method: 'POST',
-        body: JSON.stringify({ job_key: targetJob }),
+          body: JSON.stringify({ new_job_key: targetJob, job_key: targetJob }),
       },
     );
     return executionResponseBase(
