@@ -257,6 +257,12 @@ function feedbackToneStyle(tone: FeedbackTone): { borderColor: string; backgroun
   return { borderColor: '#bfdbfe', backgroundColor: '#eff6ff', color: '#1e40af' };
 }
 
+function feedbackToneLabel(tone: FeedbackTone): string {
+  if (tone === 'success') return 'Action Update';
+  if (tone === 'error') return 'Needs Attention';
+  return 'Gameplay Note';
+}
+
 function formatSignedValue(value: number, digits = 0): string {
   return `${value > 0 ? '+' : ''}${value.toFixed(digits)}`;
 }
@@ -2622,6 +2628,7 @@ export default function GameDashboardPage({
               },
             ]}
           >
+            <Text style={[styles.feedbackLabel, { color: feedbackStyle.color }]}>{feedbackToneLabel(feedback.tone)}</Text>
             <Text style={[styles.feedbackText, { color: feedbackStyle.color }]}>{feedback.message}</Text>
           </View>
         ) : null}
@@ -2749,6 +2756,18 @@ export default function GameDashboardPage({
               </PrimaryDashboardSection>,
             )
           : null}
+
+        {isSectionVisible('business_operations') && playerBusinessesState.status === 'ready' && !activeBusinessRecord ? (
+          wrapSection(
+            'business_operations',
+            <PrimaryDashboardSection title="Your Business Today" summary="No active business is running right now.">
+              <EmptyStateCard
+                title="No active business"
+                subtitle="Open or reactivate a business before relying on this lane for daily cash flow."
+              />
+            </PrimaryDashboardSection>,
+          )
+        ) : null}
 
         {isSectionVisible('stock_market') && (stockMarketState.status === 'loading' || stockMarketState.status === 'idle') ? (
           <LoadingStateCard label="Loading stock market..." />
@@ -3372,10 +3391,17 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.md,
     paddingVertical: theme.spacing.sm,
     paddingHorizontal: theme.spacing.md,
+    gap: theme.spacing.xxs,
+  },
+  feedbackLabel: {
+    ...theme.typography.caption,
+    fontWeight: '800',
+    textTransform: 'uppercase',
   },
   feedbackText: {
     ...theme.typography.bodySm,
     fontWeight: '600',
+    lineHeight: 19,
   },
   dayControlCard: {
     borderWidth: 1,

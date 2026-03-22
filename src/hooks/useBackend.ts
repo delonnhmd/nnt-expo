@@ -1,4 +1,3 @@
-import { useCallback, useMemo } from 'react';
 import { BACKEND } from '@/constants';
 // Future-only external wallet and legacy reward bridge.
 // Active Gold Penny gameplay uses the typed API modules under src/lib/api instead.
