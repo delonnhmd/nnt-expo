@@ -1,6 +1,7 @@
 import { BusinessMarginsResponse, CommutePressureResponse, MarketOverviewResponse, PriceTrendsResponse } from '@/types/economyPresentation';
 import { CommitmentSummaryResponse } from '@/types/commitment';
 import { StrategyRecommendationResponse } from '@/types/strategicPlanning';
+import { SupplyChainSummaryResponse } from '@/types/supplyChain';
 import { LocalPressureSummaryResponse, WorldNarrativeResponse, WorldPatternsResponse } from '@/types/worldMemory';
 
 function safeLine(value: string | null | undefined, fallback: string): string {
@@ -12,6 +13,7 @@ export function buildEconomySummary(
   market: MarketOverviewResponse | null,
   prices: PriceTrendsResponse | null,
   commute: CommutePressureResponse | null,
+  supplyChain?: SupplyChainSummaryResponse | null,
 ): string {
   const mood = safeLine(market?.current_market_mood, 'mixed');
   const topBasket = prices?.items?.[0];
@@ -21,7 +23,8 @@ export function buildEconomySummary(
   const commuteLine = commute
     ? safeLine(commute.time_impact_label, 'commute stable')
     : 'commute stable';
-  return `${mood}. ${basketLine}. ${commuteLine}.`;
+  const supplyLine = supplyChain?.short_summary ? safeLine(supplyChain.short_summary, '') : '';
+  return `${mood}. ${basketLine}. ${commuteLine}.${supplyLine ? ` ${supplyLine}` : ''}`;
 }
 
 export function buildBusinessSummary(

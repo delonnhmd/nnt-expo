@@ -44,6 +44,7 @@ import SecondaryDashboardSection from '@/components/gameplay/SecondaryDashboardS
 import PrimaryDashboardSection from '@/components/gameplay/PrimaryDashboardSection';
 import StreaksCard from '@/components/gameplay/StreaksCard';
 import StrategyRecommendationCard from '@/components/gameplay/StrategyRecommendationCard';
+import SupplyChainStoryCard from '@/components/gameplay/SupplyChainStoryCard';
 import WeeklySummaryCard from '@/components/gameplay/WeeklySummaryCard';
 import WeeklyMissionsCard from '@/components/gameplay/WeeklyMissionsCard';
 import WorldNarrativeCard from '@/components/gameplay/WorldNarrativeCard';
@@ -78,6 +79,7 @@ import {
   getBusinessMargins,
   getCommutePressure,
   getEconomyExplainer,
+  getEconomyPresentationSummary,
   getFutureTeasers,
   getMarketOverview,
   getPriceTrends,
@@ -141,6 +143,7 @@ import {
 import {
   BusinessMarginsResponse,
   CommutePressureResponse,
+  EconomyPresentationSummaryResponse,
   FutureOpportunityTeasersResponse,
   MarketOverviewResponse,
   PlayerEconomyExplainerResponse,
@@ -340,6 +343,70 @@ function describeSignalItem(item: DashboardSignalItem | null | undefined, fallba
   return title || description || fallback;
 }
 
+function toDashboardSignalItems(
+  items: string[] | null | undefined,
+  prefix: string,
+  category: string,
+  severity: DashboardSignalItem['severity'],
+): DashboardSignalItem[] {
+  return (items || [])
+    .map((item, index) => {
+      const text = String(item || '').trim();
+      if (!text) return null;
+      return {
+        key: `${prefix}_${index}`,
+        title: text,
+        description: text,
+        category,
+        severity,
+      } satisfies DashboardSignalItem;
+    })
+    .filter((item): item is DashboardSignalItem => Boolean(item));
+}
+
+function buildBundleBrief(summary: EconomyPresentationSummaryResponse): string {
+  const lines = summary.daily_brief?.summary_lines?.filter(Boolean) || [];
+  if (lines.length > 0) {
+    return lines.slice(0, 3).join(' ');
+  }
+
+  if (summary.supply_chain_summary?.short_summary) {
+    return summary.supply_chain_summary.short_summary;
+  }
+
+  return summary.market_overview?.short_explainer || 'No backend economy brief available.';
+}
+
+function overlayDashboardWithEconomySummary(
+  dashboard: PlayerDashboardResponse,
+  summary: EconomyPresentationSummaryResponse | null,
+): PlayerDashboardResponse {
+  if (!summary) return dashboard;
+
+  const headline = summary.daily_brief?.headline || dashboard.headline;
+  const dailyBrief = buildBundleBrief(summary);
+  const topOpportunities = toDashboardSignalItems(
+    summary.player_opportunities,
+    'backend_opportunity',
+    'economy',
+    'medium',
+  );
+  const topRisks = toDashboardSignalItems(
+    summary.player_warnings,
+    'backend_warning',
+    'economy',
+    'medium',
+  );
+
+  return {
+    ...dashboard,
+    headline,
+    daily_brief: dailyBrief,
+    top_opportunities: topOpportunities.length > 0 ? topOpportunities : dashboard.top_opportunities,
+    top_risks: topRisks.length > 0 ? topRisks : dashboard.top_risks,
+  };
+}
+
 const SECONDARY_GROUP_SECTION_KEYS = new Set<string>([
   'market_overview',
   'price_trends',
@@ -376,6 +443,7 @@ export default function GameDashboardPage({
   const [eodState, setEodState] = useState<SectionState<EndOfDaySummaryResponse>>(initialSection);
   const [weeklyState, setWeeklyState] = useState<SectionState<WeeklyPlayerSummaryResponse>>(initialSection);
   const [progressionState, setProgressionState] = useState<SectionState<ProgressionSummaryResponse>>(initialSection);
+  const [economyPresentationSummaryState, setEconomyPresentationSummaryState] = useState<SectionState<EconomyPresentationSummaryResponse>>(initialSection);
   const [marketOverviewState, setMarketOverviewState] = useState<SectionState<MarketOverviewResponse>>(initialSection);
   const [priceTrendsState, setPriceTrendsState] = useState<SectionState<PriceTrendsResponse>>(initialSection);
   const [businessMarginsState, setBusinessMarginsState] = useState<SectionState<BusinessMarginsResponse>>(initialSection);
@@ -672,6 +740,94 @@ export default function GameDashboardPage({
       });
     }
   }, [playerId]);
+
+  const applyEconomyPresentationBundle = useCallback((data: EconomyPresentationSummaryResponse) => {
+    setEconomyPresentationSummaryState({
+      status: 'ready',
+      data,
+      error: null,
+    });
+    setMarketOverviewState({
+      status: data.market_overview ? 'ready' : 'empty',
+      data: data.market_overview,
+      error: null,
+    });
+    setPriceTrendsState({
+      status: data.price_trends.items.length > 0 ? 'ready' : 'empty',
+      data: data.price_trends,
+      error: null,
+    });
+    setBusinessMarginsState({
+      status: data.business_margins.items.length > 0 ? 'ready' : 'empty',
+      data: data.business_margins,
+      error: null,
+    });
+    setCommutePressureState({
+      status: data.commute_pressure ? 'ready' : 'empty',
+      data: data.commute_pressure,
+      error: null,
+    });
+    setEconomyExplainerState({
+      status: data.explainer ? 'ready' : 'empty',
+      data: data.explainer,
+      error: null,
+    });
+    setFutureTeasersState({
+      status: data.future_teasers.teasers.length > 0 ? 'ready' : 'empty',
+      data: data.future_teasers,
+      error: null,
+    });
+  }, []);
+
+  const loadEconomyPresentationBundle = useCallback(async () => {
+    setEconomyPresentationSummaryState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const data = await getEconomyPresentationSummary(playerId);
+      applyEconomyPresentationBundle(data);
+      return data;
+    } catch (error) {
+      setEconomyPresentationSummaryState({
+        status: 'error',
+        data: null,
+        error: normalizeError(error),
+      });
+      throw error;
+    }
+  }, [applyEconomyPresentationBundle, playerId]);
+
+  const loadEconomyOverviewWithFallback = useCallback(async () => {
+    try {
+      await loadEconomyPresentationBundle();
+    } catch (error) {
+      recordWarning('gameplay', 'Economy summary bundle failed. Falling back to legacy economy endpoints.', {
+        action: 'load_economy_bundle_fallback',
+        error,
+        context: { playerId },
+      });
+      await Promise.allSettled([
+        loadMarketOverview(),
+        loadPriceTrends(),
+        loadBusinessMargins(),
+        loadCommutePressure(),
+        loadEconomyExplainer(),
+        loadFutureTeasers(),
+      ]);
+      setEconomyPresentationSummaryState((prev) => (
+        prev.data
+          ? { ...prev, status: 'ready', error: null }
+          : { status: 'empty', data: null, error: null }
+      ));
+    }
+  }, [
+    loadBusinessMargins,
+    loadCommutePressure,
+    loadEconomyExplainer,
+    loadEconomyPresentationBundle,
+    loadFutureTeasers,
+    loadMarketOverview,
+    loadPriceTrends,
+    playerId,
+  ]);
 
   const loadShortHorizonPlans = useCallback(async () => {
     setShortHorizonPlansState((prev) => ({ ...prev, status: 'loading', error: null }));
@@ -1143,12 +1299,7 @@ export default function GameDashboardPage({
       loadEndOfDaySummary(),
       loadWeeklySummary(),
       loadProgression(),
-      loadMarketOverview(),
-      loadPriceTrends(),
-      loadBusinessMargins(),
-      loadCommutePressure(),
-      loadEconomyExplainer(),
-      loadFutureTeasers(),
+      loadEconomyOverviewWithFallback(),
       loadShortHorizonPlans(),
       loadHousingTradeoff(),
       loadDebtVsGrowth(),
@@ -1172,18 +1323,13 @@ export default function GameDashboardPage({
     loadActionHub,
     loadOnboardingBundle,
     loadBusinessPlan,
-    loadBusinessMargins,
-    loadCommutePressure,
     loadDashboard,
     loadDebtVsGrowth,
-    loadEconomyExplainer,
+    loadEconomyOverviewWithFallback,
     loadEndOfDaySummary,
     loadFuturePreparation,
-    loadFutureTeasers,
     loadHousingTradeoff,
-    loadMarketOverview,
     loadNotifications,
-    loadPriceTrends,
     loadProgression,
     loadRecoveryVsPush,
     loadShortHorizonPlans,
@@ -1240,12 +1386,7 @@ export default function GameDashboardPage({
       loadActionHub(),
       loadNotifications(),
       loadProgression(),
-      loadMarketOverview(),
-      loadPriceTrends(),
-      loadBusinessMargins(),
-      loadCommutePressure(),
-      loadEconomyExplainer(),
-      loadFutureTeasers(),
+      loadEconomyOverviewWithFallback(),
       loadShortHorizonPlans(),
       loadHousingTradeoff(),
       loadDebtVsGrowth(),
@@ -1265,7 +1406,7 @@ export default function GameDashboardPage({
     ]);
     recordSettledFailures('refresh_after_action', results);
     const progressionResult = results[4];
-    const commitmentSummaryResult = results[24];
+    const commitmentSummaryResult = results[19];
 
     if (progressionResult.status === 'fulfilled') {
       const message = deriveProgressionFeedback(beforeProgression, progressionResult.value);
@@ -1287,17 +1428,12 @@ export default function GameDashboardPage({
     loadOnboardingBundle,
     loadActionHub,
     loadBusinessPlan,
-    loadBusinessMargins,
-    loadCommutePressure,
     loadDashboard,
     loadDebtVsGrowth,
-    loadEconomyExplainer,
+    loadEconomyOverviewWithFallback,
     loadFuturePreparation,
-    loadFutureTeasers,
     loadHousingTradeoff,
-    loadMarketOverview,
     loadNotifications,
-    loadPriceTrends,
     loadProgression,
     loadRecoveryVsPush,
     loadShortHorizonPlans,
@@ -1390,14 +1526,19 @@ export default function GameDashboardPage({
     };
   }, [actionState.data, applySessionBlockers]);
 
+  const effectiveDashboard = useMemo(() => {
+    if (!dashboardState.data) return null;
+    return overlayDashboardWithEconomySummary(dashboardState.data, economyPresentationSummaryState.data);
+  }, [dashboardState.data, economyPresentationSummaryState.data]);
+
   const notificationCount = notificationsState.data?.notifications.length || 0;
   const gameplayCoreState = useMemo(() => createGameplayCanonicalState({
     playerId,
     currentDay: dailyProgression.currentGameDay,
     sessionStatus: dailySession.sessionStatus,
-    dashboard: dashboardState.data,
+    dashboard: effectiveDashboard,
     endOfDay: eodState.data,
-  }), [playerId, dailyProgression.currentGameDay, dailySession.sessionStatus, dashboardState.data, eodState.data]);
+  }), [playerId, dailyProgression.currentGameDay, dailySession.sessionStatus, effectiveDashboard, eodState.data]);
   const randomEvent = useRandomEvent(
     playerId,
     dailyProgression.currentGameDay,
@@ -1680,12 +1821,7 @@ export default function GameDashboardPage({
         loadEndOfDaySummary(),
         loadWeeklySummary(),
         loadProgression(),
-        loadMarketOverview(),
-        loadPriceTrends(),
-        loadBusinessMargins(),
-        loadCommutePressure(),
-        loadEconomyExplainer(),
-        loadFutureTeasers(),
+        loadEconomyOverviewWithFallback(),
         loadShortHorizonPlans(),
         loadHousingTradeoff(),
         loadDebtVsGrowth(),
@@ -1727,17 +1863,12 @@ export default function GameDashboardPage({
     loadOnboardingBundle,
     loadBusinessPlan,
     loadDashboard,
-    loadBusinessMargins,
-    loadCommutePressure,
     loadDebtVsGrowth,
-    loadEconomyExplainer,
+    loadEconomyOverviewWithFallback,
     loadEndOfDaySummary,
     loadFuturePreparation,
-    loadFutureTeasers,
     loadHousingTradeoff,
-    loadMarketOverview,
     loadNotifications,
-    loadPriceTrends,
     loadProgression,
     loadRecoveryVsPush,
     loadShortHorizonPlans,
@@ -2032,8 +2163,14 @@ export default function GameDashboardPage({
         marketOverviewState.data,
         priceTrendsState.data,
         commutePressureState.data,
+        economyPresentationSummaryState.data?.supply_chain_summary,
       ),
-    [commutePressureState.data, marketOverviewState.data, priceTrendsState.data],
+    [
+      commutePressureState.data,
+      economyPresentationSummaryState.data?.supply_chain_summary,
+      marketOverviewState.data,
+      priceTrendsState.data,
+    ],
   );
   const businessSummary = useMemo(
     () => buildBusinessSummary(businessMarginsState.data),
@@ -2071,16 +2208,17 @@ export default function GameDashboardPage({
     return 'One clear defensive move and one growth move for today.';
   }, [strategyRecommendationState.data]);
   const dailyBriefSummary = useMemo(() => {
-    if (!dashboardState.data) return 'Today’s headline, top opportunity, and top risk.';
-    const leadRisk = describeSignalItem(dashboardState.data.top_risks?.[0], 'No major risk flagged');
-    const leadOpportunity = describeSignalItem(dashboardState.data.top_opportunities?.[0], 'No major opportunity flagged');
+    if (!effectiveDashboard) return 'Today’s headline, top opportunity, and top risk.';
+    const leadRisk = describeSignalItem(effectiveDashboard.top_risks?.[0], 'No major risk flagged');
+    const leadOpportunity = describeSignalItem(effectiveDashboard.top_opportunities?.[0], 'No major opportunity flagged');
     return `${leadOpportunity}. Risk: ${leadRisk}.`;
-  }, [dashboardState.data]);
+  }, [effectiveDashboard]);
   const statsSummary = useMemo(() => economyState.summaryLine, [economyState.summaryLine]);
 
   const economyStatusLabel = useMemo(
     () =>
       summarizeStatusLabel([
+        economyPresentationSummaryState as SectionState<unknown>,
         marketOverviewState as SectionState<unknown>,
         priceTrendsState as SectionState<unknown>,
         commutePressureState as SectionState<unknown>,
@@ -2090,6 +2228,7 @@ export default function GameDashboardPage({
       ]),
     [
       commutePressureState,
+      economyPresentationSummaryState,
       economyExplainerState,
       futureTeasersState,
       housingTradeoffState,
@@ -2286,13 +2425,13 @@ export default function GameDashboardPage({
           />
         ) : null}
 
-        {dashboardState.status === 'ready' && dashboardState.data ? (
+        {dashboardState.status === 'ready' && effectiveDashboard ? (
           <>
             {isSectionVisible('player_stats')
               ? wrapSection(
                 'player_stats',
                 <PrimaryDashboardSection title="Player Snapshot" summary={statsSummary} statusLabel={economyState.statusLabel}>
-                  <PlayerStatsBar stats={dashboardState.data.stats} economy={economyState} currentGameDay={dailyProgression.currentGameDay} jobIncome={jobIncome} expenseDebt={expenseDebt} />
+                  <PlayerStatsBar stats={effectiveDashboard.stats} economy={economyState} currentGameDay={dailyProgression.currentGameDay} jobIncome={jobIncome} expenseDebt={expenseDebt} />
                 </PrimaryDashboardSection>,
               )
               : null}
@@ -2300,7 +2439,7 @@ export default function GameDashboardPage({
               ? wrapSection(
                 'daily_brief',
                 <PrimaryDashboardSection title="Daily Brief" summary={dailyBriefSummary}>
-                  <DailyBriefCard dashboard={dashboardState.data} />
+                  <DailyBriefCard dashboard={effectiveDashboard} />
                 </PrimaryDashboardSection>,
               )
               : null}
@@ -2477,6 +2616,25 @@ export default function GameDashboardPage({
               ) : null}
               {isSectionAllowedByOnboarding('future_teasers') && futureTeasersState.status === 'ready' && futureTeasersState.data ? (
                 <FutureOpportunitiesCard teasers={futureTeasersState.data} />
+              ) : null}
+
+              {(economyPresentationSummaryState.status === 'loading' || economyPresentationSummaryState.status === 'idle') ? (
+                <LoadingStateCard label="Loading backend economy summary..." />
+              ) : null}
+              {economyPresentationSummaryState.status === 'error' ? (
+                <ErrorStateCard
+                  title="Backend economy summary unavailable"
+                  message={economyPresentationSummaryState.error || undefined}
+                  onRetry={loadEconomyOverviewWithFallback}
+                />
+              ) : null}
+              {economyPresentationSummaryState.status === 'ready' && economyPresentationSummaryState.data ? (
+                <SupplyChainStoryCard
+                  summary={economyPresentationSummaryState.data.supply_chain_summary}
+                  story={economyPresentationSummaryState.data.supply_chain_story}
+                  warnings={economyPresentationSummaryState.data.player_warnings}
+                  opportunities={economyPresentationSummaryState.data.player_opportunities}
+                />
               ) : null}
             </SecondaryDashboardSection>,
           )

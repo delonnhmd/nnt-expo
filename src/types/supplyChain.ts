@@ -16,7 +16,6 @@ export interface SupplyChainNodeStateResponse {
 
 export interface SupplyChainBottleneckResponse {
   node_id: string;
-  abstract_node: string;
   availability: number;
   severity_label: string;
   affected_baskets: string[];
@@ -29,7 +28,6 @@ export interface BasketSupplyMultiplierResponse {
   basket_type: string;
   supply_multiplier: number;
   cost_pressure_label: string;
-  weighted_avg_availability: number;
   primary_bottleneck_node: string | null;
   short_summary: string;
 }
@@ -37,7 +35,6 @@ export interface BasketSupplyMultiplierResponse {
 export interface JobPressureResponse {
   job_key: string;
   job_pressure_multiplier: number;
-  raw_pressure_score: number;
   opportunity_label: string;
   source_bottleneck_nodes: string[];
   short_summary: string;
@@ -45,21 +42,22 @@ export interface JobPressureResponse {
 
 export interface SupplyChainSummaryResponse {
   day: number;
-  region: string;
   top_bottleneck_node: string | null;
+  top_bottleneck_severity: string;
   most_affected_basket: string | null;
+  most_affected_basket_multiplier: number;
   best_job_opportunity: string | null;
+  best_job_pressure_multiplier: number;
   overall_stress_score: number;
+  short_summary: string;
   node_states: SupplyChainNodeStateResponse[];
   bottlenecks: SupplyChainBottleneckResponse[];
   basket_multipliers: BasketSupplyMultiplierResponse[];
   job_pressure: JobPressureResponse[];
-  debug_meta?: Record<string, unknown> | null;
 }
 
 export interface SupplyChainStoryResponse {
   day: number;
-  region: string;
   shortage_story: string;
   bottleneck_highlights: string[];
   basket_impact_notes: string[];

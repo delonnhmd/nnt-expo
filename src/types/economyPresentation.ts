@@ -1,3 +1,5 @@
+import { SupplyChainStoryResponse, SupplyChainSummaryResponse } from '@/types/supplyChain';
+
 export type MarketMood = 'supportive' | 'mixed' | 'pressured' | string;
 export type TrendLabel = 'rising' | 'falling' | 'stable' | string;
 export type VolatilityLabel = 'calm' | 'moderate' | 'high' | string;
@@ -97,14 +99,43 @@ export interface FutureOpportunityTeasersResponse {
   debug_meta?: Record<string, unknown>;
 }
 
+export interface DailyEconomyBriefResponse {
+  as_of_date: string;
+  day: number;
+  headline: string;
+  summary_lines: string[];
+  top_bottlenecks: string[];
+  top_basket_movers: string[];
+  top_job_changes: string[];
+  debug_meta?: Record<string, unknown>;
+}
+
+export interface DailySettlementDigestResponse {
+  day_number: number;
+  income_xgp: number;
+  expenses_xgp: number;
+  net_change_xgp: number;
+  cash_after_xgp: number;
+  stress_change: number;
+  health_change: number;
+  debug_meta?: Record<string, unknown>;
+}
+
 export interface EconomyPresentationSummaryResponse {
   player_id: string;
   as_of_date: string;
+  current_day: number;
   market_overview: MarketOverviewResponse;
   price_trends: PriceTrendsResponse;
   business_margins: BusinessMarginsResponse;
   commute_pressure: CommutePressureResponse;
   explainer: PlayerEconomyExplainerResponse;
   future_teasers: FutureOpportunityTeasersResponse;
+  daily_brief: DailyEconomyBriefResponse;
+  supply_chain_summary: SupplyChainSummaryResponse;
+  supply_chain_story: SupplyChainStoryResponse;
+  settlement_summary?: DailySettlementDigestResponse | null;
+  player_warnings: string[];
+  player_opportunities: string[];
   debug_meta?: Record<string, unknown>;
 }
