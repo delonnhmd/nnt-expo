@@ -1327,9 +1327,10 @@ export default function GameDashboardPage({
   );
 
   useEffect(() => {
+    if (!dailyProgression.isHydrated) return;
     const suggestedUnits = deriveSuggestedTimeUnits(dashboardState.data);
     dailySession.initializeDay(dailyProgression.currentGameDay, suggestedUnits);
-  }, [dailyProgression.currentGameDay, dailySession, dashboardState.data]);
+  }, [dailyProgression.currentGameDay, dailyProgression.isHydrated, dailySession, dashboardState.data]);
 
   const getExecutionGuard = useCallback((action: DailyActionItem): ActionExecutionGuard => {
     const explicit = Number(
@@ -1398,6 +1399,7 @@ export default function GameDashboardPage({
     playerId,
     dailyProgression.currentGameDay,
     gameplayCoreState.cashOnHand,
+    dailyProgression.isHydrated && dailySession.currentDay === dailyProgression.currentGameDay,
   );
   const gameplayState = useMemo(
     () => attachGameplayEventState(gameplayCoreState, randomEvent.activeEvent),
@@ -1736,7 +1738,7 @@ export default function GameDashboardPage({
     if (startingNextDayRef.current) return;
     startingNextDayRef.current = true;
     try {
-      const nextDayNumber = dailyProgression.markDayStarted();
+      const nextDayNumber = await dailyProgression.markDayStarted();
       dailySession.resetSession({
         totalUnits: deriveSuggestedTimeUnits(dashboardState.data),
         nextDay: nextDayNumber,

@@ -1,7 +1,12 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { BALANCE } from '@/lib/balanceConfig';
+import {
+  createEmptyPersistedGameplayState,
+  PersistedGameplaySessionState,
+  readPersistedGameplayState,
+  updatePersistedGameplayState,
+} from '@/lib/gameplayPersistence';
 import { recordInfo, recordWarning } from '@/lib/logger';
 import {
   DailyActionHistoryEntry,
@@ -23,17 +28,11 @@ const MAX_TOTAL_TIME_UNITS = BALANCE.MAX_TOTAL_TIME_UNITS;
 const DEFAULT_ACTION_TIME_COST: Record<string, number> = BALANCE.ACTION_TIME_COST;
 const DEFAULT_ACTION_CAPS: Record<string, number> = BALANCE.ACTION_CAPS;
 
-/** Minimal set of fields persisted to AsyncStorage to survive mid-day reloads. */
-interface PersistedSessionState {
-  currentDay: number;
-  remainingTimeUnits: number;
-  actionCounts: Record<string, number>;
-  sessionStatus: DailySessionStatus;
-  totalTimeUnits: number;
-}
+const MAX_PERSISTED_ACTION_COUNT = 99;
 
 function normalizeActionKey(key: GameplayActionKey): string {
   const raw = String(key || '').toLowerCase().trim();
+  if (!raw) return '';
   if (raw === 'switch_job' || (raw.includes('switch') && raw.includes('job'))) return 'switch_job';
   if (raw === 'change_region' || ((raw.includes('change') || raw.includes('move')) && raw.includes('region'))) {
     return 'change_region';
@@ -47,7 +46,7 @@ function normalizeActionKey(key: GameplayActionKey): string {
   if (raw.includes('debt') || raw.includes('payment')) return 'debt_payment';
   if (raw.includes('housing') || raw.includes('region') || raw.includes('move')) return 'change_region';
   if (raw.includes('rest') || raw.includes('recover') || raw.includes('sleep')) return 'rest';
-  return raw;
+  return raw.slice(0, 64);
 }
 
 function clampTotalUnits(value: number | undefined): number {
@@ -63,34 +62,50 @@ export function useDailySession(playerId: string) {
   const [actionsTakenToday, setActionsTakenToday] = useState<DailyActionHistoryEntry[]>([]);
   const [sessionStatus, setSessionStatus] = useState<DailySessionStatus>('active');
   const [pendingExecution, setPendingExecution] = useState<boolean>(false);
-  // Action counts from before this app session (loaded from storage after a reload).
-  // Combined with live actionsTakenToday to enforce caps across restarts.
-  const [restoredActionCounts, setRestoredActionCounts] = useState<Record<string, number>>({});
+  // Canonical once-per-day action markers survive reloads and drive cap enforcement.
+  const [actionCounts, setActionCounts] = useState<Record<string, number>>({});
 
   // Prevents concurrent initializeDay calls while a storage read is in flight.
   const initializingRef = useRef(false);
 
-  const sessionStorageKey = useMemo(
-    () => (playerId ? `goldpenny:gameplay:session:${playerId}` : null),
-    [playerId],
-  );
+  const sanitizeActionCounts = useCallback((value: unknown): Record<string, number> => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+
+    const next: Record<string, number> = {};
+    for (const [key, rawValue] of Object.entries(value as Record<string, unknown>)) {
+      const normalizedKey = normalizeActionKey(key as GameplayActionKey);
+      const parsedCount = Number(rawValue);
+      if (!normalizedKey || !Number.isFinite(parsedCount)) continue;
+      const cap = DEFAULT_ACTION_CAPS[normalizedKey];
+      const upperBound = Number.isFinite(cap) ? Math.max(1, cap) : MAX_PERSISTED_ACTION_COUNT;
+      next[normalizedKey] = Math.max(0, Math.min(upperBound, Math.round(parsedCount)));
+    }
+    return next;
+  }, []);
 
   // Persist key session state so a mid-day reload cannot reset time units or action caps.
   useEffect(() => {
-    if (currentDay == null || !sessionStorageKey) return;
-    const snapshot: PersistedSessionState = {
+    if (currentDay == null || !playerId) return;
+    const snapshot: PersistedGameplaySessionState = {
       currentDay,
       remainingTimeUnits,
-      actionCounts: { ...restoredActionCounts },
+      actionCounts: { ...actionCounts },
       sessionStatus,
       totalTimeUnits,
     };
-    // Merge in live session counts so the snapshot always reflects total actions taken today.
-    for (const entry of actionsTakenToday) {
-      const k = normalizeActionKey(entry.action_key);
-      snapshot.actionCounts[k] = (snapshot.actionCounts[k] || 0) + 1;
-    }
-    AsyncStorage.setItem(sessionStorageKey, JSON.stringify(snapshot)).catch((error) => {
+    updatePersistedGameplayState(playerId, (current) => ({
+      ...(current || createEmptyPersistedGameplayState(playerId, currentDay)),
+      currentDay,
+      session: snapshot,
+      randomEvent:
+        current?.randomEvent && current.randomEvent.sourceDay === currentDay
+          ? current.randomEvent
+          : current?.randomEvent && current.randomEvent.isResolved && current.randomEvent.sourceDay === currentDay
+            ? current.randomEvent
+            : current?.randomEvent && current.randomEvent.sourceDay < currentDay
+              ? null
+              : current?.randomEvent || null,
+    })).catch((error) => {
       recordWarning('dailySession', 'Failed to persist daily session snapshot.', {
         action: 'persist_snapshot',
         context: {
@@ -103,24 +118,14 @@ export function useDailySession(playerId: string) {
       });
     });
   }, [
+    actionCounts,
+    actionsTakenToday.length,
     currentDay,
     remainingTimeUnits,
-    restoredActionCounts,
     sessionStatus,
     totalTimeUnits,
-    actionsTakenToday,
-    sessionStorageKey,
+    playerId,
   ]);
-
-  // Derived action counts: persisted (pre-reload) + live (this session).
-  const actionCounts = useMemo(() => {
-    const counts: Record<string, number> = { ...restoredActionCounts };
-    for (const entry of actionsTakenToday) {
-      const normalized = normalizeActionKey(entry.action_key);
-      counts[normalized] = (counts[normalized] || 0) + 1;
-    }
-    return counts;
-  }, [actionsTakenToday, restoredActionCounts]);
 
   const initializeDay = useCallback((nextDay: number, suggestedTotalUnits?: number) => {
     const normalizedDay = Math.max(1, Math.round(Number(nextDay) || 0));
@@ -135,77 +140,51 @@ export function useDailySession(playerId: string) {
       setCurrentDay(dayNumber);
       setTotalTimeUnits(units);
       setRemainingTimeUnits(units);
-      setRestoredActionCounts({});
+      setActionCounts({});
       setActionsTakenToday([]);
       setSessionStatus('active');
       setPendingExecution(false);
-      if (sessionStorageKey) {
-        AsyncStorage.removeItem(sessionStorageKey).catch((error) => {
-          recordWarning('dailySession', 'Failed to clear stale session snapshot.', {
-            action: 'initialize_day',
-            context: {
-              currentDay: dayNumber,
-            },
-            error,
-          });
-        });
-      }
     };
 
-    if (!sessionStorageKey) {
+    if (!playerId) {
       freshInit(normalizedDay, clamped);
       initializingRef.current = false;
       return;
     }
 
-    AsyncStorage.getItem(sessionStorageKey)
-      .then((raw) => {
-        if (raw) {
-          try {
-            const persisted: PersistedSessionState = JSON.parse(raw);
-            if (persisted.currentDay === normalizedDay) {
-              // Same game day found in storage — restore to prevent reload-to-reset exploits.
-              const restoredUnits = Math.max(
-                0,
-                Math.min(MAX_TOTAL_TIME_UNITS, Number(persisted.remainingTimeUnits) || 0),
-              );
-              const restoredTotal = clampTotalUnits(persisted.totalTimeUnits);
-              const restoredStatus: DailySessionStatus =
-                persisted.sessionStatus === 'ended' ? 'ended' : 'active';
-              const restoredCounts =
-                typeof persisted.actionCounts === 'object' && persisted.actionCounts !== null
-                  ? (persisted.actionCounts as Record<string, number>)
-                  : {};
-              setCurrentDay(normalizedDay);
-              setTotalTimeUnits(restoredTotal);
-              setRemainingTimeUnits(restoredUnits);
-              setRestoredActionCounts(restoredCounts);
-              setActionsTakenToday([]);
-              setSessionStatus(restoredStatus);
-              setPendingExecution(false);
-              recordInfo('dailySession', 'Restored persisted session snapshot.', {
-                action: 'initialize_day',
-                context: {
-                  currentDay: normalizedDay,
-                  restoredRemainingTimeUnits: restoredUnits,
-                  restoredStatus,
-                  restoredActionTypes: Object.keys(restoredCounts).length,
-                },
-              });
-              initializingRef.current = false;
-              return;
-            }
-          } catch (error) {
-            recordWarning('dailySession', 'Stored session snapshot was invalid.', {
-              action: 'initialize_day',
-              context: {
-                currentDay: normalizedDay,
-              },
-              error,
-            });
-            // Corrupted storage — fall through to fresh init.
-          }
+    readPersistedGameplayState(playerId)
+      .then((persisted) => {
+        const persistedSession = persisted?.session;
+        const snapshotDay = persisted?.currentDay;
+        if (persistedSession && snapshotDay === normalizedDay && persistedSession.currentDay === normalizedDay) {
+          const restoredUnits = Math.max(
+            0,
+            Math.min(MAX_TOTAL_TIME_UNITS, Number(persistedSession.remainingTimeUnits) || 0),
+          );
+          const restoredTotal = clampTotalUnits(persistedSession.totalTimeUnits);
+          const restoredStatus: DailySessionStatus =
+            persistedSession.sessionStatus === 'ended' ? 'ended' : 'active';
+          const restoredCounts = sanitizeActionCounts(persistedSession.actionCounts);
+          setCurrentDay(normalizedDay);
+          setTotalTimeUnits(restoredTotal);
+          setRemainingTimeUnits(restoredUnits);
+          setActionCounts(restoredCounts);
+          setActionsTakenToday([]);
+          setSessionStatus(restoredStatus);
+          setPendingExecution(false);
+          recordInfo('dailySession', 'Restored persisted session snapshot.', {
+            action: 'initialize_day',
+            context: {
+              currentDay: normalizedDay,
+              restoredRemainingTimeUnits: restoredUnits,
+              restoredStatus,
+              restoredActionTypes: Object.keys(restoredCounts).length,
+            },
+          });
+          initializingRef.current = false;
+          return;
         }
+
         freshInit(normalizedDay, clamped);
         initializingRef.current = false;
       })
@@ -220,7 +199,7 @@ export function useDailySession(playerId: string) {
         freshInit(normalizedDay, clamped);
         initializingRef.current = false;
       });
-  }, [currentDay, sessionStorageKey]);
+  }, [currentDay, playerId, sanitizeActionCounts]);
 
   const estimateTimeCost = useCallback(
     (actionKey: GameplayActionKey, explicitCost?: number): number => {
@@ -245,6 +224,9 @@ export function useDailySession(playerId: string) {
   const canExecuteAction = useCallback(
     (action: DailyActionItem | { action_key: GameplayActionKey; status?: string; blockers?: string[] }, explicitCost?: number): ActionExecutionGuard => {
       const timeCostUnits = estimateTimeCost(action.action_key, explicitCost);
+      if (currentDay == null) {
+        return { allowed: false, reason: 'Gameplay is still restoring your saved day.', timeCostUnits };
+      }
       if (pendingExecution) {
         return { allowed: false, reason: 'Another action is already in progress.', timeCostUnits };
       }
@@ -267,7 +249,7 @@ export function useDailySession(playerId: string) {
       }
       return { allowed: true, reason: null, timeCostUnits };
     },
-    [estimateTimeCost, getActionCount, pendingExecution, remainingTimeUnits, sessionStatus],
+    [currentDay, estimateTimeCost, getActionCount, pendingExecution, remainingTimeUnits, sessionStatus],
   );
 
   const consumeTime = useCallback((amount: number) => {
@@ -276,6 +258,15 @@ export function useDailySession(playerId: string) {
   }, []);
 
   const addActionToHistory = useCallback((entry: Omit<DailyActionHistoryEntry, 'id' | 'order' | 'executed_at'>) => {
+    if (entry.success) {
+      const normalized = normalizeActionKey(entry.action_key);
+      if (normalized) {
+        setActionCounts((prev) => ({
+          ...prev,
+          [normalized]: (prev[normalized] || 0) + 1,
+        }));
+      }
+    }
     setActionsTakenToday((prev) => {
       const nextOrder = prev.length + 1;
       const next: DailyActionHistoryEntry = {
@@ -300,7 +291,7 @@ export function useDailySession(playerId: string) {
     }
     setTotalTimeUnits(clamped);
     setRemainingTimeUnits(clamped);
-    setRestoredActionCounts({});
+    setActionCounts({});
     setActionsTakenToday([]);
     setSessionStatus('active');
     setPendingExecution(false);
@@ -311,19 +302,7 @@ export function useDailySession(playerId: string) {
         totalTimeUnits: clamped,
       },
     });
-    // Clear stale storage so the incoming new day starts completely fresh.
-    if (sessionStorageKey) {
-      AsyncStorage.removeItem(sessionStorageKey).catch((error) => {
-        recordWarning('dailySession', 'Failed to clear session snapshot during reset.', {
-          action: 'reset_session',
-          context: {
-            nextDay: options?.nextDay ?? currentDay,
-          },
-          error,
-        });
-      });
-    }
-  }, [currentDay, totalTimeUnits, sessionStorageKey]);
+  }, [currentDay, totalTimeUnits]);
 
   const progress = useMemo(() => {
     if (totalTimeUnits <= 0) return 0;

@@ -1,17 +1,20 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import {
+  createEmptyPersistedGameplayState,
+  readPersistedGameplayState,
+  updatePersistedGameplayState,
+} from '@/lib/gameplayPersistence';
 import { recordInfo, recordWarning } from '@/lib/logger';
 import { DailySessionStatus } from '@/types/gameplay';
-
-const DAY_STORAGE_KEY = (playerId: string) => `goldpenny:gameplay:day:${playerId}`;
-const LAST_PROCESSED_KEY = (playerId: string) => `goldpenny:gameplay:lastProcessedDay:${playerId}`;
 
 const DEFAULT_START_DAY = 1;
 
 export interface DailyProgressionContract {
   /** Current game day number — starts at 1, increments each time a new day begins. */
   currentGameDay: number;
+  /** True once persisted day state has been hydrated or safely defaulted. */
+  isHydrated: boolean;
   /** The last game day confirmed as fully settled with the backend. Null until first end-of-day. */
   lastProcessedDay: number | null;
   /**
@@ -31,7 +34,7 @@ export interface DailyProgressionContract {
    * Start a new game day: increments currentGameDay, persists it asynchronously,
    * and returns the new day number synchronously so callers can use it immediately.
    */
-  markDayStarted: () => number;
+  markDayStarted: () => Promise<number>;
 }
 
 export function useDailyProgression(
@@ -40,6 +43,7 @@ export function useDailyProgression(
   actionInProgress: boolean,
 ): DailyProgressionContract {
   const [currentGameDay, setCurrentGameDay] = useState<number>(DEFAULT_START_DAY);
+  const [isHydrated, setIsHydrated] = useState(false);
   const [lastProcessedDay, setLastProcessedDay] = useState<number | null>(null);
   const [isAdvancingDay, setIsAdvancingDay] = useState(false);
 
@@ -47,35 +51,34 @@ export function useDailyProgression(
   const currentGameDayRef = useRef(currentGameDay);
   currentGameDayRef.current = currentGameDay;
 
-  const initialized = useRef(false);
   // Prevents markDayStarted from advancing more than one day per button press.
   const markingDayRef = useRef(false);
 
   useEffect(() => {
-    if (!playerId || initialized.current) return;
-    initialized.current = true;
+    if (!playerId) {
+      setCurrentGameDay(DEFAULT_START_DAY);
+      currentGameDayRef.current = DEFAULT_START_DAY;
+      setLastProcessedDay(null);
+      setIsHydrated(true);
+      return;
+    }
+
+    let cancelled = false;
+    setIsHydrated(false);
 
     async function loadPersistedState() {
       try {
-        const [storedDay, storedLastProcessed] = await Promise.all([
-          AsyncStorage.getItem(DAY_STORAGE_KEY(playerId)),
-          AsyncStorage.getItem(LAST_PROCESSED_KEY(playerId)),
-        ]);
+        const persisted = await readPersistedGameplayState(playerId);
+        if (cancelled) return;
 
-        if (storedDay) {
-          const parsed = parseInt(storedDay, 10);
-          if (Number.isFinite(parsed) && parsed >= DEFAULT_START_DAY) {
-            setCurrentGameDay(parsed);
-          }
-        }
+        const nextDay = persisted?.currentDay ?? DEFAULT_START_DAY;
+        const nextLastProcessedDay = persisted?.lastProcessedDay ?? null;
 
-        if (storedLastProcessed) {
-          const parsed = parseInt(storedLastProcessed, 10);
-          if (Number.isFinite(parsed) && parsed >= 0) {
-            setLastProcessedDay(parsed);
-          }
-        }
+        setCurrentGameDay(nextDay);
+        currentGameDayRef.current = nextDay;
+        setLastProcessedDay(nextLastProcessedDay);
       } catch (error) {
+        if (cancelled) return;
         recordWarning('dailyProgression', 'Failed to hydrate persisted day state.', {
           action: 'load_persisted_state',
           context: {
@@ -83,14 +86,25 @@ export function useDailyProgression(
           },
           error,
         });
-        // Continue with safe defaults when storage is unavailable.
+        setCurrentGameDay(DEFAULT_START_DAY);
+        currentGameDayRef.current = DEFAULT_START_DAY;
+        setLastProcessedDay(null);
+      } finally {
+        if (!cancelled) {
+          setIsHydrated(true);
+        }
       }
     }
 
-    loadPersistedState();
+    void loadPersistedState();
+
+    return () => {
+      cancelled = true;
+    };
   }, [playerId]);
 
   const canAdvanceDay =
+    isHydrated &&
     sessionStatus === 'active' &&
     !actionInProgress &&
     !isAdvancingDay &&
@@ -105,7 +119,11 @@ export function useDailyProgression(
           : currentGameDayRef.current;
 
       setLastProcessedDay(processedDay);
-      await AsyncStorage.setItem(LAST_PROCESSED_KEY(playerId), String(processedDay));
+      await updatePersistedGameplayState(playerId, (current) => ({
+        ...(current || createEmptyPersistedGameplayState(playerId, currentGameDayRef.current)),
+        currentDay: current?.currentDay ?? currentGameDayRef.current,
+        lastProcessedDay: processedDay,
+      }));
       recordInfo('dailyProgression', 'Marked day as settled.', {
         action: 'mark_day_advanced',
         context: {
@@ -126,11 +144,28 @@ export function useDailyProgression(
     }
   }, [playerId]);
 
-  const markDayStarted = useCallback((): number => {
+  const markDayStarted = useCallback(async (): Promise<number> => {
     // Synchronous guard prevents double-advance on rapid double-tap of "Start Next Day".
     if (markingDayRef.current) return currentGameDayRef.current;
     markingDayRef.current = true;
     const nextDay = currentGameDayRef.current + 1;
+    try {
+      await updatePersistedGameplayState(playerId, (current) => ({
+        ...(current || createEmptyPersistedGameplayState(playerId, nextDay)),
+        currentDay: nextDay,
+        session: null,
+        randomEvent: null,
+      }));
+    } catch (error) {
+      recordWarning('dailyProgression', 'Failed to persist current day.', {
+        action: 'mark_day_started',
+        context: {
+          nextDay,
+        },
+        error,
+      });
+    }
+
     setCurrentGameDay(nextDay);
     currentGameDayRef.current = nextDay;
     recordInfo('dailyProgression', 'Started next day.', {
@@ -139,16 +174,7 @@ export function useDailyProgression(
         nextDay,
       },
     });
-    AsyncStorage.setItem(DAY_STORAGE_KEY(playerId), String(nextDay)).catch((error) => {
-      recordWarning('dailyProgression', 'Failed to persist current day.', {
-        action: 'mark_day_started',
-        context: {
-          nextDay,
-        },
-        error,
-      });
-    });
-    // Release the tap guard after the current microtask queue completes.
+
     queueMicrotask(() => { markingDayRef.current = false; });
     return nextDay;
   }, [playerId]);
@@ -156,12 +182,13 @@ export function useDailyProgression(
   return useMemo(
     () => ({
       currentGameDay,
+      isHydrated,
       lastProcessedDay,
       canAdvanceDay,
       isAdvancingDay,
       markDayAdvanced,
       markDayStarted,
     }),
-    [currentGameDay, lastProcessedDay, canAdvanceDay, isAdvancingDay, markDayAdvanced, markDayStarted],
+    [currentGameDay, isHydrated, lastProcessedDay, canAdvanceDay, isAdvancingDay, markDayAdvanced, markDayStarted],
   );
 }

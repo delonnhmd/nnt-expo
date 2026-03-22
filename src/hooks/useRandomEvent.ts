@@ -1,7 +1,6 @@
 // Gold Penny — random event hook.
 // Rolls one deterministic event per game day, persists it, and exposes recovery actions.
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
@@ -9,15 +8,17 @@ import {
   RANDOM_EVENT_POOL,
   rollDailyEvent,
 } from '@/lib/gameEvents';
+import {
+  createEmptyPersistedGameplayState,
+  readPersistedGameplayState,
+  updatePersistedGameplayState,
+} from '@/lib/gameplayPersistence';
 import { recordInfo, recordWarning } from '@/lib/logger';
 import {
   ActiveRandomEvent,
   RandomEventPersistedState,
   RecoveryActionDefinition,
 } from '@/types/randomEvent';
-
-const EVENT_STORAGE_KEY = (playerId: string) =>
-  `goldpenny:gameplay:event:${playerId}`;
 
 export interface RandomEventContract {
   /** The current active event for this game day, or null if none. */
@@ -37,6 +38,7 @@ export function useRandomEvent(
   playerId: string,
   currentGameDay: number,
   cashOnHand: number,
+  enabled = true,
 ): RandomEventContract {
   const [activeEvent, setActiveEvent] = useState<ActiveRandomEvent | null>(null);
   // Track which day has already been processed to avoid duplicate rolls.
@@ -45,6 +47,10 @@ export function useRandomEvent(
   const resolvingRef = useRef(false);
 
   useEffect(() => {
+    if (!enabled) {
+      setActiveEvent(null);
+      return;
+    }
     if (!playerId || currentGameDay < 1) return;
     if (processedDayRef.current === currentGameDay) return;
     processedDayRef.current = currentGameDay;
@@ -56,9 +62,9 @@ export function useRandomEvent(
     async function loadOrRoll(): Promise<void> {
       // Check AsyncStorage for a persisted event from this day.
       try {
-        const raw = await AsyncStorage.getItem(EVENT_STORAGE_KEY(playerId));
-        if (raw && !cancelled) {
-          const persisted: RandomEventPersistedState = JSON.parse(raw);
+        const persistedState = await readPersistedGameplayState(playerId);
+        const persisted = persistedState?.randomEvent;
+        if (persisted && !cancelled) {
           if (persisted.sourceDay === currentGameDay) {
             if (persisted.isResolved) {
               // Already resolved for today — respect that, no event shown.
@@ -71,6 +77,15 @@ export function useRandomEvent(
               return;
             }
             // Unknown eventId (e.g. removed from pool) — fall through to fresh roll.
+            await updatePersistedGameplayState(playerId, (current) => {
+              const base = current || createEmptyPersistedGameplayState(playerId, currentGameDay);
+              if (base.currentDay > currentGameDay) return base;
+              return {
+                ...base,
+                currentDay: Math.max(base.currentDay, currentGameDay),
+                randomEvent: null,
+              };
+            });
           }
           // Persisted event is from a different day — fall through to roll for today.
         }
@@ -104,14 +119,19 @@ export function useRandomEvent(
           },
         });
         try {
-          await AsyncStorage.setItem(
-            EVENT_STORAGE_KEY(playerId),
-            JSON.stringify({
+          await updatePersistedGameplayState(playerId, (current) => {
+            const base = current || createEmptyPersistedGameplayState(playerId, currentGameDay);
+            if (base.currentDay > currentGameDay) return base;
+            return {
+              ...base,
+              currentDay: Math.max(base.currentDay, currentGameDay),
+              randomEvent: {
               eventId: definition.eventId,
               sourceDay: currentGameDay,
               isResolved: false,
-            } as RandomEventPersistedState),
-          );
+              } as RandomEventPersistedState,
+            };
+          });
         } catch (error) {
           recordWarning('randomEvent', 'Failed to persist rolled event.', {
             action: 'load_or_roll',
@@ -127,7 +147,15 @@ export function useRandomEvent(
         if (!cancelled) setActiveEvent(null);
         // Clear any stale persisted event from a previous day.
         try {
-          await AsyncStorage.removeItem(EVENT_STORAGE_KEY(playerId));
+          await updatePersistedGameplayState(playerId, (current) => {
+            const base = current || createEmptyPersistedGameplayState(playerId, currentGameDay);
+            if (base.currentDay > currentGameDay) return base;
+            return {
+              ...base,
+              currentDay: Math.max(base.currentDay, currentGameDay),
+              randomEvent: null,
+            };
+          });
         } catch (error) {
           recordWarning('randomEvent', 'Failed to clear stale event state.', {
             action: 'load_or_roll',
@@ -146,7 +174,7 @@ export function useRandomEvent(
     return () => {
       cancelled = true;
     };
-  }, [playerId, currentGameDay]);
+  }, [enabled, playerId, currentGameDay]);
 
   // Mark the current event as resolved in both state and storage.
   const resolveEvent = useCallback(async (): Promise<void> => {
@@ -156,14 +184,27 @@ export function useRandomEvent(
     const resolvingEventId = activeEvent?.eventId || null;
     setActiveEvent(null);
     try {
-      const raw = await AsyncStorage.getItem(EVENT_STORAGE_KEY(playerId));
-      if (raw) {
-        const persisted: RandomEventPersistedState = JSON.parse(raw);
-        await AsyncStorage.setItem(
-          EVENT_STORAGE_KEY(playerId),
-          JSON.stringify({ ...persisted, isResolved: true }),
-        );
-      }
+      await updatePersistedGameplayState(playerId, (current) => {
+        const base = current || createEmptyPersistedGameplayState(playerId, currentGameDay);
+        if (base.currentDay !== currentGameDay) return base;
+
+        const persistedEvent = base.randomEvent;
+        const resolvedEvent =
+          persistedEvent && persistedEvent.sourceDay === currentGameDay && persistedEvent.eventId === resolvingEventId
+            ? { ...persistedEvent, isResolved: true }
+            : resolvingEventId
+              ? {
+                  eventId: resolvingEventId,
+                  sourceDay: currentGameDay,
+                  isResolved: true,
+                }
+              : persistedEvent;
+
+        return {
+          ...base,
+          randomEvent: resolvedEvent,
+        };
+      });
       recordInfo('randomEvent', 'Resolved active random event.', {
         action: 'resolve_event',
         context: {
