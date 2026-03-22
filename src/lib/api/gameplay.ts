@@ -4,6 +4,7 @@ import {
   normalizeCreditScore,
   normalizeCurrentDay,
   normalizeFiniteNumber,
+  normalizeJobName,
   normalizeMoneyValue,
   normalizeOptionalMoneyValue,
   normalizePercentageStat,
@@ -332,7 +333,9 @@ function canonicalActionKey(actionKey: GameplayActionKey): GameplayActionKey {
   if (raw.includes('business') && raw.includes('operate')) return 'operate_business';
   if (raw.includes('inventory') || raw.includes('stock')) return 'buy_inventory';
   if (raw.includes('ride') || raw.includes('delivery') || raw.includes('side_income')) return 'side_income';
-  if (raw.includes('work') || raw.includes('shift') || raw.includes('job')) return 'work_shift';
+  // switch_job must be resolved before work_shift — 'job' appears in both but they are distinct actions.
+  if (raw === 'switch_job' || (raw.includes('switch') && raw.includes('job'))) return 'switch_job';
+  if (raw.includes('work') || raw.includes('shift')) return 'work_shift';
   if (raw.includes('study') || raw.includes('train') || raw.includes('cert')) return 'study';
   if (raw.includes('debt') || raw.includes('payment')) return 'debt_payment';
   if (raw.includes('recovery')) return 'recovery_action';
@@ -585,6 +588,34 @@ export async function executeAction(
     );
   }
 
+  if (canonical === 'switch_job') {
+    const targetJob = normalizeJobName(
+      params.job_key ?? params.job ?? params.job_name ?? params.target_job,
+    );
+    if (!targetJob) {
+      throw new Error('Job switch requires a target job identifier.');
+    }
+    const raw = await fetchApiWithFallback<Record<string, unknown>>(
+      [
+        `/jobs/player/${playerId}/switch`,
+        `/career/player/${playerId}/switch-job`,
+        `/player/${playerId}/switch-job`,
+      ],
+      {
+        method: 'POST',
+        body: JSON.stringify({ job_key: targetJob }),
+      },
+    );
+    return executionResponseBase(
+      playerId,
+      canonical,
+      toString(raw.message, 'Job switch completed'),
+      toString(raw.message, 'Job updated.'),
+      toNumber(params.time_cost_units, 1),
+      raw,
+    );
+  }
+
   if (canonical === 'change_region') {
     const regionKey = toString(params.region_key || params.regionKey);
     if (!regionKey) {
@@ -611,12 +642,20 @@ export async function executeAction(
   }
 
   if (canonical === 'work_shift') {
+    const jobName = normalizeJobName(
+      params.job_name ?? params.job ?? params.current_job,
+    );
+    if (!jobName) {
+      throw new Error(
+        'Work shift requires an active job assignment. Acquire a job before performing a work shift.',
+      );
+    }
     const raw = await fetchApiWithFallback<Record<string, unknown>>(
       [`/jobs/work`],
       {
         method: 'POST',
         body: JSON.stringify({
-          job_name: toString(params.job_name || params.job || params.current_job, 'banker'),
+          job_name: jobName,
           hours_worked: Math.max(1, Math.min(12, Math.round(toNumber(params.hours_worked, 4)))),
         }),
       },

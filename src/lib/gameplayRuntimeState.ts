@@ -6,6 +6,7 @@ import {
 } from '@/types/gameplay';
 import {
   normalizeCurrentDay,
+  normalizeJobName,
   normalizeMoneyValue,
   normalizeOptionalMoneyValue,
   normalizePercentageStat,
@@ -43,10 +44,7 @@ interface CreateGameplayCanonicalStateArgs {
   endOfDay: EndOfDaySummaryResponse | null;
 }
 
-function toNullableJob(value: unknown): string | null {
-  const normalized = String(value || '').trim();
-  return normalized || null;
-}
+// toNullableJob replaced by the shared normalizeJobName helper from economySafety.
 
 export function resolveSettledEndOfDay(
   sessionStatus: DailySessionStatus,
@@ -85,11 +83,11 @@ export function createGameplayCanonicalState({
     netWorthAmount: normalizeMoneyValue(dashboard?.stats.net_worth_xgp, { fallback: 0, allowNegative: true }),
     stress: normalizePercentageStat(dashboard?.stats.stress, 0),
     health: normalizePercentageStat(dashboard?.stats.health, 100),
-    currentJob: toNullableJob(dashboard?.stats.current_job),
+    currentJob: normalizeJobName(dashboard?.stats.current_job),
     incomeAmount,
     expenseAmount,
     netCashFlow,
-    incomeSource: toNullableJob(settledEndOfDay?.biggest_gain),
+    incomeSource: normalizeJobName(settledEndOfDay?.biggest_gain),
     tomorrowWarnings: Array.isArray(settledEndOfDay?.tomorrow_warnings)
       ? settledEndOfDay.tomorrow_warnings
       : [],

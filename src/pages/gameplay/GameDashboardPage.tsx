@@ -431,6 +431,9 @@ export default function GameDashboardPage({
   const selectedActionRef = useRef<DailyActionItem | null>(null);
   selectedActionRef.current = selectedAction;
 
+  // Tracks latest gameplayState so onExecuteAction can read currentJob without a stale closure.
+  const gameplayStateRef = useRef<ReturnType<typeof attachGameplayEventState> | null>(null);
+
   const dailySession = useDailySession(playerId);
   const { isMobile } = useBreakpoint();
   const scrollRef = useRef<ScrollView | null>(null);
@@ -1405,6 +1408,8 @@ export default function GameDashboardPage({
     () => attachGameplayEventState(gameplayCoreState, randomEvent.activeEvent),
     [gameplayCoreState, randomEvent.activeEvent],
   );
+  // Keep ref in sync so callbacks that capture stale closures can still read the latest job state.
+  gameplayStateRef.current = gameplayState;
   const economyState = useEconomyState(gameplayState);
   const expenseDebt = useExpenseDebt(gameplayState);
   const jobIncome = useJobIncome(gameplayState);
@@ -1520,8 +1525,26 @@ export default function GameDashboardPage({
       };
     }
 
+    const canonicalKey = String(actionKey).toLowerCase().trim();
+    const isWorkShift = canonicalKey === 'work_shift' || (canonicalKey.includes('work') && !canonicalKey.includes('switch'));
+
+    // For work shifts: require a current canonical job before hitting the API.
+    if (isWorkShift) {
+      const currentJob = gameplayStateRef.current?.currentJob ?? null;
+      if (!currentJob) {
+        throw new Error('You need an active job to perform a work shift. Acquire a job first.');
+      }
+    }
+
+    // Inject the canonical job for work_shift if the action hub did not supply it.
+    const currentJobParam =
+      isWorkShift && !actionParams.job_name && !actionParams.job && !actionParams.current_job
+        ? { current_job: gameplayStateRef.current?.currentJob ?? null }
+        : {};
+
     return executeAction(playerId, actionKey, {
       ...actionParams,
+      ...currentJobParam,
       time_cost_units: guard.timeCostUnits,
     });
   }, [

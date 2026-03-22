@@ -128,6 +128,19 @@ export function normalizeTimeCostUnits(value: unknown, fallback = 2): number {
   });
 }
 
+/**
+ * Normalizes a raw job name / key string to a clean non-empty value or null.
+ * Rejects blank strings, literal "null"/"undefined" tokens, and values over 128 chars.
+ * Used to validate job parameters before API calls.
+ */
+export function normalizeJobName(value: unknown): string | null {
+  const s = String(value ?? '').trim();
+  if (!s) return null;
+  const lower = s.toLowerCase();
+  if (lower === 'null' || lower === 'undefined') return null;
+  return s.slice(0, 128);
+}
+
 export function safeNetCashFlowCalculation(
   incomeAmount: unknown,
   expenseAmount: unknown,
