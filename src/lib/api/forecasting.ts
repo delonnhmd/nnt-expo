@@ -1,8 +1,6 @@
 // Step 42 — Forecasting, Planning Intelligence, and Forward Projection Layer API client
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-import { BACKEND } from '@/constants';
+import { fetchApi } from '@/lib/apiClient';
 import {
   DecisionGuidanceResponse,
   ForecastSnapshotResponse,
@@ -15,77 +13,6 @@ import {
   SimulationResponse,
 } from '@/types/forecasting';
 
-async function getBaseUrl(): Promise<string> {
-  try {
-    const override = await AsyncStorage.getItem('backend:override');
-    if (override && /^https?:\/\//i.test(override)) {
-      return override.replace(/\/$/, '');
-    }
-  } catch {
-    // fall through to static config
-  }
-  return (BACKEND || '').replace(/\/$/, '');
-}
-
-async function getIdentityHeaders(): Promise<Record<string, string>> {
-  let uid = '';
-  try {
-    uid = (await AsyncStorage.getItem('identity:uid')) || '';
-  } catch {
-    uid = '';
-  }
-
-  if (!uid) {
-    uid = `uid_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-    try {
-      await AsyncStorage.setItem('identity:uid', uid);
-    } catch {
-      // no-op
-    }
-  }
-
-  const ua =
-    typeof navigator !== 'undefined' && (navigator as any)?.userAgent
-      ? String((navigator as any).userAgent)
-      : 'expo';
-
-  return {
-    'X-UID': uid,
-    'X-Device-FP': ua,
-  };
-}
-
-async function fetchJsonPath<T>(path: string): Promise<T> {
-  const base = await getBaseUrl();
-  if (!base) {
-    throw new Error('Backend URL is not configured. Set EXPO_PUBLIC_BACKEND or backend override.');
-  }
-  const headers = await getIdentityHeaders();
-  const resp = await fetch(`${base}${path}`, { headers });
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => resp.statusText);
-    throw new Error(`Forecasting API error ${resp.status}: ${text}`);
-  }
-  return resp.json() as Promise<T>;
-}
-
-async function postJsonPath<T>(path: string, body: unknown): Promise<T> {
-  const base = await getBaseUrl();
-  if (!base) {
-    throw new Error('Backend URL is not configured. Set EXPO_PUBLIC_BACKEND or backend override.');
-  }
-  const headers = await getIdentityHeaders();
-  const resp = await fetch(`${base}${path}`, {
-    method: 'POST',
-    headers: { ...headers, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => resp.statusText);
-    throw new Error(`Forecasting API error ${resp.status}: ${text}`);
-  }
-  return resp.json() as Promise<T>;
-}
 
 function dayParam(day?: number, extraParams?: string): string {
   const parts: string[] = [];
@@ -104,7 +31,7 @@ export async function getShortTermForecast(
   horizonDays: number = 14,
 ): Promise<ShortTermForecastResponse> {
   const extra = `horizon_days=${horizonDays}`;
-  return fetchJsonPath(`/forecast/player/${playerId}/short-term${dayParam(day, extra)}`);
+  return fetchApi(`/forecast/player/${playerId}/short-term${dayParam(day, extra)}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -117,7 +44,7 @@ export async function getRiskProjection(
   horizonDays: number = 14,
 ): Promise<RiskProjectionResponse> {
   const extra = `horizon_days=${horizonDays}`;
-  return fetchJsonPath(`/forecast/player/${playerId}/risk${dayParam(day, extra)}`);
+  return fetchApi(`/forecast/player/${playerId}/risk${dayParam(day, extra)}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -130,7 +57,7 @@ export async function getForecastSummary(
   horizonDays: number = 14,
 ): Promise<ForecastSummaryResponse> {
   const extra = `horizon_days=${horizonDays}`;
-  return fetchJsonPath(`/forecast/player/${playerId}/summary${dayParam(day, extra)}`);
+  return fetchApi(`/forecast/player/${playerId}/summary${dayParam(day, extra)}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -142,7 +69,7 @@ export async function simulateAction(
   req: SimulationRequest,
   day?: number,
 ): Promise<SimulationResponse> {
-  return postJsonPath(`/forecast/player/${playerId}/simulate${dayParam(day)}`, req);
+  return fetchApi(`/forecast/player/${playerId}/simulate${dayParam(day)}`, { method: 'POST', body: JSON.stringify(req) });
 }
 
 // ---------------------------------------------------------------------------
@@ -154,7 +81,7 @@ export async function compareScenarios(
   req: ScenarioComparisonRequest,
   day?: number,
 ): Promise<ScenarioComparisonResponse> {
-  return postJsonPath(`/forecast/player/${playerId}/compare${dayParam(day)}`, req);
+  return fetchApi(`/forecast/player/${playerId}/compare${dayParam(day)}`, { method: 'POST', body: JSON.stringify(req) });
 }
 
 // ---------------------------------------------------------------------------
@@ -167,7 +94,7 @@ export async function getDecisionGuidance(
   horizonDays: number = 14,
 ): Promise<DecisionGuidanceResponse> {
   const extra = `horizon_days=${horizonDays}`;
-  return fetchJsonPath(`/forecast/player/${playerId}/guidance${dayParam(day, extra)}`);
+  return fetchApi(`/forecast/player/${playerId}/guidance${dayParam(day, extra)}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -180,5 +107,5 @@ export async function buildForecastSnapshot(
   horizonDays: number = 14,
 ): Promise<ForecastSnapshotResponse> {
   const extra = `horizon_days=${horizonDays}`;
-  return postJsonPath(`/forecast/player/${playerId}/snapshot${dayParam(day, extra)}`, {});
+  return fetchApi(`/forecast/player/${playerId}/snapshot${dayParam(day, extra)}`, { method: 'POST', body: JSON.stringify({}) });
 }

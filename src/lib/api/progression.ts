@@ -1,6 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-import { BACKEND } from '@/constants';
+import { fetchApiWithFallback } from '@/lib/apiClient';
 import {
   DailyGoalItem,
   DailyGoalsResponse,
@@ -11,98 +9,6 @@ import {
   WeeklyMissionsResponse,
 } from '@/types/progression';
 
-async function getBaseUrl(): Promise<string> {
-  try {
-    const override = await AsyncStorage.getItem('backend:override');
-    if (override && /^https?:\/\//i.test(override)) {
-      return override.replace(/\/$/, '');
-    }
-  } catch {
-    // Use default backend URL.
-  }
-  return (BACKEND || '').replace(/\/$/, '');
-}
-
-async function getIdentityHeaders(): Promise<Record<string, string>> {
-  let uid = '';
-  try {
-    uid = (await AsyncStorage.getItem('identity:uid')) || '';
-  } catch {
-    uid = '';
-  }
-  if (!uid) {
-    uid = `uid_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-    try {
-      await AsyncStorage.setItem('identity:uid', uid);
-    } catch {
-      // Ignore persistence failure.
-    }
-  }
-
-  const ua =
-    typeof navigator !== 'undefined' && (navigator as any)?.userAgent
-      ? String((navigator as any).userAgent)
-      : 'expo';
-
-  return {
-    'X-UID': uid,
-    'X-Device-FP': ua,
-  };
-}
-
-async function fetchJsonPath<T>(path: string, init?: RequestInit): Promise<T> {
-  const base = await getBaseUrl();
-  if (!base) {
-    throw new Error('Backend URL is not configured. Set EXPO_PUBLIC_BACKEND or backend override.');
-  }
-
-  let adminToken: string | null = null;
-  try {
-    adminToken = await AsyncStorage.getItem('admin:token');
-  } catch {
-    adminToken = null;
-  }
-  const identityHeaders = await getIdentityHeaders();
-
-  const response = await fetch(`${base}${path}`, {
-    ...init,
-    headers: {
-      'content-type': 'application/json',
-      ...identityHeaders,
-      ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {}),
-      ...(init?.headers || {}),
-    },
-  } as RequestInit);
-
-  const text = await response.text();
-  let payload: unknown = null;
-  try {
-    payload = text ? JSON.parse(text) : null;
-  } catch {
-    throw new Error(`Non-JSON response at ${path}`);
-  }
-
-  if (!response.ok) {
-    const detail =
-      typeof payload === 'object' && payload && 'detail' in (payload as any)
-        ? String((payload as any).detail)
-        : `HTTP ${response.status}`;
-    throw new Error(`${path}: ${detail}`);
-  }
-  return payload as T;
-}
-
-async function fetchWithFallback<T>(paths: string[], init?: RequestInit): Promise<T> {
-  const errors: string[] = [];
-  for (const path of paths) {
-    try {
-      return await fetchJsonPath<T>(path, init);
-    } catch (error: unknown) {
-      errors.push(error instanceof Error ? error.message : String(error));
-    }
-  }
-  throw new Error(errors.join(' | '));
-}
 
 function toNumber(value: unknown, fallback = 0): number {
   const num = Number(value);
@@ -227,35 +133,35 @@ function normalizeSummary(raw: Record<string, unknown>, playerId: string): Progr
 }
 
 export async function getDailyGoals(playerId: string): Promise<DailyGoalsResponse> {
-  const raw = await fetchWithFallback<Record<string, unknown>>([
+  const raw = await fetchApiWithFallback<Record<string, unknown>>([
     `/progression/player/${playerId}/daily-goals`,
   ]);
   return normalizeDailyGoals(raw, playerId);
 }
 
 export async function getWeeklyMissions(playerId: string): Promise<WeeklyMissionsResponse> {
-  const raw = await fetchWithFallback<Record<string, unknown>>([
+  const raw = await fetchApiWithFallback<Record<string, unknown>>([
     `/progression/player/${playerId}/weekly-missions`,
   ]);
   return normalizeWeeklyMissions(raw, playerId);
 }
 
 export async function getPlayerStreaks(playerId: string): Promise<StreaksResponse> {
-  const raw = await fetchWithFallback<Record<string, unknown>>([
+  const raw = await fetchApiWithFallback<Record<string, unknown>>([
     `/progression/player/${playerId}/streaks`,
   ]);
   return normalizeStreaks(raw, playerId);
 }
 
 export async function getProgressionSummary(playerId: string): Promise<ProgressionSummaryResponse> {
-  const raw = await fetchWithFallback<Record<string, unknown>>([
+  const raw = await fetchApiWithFallback<Record<string, unknown>>([
     `/progression/player/${playerId}/summary`,
   ]);
   return normalizeSummary(raw, playerId);
 }
 
 export async function refreshProgression(playerId: string): Promise<ProgressionSummaryResponse> {
-  const raw = await fetchWithFallback<Record<string, unknown>>(
+  const raw = await fetchApiWithFallback<Record<string, unknown>>(
     [
       `/progression/player/${playerId}/refresh`,
     ],

@@ -1,6 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-import { BACKEND } from '@/constants';
+import { fetchApiWithFallback } from '@/lib/apiClient';
 import {
   ActiveCommitmentResponse,
   AvailableCommitmentItem,
@@ -13,100 +11,6 @@ import {
   CommitmentSummaryResponse,
 } from '@/types/commitment';
 
-async function getBaseUrl(): Promise<string> {
-  try {
-    const override = await AsyncStorage.getItem('backend:override');
-    if (override && /^https?:\/\//i.test(override)) {
-      return override.replace(/\/$/, '');
-    }
-  } catch {
-    // use default backend when storage lookup fails
-  }
-  return (BACKEND || '').replace(/\/$/, '');
-}
-
-async function getIdentityHeaders(): Promise<Record<string, string>> {
-  let uid = '';
-  try {
-    uid = (await AsyncStorage.getItem('identity:uid')) || '';
-  } catch {
-    uid = '';
-  }
-
-  if (!uid) {
-    uid = `uid_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-    try {
-      await AsyncStorage.setItem('identity:uid', uid);
-    } catch {
-      // no-op when persistence fails
-    }
-  }
-
-  const ua =
-    typeof navigator !== 'undefined' && (navigator as any)?.userAgent
-      ? String((navigator as any).userAgent)
-      : 'expo';
-
-  return {
-    'X-UID': uid,
-    'X-Device-FP': ua,
-  };
-}
-
-async function fetchJsonPath<T>(path: string, init?: RequestInit): Promise<T> {
-  const base = await getBaseUrl();
-  if (!base) {
-    throw new Error('Backend URL is not configured. Set EXPO_PUBLIC_BACKEND or backend override.');
-  }
-
-  let adminToken: string | null = null;
-  try {
-    adminToken = await AsyncStorage.getItem('admin:token');
-  } catch {
-    adminToken = null;
-  }
-  const identityHeaders = await getIdentityHeaders();
-
-  const response = await fetch(`${base}${path}`, {
-    ...init,
-    headers: {
-      'content-type': 'application/json',
-      ...identityHeaders,
-      ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {}),
-      ...(init?.headers || {}),
-    },
-  } as RequestInit);
-
-  const text = await response.text();
-  let payload: unknown = null;
-  try {
-    payload = text ? JSON.parse(text) : null;
-  } catch {
-    const snippet = (text || '').slice(0, 180);
-    throw new Error(`Non-JSON response at ${path}: ${snippet}`);
-  }
-
-  if (!response.ok) {
-    const detail =
-      typeof payload === 'object' && payload && 'detail' in (payload as any)
-        ? String((payload as any).detail)
-        : `HTTP ${response.status}`;
-    throw new Error(`${path}: ${detail}`);
-  }
-  return payload as T;
-}
-
-async function fetchWithFallback<T>(paths: string[], init?: RequestInit): Promise<T> {
-  const errors: string[] = [];
-  for (const path of paths) {
-    try {
-      return await fetchJsonPath<T>(path, init);
-    } catch (error: unknown) {
-      errors.push(error instanceof Error ? error.message : String(error));
-    }
-  }
-  throw new Error(errors.join(' | '));
-}
 
 function toNumber(value: unknown, fallback = 0): number {
   const parsed = Number(value);
@@ -256,7 +160,7 @@ export async function getAvailableCommitments(
   playerId: string,
   asOfDate?: string | null,
 ): Promise<AvailableCommitmentsResponse> {
-  const raw = await fetchWithFallback<unknown>([
+  const raw = await fetchApiWithFallback<unknown>([
     withDateParam(`/commitment/player/${playerId}/available`, asOfDate),
   ]);
   return normalizeAvailableResponse(raw, playerId);
@@ -266,7 +170,7 @@ export async function getActiveCommitment(
   playerId: string,
   asOfDate?: string | null,
 ): Promise<ActiveCommitmentResponse> {
-  const raw = await fetchWithFallback<unknown>([
+  const raw = await fetchApiWithFallback<unknown>([
     withDateParam(`/commitment/player/${playerId}/active`, asOfDate),
   ]);
   return normalizeActiveCommitment(raw, playerId, asOfDate || '');
@@ -277,7 +181,7 @@ export async function activateCommitment(
   payload: CommitmentActivationRequest,
   asOfDate?: string | null,
 ): Promise<ActiveCommitmentResponse> {
-  const raw = await fetchWithFallback<unknown>(
+  const raw = await fetchApiWithFallback<unknown>(
     [withDateParam(`/commitment/player/${playerId}/activate`, asOfDate)],
     {
       method: 'POST',
@@ -295,7 +199,7 @@ export async function cancelCommitment(
   playerId: string,
   asOfDate?: string | null,
 ): Promise<CommitmentSummaryResponse> {
-  const raw = await fetchWithFallback<unknown>(
+  const raw = await fetchApiWithFallback<unknown>(
     [withDateParam(`/commitment/player/${playerId}/cancel`, asOfDate)],
     {
       method: 'POST',
@@ -310,7 +214,7 @@ export async function replaceCommitment(
   payload: CommitmentActivationRequest,
   asOfDate?: string | null,
 ): Promise<ActiveCommitmentResponse> {
-  const raw = await fetchWithFallback<unknown>(
+  const raw = await fetchApiWithFallback<unknown>(
     [withDateParam(`/commitment/player/${playerId}/replace`, asOfDate)],
     {
       method: 'POST',
@@ -328,7 +232,7 @@ export async function getCommitmentSummary(
   playerId: string,
   asOfDate?: string | null,
 ): Promise<CommitmentSummaryResponse> {
-  const raw = await fetchWithFallback<unknown>([
+  const raw = await fetchApiWithFallback<unknown>([
     withDateParam(`/commitment/player/${playerId}/summary`, asOfDate),
   ]);
   return normalizeSummaryResponse(raw, playerId);
@@ -338,7 +242,7 @@ export async function getCommitmentFeedback(
   playerId: string,
   asOfDate?: string | null,
 ): Promise<CommitmentFeedbackResponse> {
-  const raw = await fetchWithFallback<unknown>([
+  const raw = await fetchApiWithFallback<unknown>([
     withDateParam(`/commitment/player/${playerId}/feedback`, asOfDate),
   ]);
   return normalizeFeedbackResponse(raw, playerId);
@@ -350,7 +254,7 @@ export async function getCommitmentHistory(
 ): Promise<CommitmentHistoryResponse> {
   const limit = Math.max(1, Math.min(100, Math.round(toNumber(options?.limit, 20))));
   const path = withDateParam(`/commitment/player/${playerId}/history?limit=${limit}`, options?.asOfDate);
-  const raw = await fetchWithFallback<unknown>([path]);
+  const raw = await fetchApiWithFallback<unknown>([path]);
   return normalizeHistoryResponse(raw, playerId);
 }
 
@@ -363,7 +267,7 @@ export async function refreshCommitment(
   if (options?.asOfDate) params.push(`as_of_date=${encodeURIComponent(options.asOfDate)}`);
   const suffix = params.length > 0 ? `?${params.join('&')}` : '';
 
-  const raw = await fetchWithFallback<unknown>(
+  const raw = await fetchApiWithFallback<unknown>(
     [`/commitment/player/${playerId}/refresh${suffix}`],
     {
       method: 'POST',

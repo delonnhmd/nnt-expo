@@ -1,6 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-import { BACKEND } from '@/constants';
+import { fetchApiWithFallback } from '@/lib/apiClient';
 import {
   OnboardingActionResultResponse,
   OnboardingAdvanceRequest,
@@ -10,45 +8,6 @@ import {
   OnboardingUnlockScheduleResponse,
 } from '@/types/onboarding';
 
-async function getBaseUrl(): Promise<string> {
-  try {
-    const override = await AsyncStorage.getItem('backend:override');
-    if (override && /^https?:\/\//i.test(override)) {
-      return override.replace(/\/$/, '');
-    }
-  } catch {
-    // Use default backend when storage lookup fails.
-  }
-  return (BACKEND || '').replace(/\/$/, '');
-}
-
-async function getIdentityHeaders(): Promise<Record<string, string>> {
-  let uid = '';
-  try {
-    uid = (await AsyncStorage.getItem('identity:uid')) || '';
-  } catch {
-    uid = '';
-  }
-
-  if (!uid) {
-    uid = `uid_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-    try {
-      await AsyncStorage.setItem('identity:uid', uid);
-    } catch {
-      // Continue without persistence if storage fails.
-    }
-  }
-
-  const ua =
-    typeof navigator !== 'undefined' && (navigator as any)?.userAgent
-      ? String((navigator as any).userAgent)
-      : 'expo';
-
-  return {
-    'X-UID': uid,
-    'X-Device-FP': ua,
-  };
-}
 
 function toString(value: unknown, fallback = ''): string {
   if (typeof value === 'string') return value;
@@ -80,63 +39,6 @@ function toStringList(value: unknown): string[] {
   return value.map((entry) => toString(entry)).filter(Boolean);
 }
 
-async function fetchJsonPath<T>(path: string, init?: RequestInit): Promise<T> {
-  const base = await getBaseUrl();
-  if (!base) {
-    throw new Error('Backend URL is not configured. Set EXPO_PUBLIC_BACKEND or backend override.');
-  }
-
-  let adminToken: string | null = null;
-  try {
-    adminToken = await AsyncStorage.getItem('admin:token');
-  } catch {
-    adminToken = null;
-  }
-  const identityHeaders = await getIdentityHeaders();
-
-  const response = await fetch(`${base}${path}`, {
-    ...init,
-    headers: {
-      'content-type': 'application/json',
-      ...identityHeaders,
-      ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {}),
-      ...(init?.headers || {}),
-    },
-  } as RequestInit);
-
-  const text = await response.text();
-  let payload: unknown = null;
-  try {
-    payload = text ? JSON.parse(text) : null;
-  } catch {
-    const snippet = (text || '').slice(0, 180);
-    throw new Error(`Non-JSON response at ${path}: ${snippet}`);
-  }
-
-  if (!response.ok) {
-    const detail =
-      typeof payload === 'object' && payload && 'detail' in (payload as any)
-        ? String((payload as any).detail)
-        : typeof payload === 'object' && payload && 'error' in (payload as any)
-          ? String((payload as any).error)
-          : `HTTP ${response.status}`;
-    throw new Error(`${path}: ${detail}`);
-  }
-
-  return payload as T;
-}
-
-async function fetchWithFallback<T>(paths: string[], init?: RequestInit): Promise<T> {
-  const errors: string[] = [];
-  for (const path of paths) {
-    try {
-      return await fetchJsonPath<T>(path, init);
-    } catch (error: unknown) {
-      errors.push(error instanceof Error ? error.message : String(error));
-    }
-  }
-  throw new Error(errors.join(' | '));
-}
 
 function normalizeState(raw: unknown): OnboardingStateResponse {
   const obj = toRecord(raw);
@@ -237,28 +139,28 @@ function normalizeActionResult(raw: unknown): OnboardingActionResultResponse {
 }
 
 export async function getOnboardingState(playerId: string): Promise<OnboardingStateResponse> {
-  const raw = await fetchWithFallback<unknown>([
+  const raw = await fetchApiWithFallback<unknown>([
     `/onboarding/player/${playerId}/state`,
   ]);
   return normalizeState(raw);
 }
 
 export async function getOnboardingGuidance(playerId: string): Promise<OnboardingGuidanceResponse> {
-  const raw = await fetchWithFallback<unknown>([
+  const raw = await fetchApiWithFallback<unknown>([
     `/onboarding/player/${playerId}/guidance`,
   ]);
   return normalizeGuidance(raw);
 }
 
 export async function getOnboardingDashboardConfig(playerId: string): Promise<OnboardingDashboardConfigResponse> {
-  const raw = await fetchWithFallback<unknown>([
+  const raw = await fetchApiWithFallback<unknown>([
     `/onboarding/player/${playerId}/dashboard-config`,
   ]);
   return normalizeDashboardConfig(raw);
 }
 
 export async function getOnboardingUnlockSchedule(playerId: string): Promise<OnboardingUnlockScheduleResponse> {
-  const raw = await fetchWithFallback<unknown>([
+  const raw = await fetchApiWithFallback<unknown>([
     `/onboarding/player/${playerId}/unlock-schedule`,
   ]);
   return normalizeUnlockSchedule(raw);
@@ -268,7 +170,7 @@ export async function advanceOnboarding(
   playerId: string,
   payload: OnboardingAdvanceRequest = {},
 ): Promise<OnboardingActionResultResponse> {
-  const raw = await fetchWithFallback<unknown>(
+  const raw = await fetchApiWithFallback<unknown>(
     [`/onboarding/player/${playerId}/advance`],
     {
       method: 'POST',
@@ -279,7 +181,7 @@ export async function advanceOnboarding(
 }
 
 export async function skipOnboarding(playerId: string): Promise<OnboardingActionResultResponse> {
-  const raw = await fetchWithFallback<unknown>(
+  const raw = await fetchApiWithFallback<unknown>(
     [`/onboarding/player/${playerId}/skip`],
     {
       method: 'POST',
@@ -290,7 +192,7 @@ export async function skipOnboarding(playerId: string): Promise<OnboardingAction
 }
 
 export async function completeOnboarding(playerId: string): Promise<OnboardingActionResultResponse> {
-  const raw = await fetchWithFallback<unknown>(
+  const raw = await fetchApiWithFallback<unknown>(
     [`/onboarding/player/${playerId}/complete`],
     {
       method: 'POST',
@@ -304,7 +206,7 @@ export async function refreshOnboarding(
   playerId: string,
   payload: OnboardingAdvanceRequest = {},
 ): Promise<OnboardingActionResultResponse> {
-  const raw = await fetchWithFallback<unknown>(
+  const raw = await fetchApiWithFallback<unknown>(
     [`/onboarding/player/${playerId}/refresh`],
     {
       method: 'POST',

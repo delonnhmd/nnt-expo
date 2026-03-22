@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
+import { KEY_ADMIN_ADDRESS, KEY_ADMIN_TOKEN, KEY_BACKEND_OVERRIDE } from '@/lib/apiClient';
 import * as Updates from 'expo-updates';
 
 import AppShell from '@/components/layout/AppShell';
@@ -46,13 +47,13 @@ export default function SettingsScreen() {
     loaded.current = true;
     (async () => {
       try {
-        const url = await AsyncStorage.getItem('backend:override');
+        const url = await AsyncStorage.getItem(KEY_BACKEND_OVERRIDE);
         setBackendUrl(url || '');
 
-        const token = await AsyncStorage.getItem('admin:token');
+        const token = await AsyncStorage.getItem(KEY_ADMIN_TOKEN);
         setAdminToken(token || '');
 
-        const addr = await AsyncStorage.getItem('admin:address');
+        const addr = await AsyncStorage.getItem(KEY_ADMIN_ADDRESS);
         setAdminAddress(addr || '');
       } catch {
         Alert.alert('Settings', 'Unable to load saved settings. You can still enter new values below.');
@@ -102,21 +103,21 @@ export default function SettingsScreen() {
       }
 
       if (normalizedBackend) {
-        await AsyncStorage.setItem('backend:override', normalizedBackend);
+        await AsyncStorage.setItem(KEY_BACKEND_OVERRIDE, normalizedBackend);
       } else {
-        await AsyncStorage.removeItem('backend:override');
+        await AsyncStorage.removeItem(KEY_BACKEND_OVERRIDE);
       }
 
       if (normalizedToken) {
-        await AsyncStorage.setItem('admin:token', normalizedToken);
+        await AsyncStorage.setItem(KEY_ADMIN_TOKEN, normalizedToken);
       } else {
-        await AsyncStorage.removeItem('admin:token');
+        await AsyncStorage.removeItem(KEY_ADMIN_TOKEN);
       }
 
       if (normalizedAddress) {
-        await AsyncStorage.setItem('admin:address', normalizedAddress);
+        await AsyncStorage.setItem(KEY_ADMIN_ADDRESS, normalizedAddress);
       } else {
-        await AsyncStorage.removeItem('admin:address');
+        await AsyncStorage.removeItem(KEY_ADMIN_ADDRESS);
       }
 
       setBackendUrl(normalizedBackend);
@@ -133,7 +134,7 @@ export default function SettingsScreen() {
   const resetOverrides = async () => {
     setSaving(true);
     try {
-      await AsyncStorage.multiRemove(['backend:override', 'admin:token', 'admin:address']);
+      await AsyncStorage.multiRemove([KEY_BACKEND_OVERRIDE, KEY_ADMIN_TOKEN, KEY_ADMIN_ADDRESS]);
       setBackendUrl('');
       setAdminToken('');
       setAdminAddress('');

@@ -1,6 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-import { BACKEND } from '@/constants';
+import { fetchApiWithFallback } from '@/lib/apiClient';
 import {
   ActionImpact,
   ActionExecutionResponse,
@@ -20,102 +18,6 @@ import {
   WeeklyPlayerSummaryResponse,
 } from '@/types/gameplay';
 
-async function getBaseUrl(): Promise<string> {
-  try {
-    const override = await AsyncStorage.getItem('backend:override');
-    if (override && /^https?:\/\//i.test(override)) {
-      return override.replace(/\/$/, '');
-    }
-  } catch {
-    // Use default backend when local override lookup fails.
-  }
-  return (BACKEND || '').replace(/\/$/, '');
-}
-
-async function getIdentityHeaders(): Promise<Record<string, string>> {
-  let uid = '';
-  try {
-    uid = (await AsyncStorage.getItem('identity:uid')) || '';
-  } catch {
-    uid = '';
-  }
-
-  if (!uid) {
-    uid = `uid_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-    try {
-      await AsyncStorage.setItem('identity:uid', uid);
-    } catch {
-      // Continue without persistence if storage fails.
-    }
-  }
-
-  const ua =
-    typeof navigator !== 'undefined' && (navigator as any)?.userAgent
-      ? String((navigator as any).userAgent)
-      : 'expo';
-
-  return {
-    'X-UID': uid,
-    'X-Device-FP': ua,
-  };
-}
-
-async function fetchJsonPath<T>(path: string, init?: RequestInit): Promise<T> {
-  const base = await getBaseUrl();
-  if (!base) {
-    throw new Error('Backend URL is not configured. Set EXPO_PUBLIC_BACKEND or backend override.');
-  }
-
-  let adminToken: string | null = null;
-  try {
-    adminToken = await AsyncStorage.getItem('admin:token');
-  } catch {
-    adminToken = null;
-  }
-  const identityHeaders = await getIdentityHeaders();
-
-  const response = await fetch(`${base}${path}`, {
-    ...init,
-    headers: {
-      'content-type': 'application/json',
-      ...identityHeaders,
-      ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {}),
-      ...(init?.headers || {}),
-    },
-  } as RequestInit);
-
-  const text = await response.text();
-  let payload: unknown = null;
-  try {
-    payload = text ? JSON.parse(text) : null;
-  } catch {
-    const snippet = (text || '').slice(0, 180);
-    throw new Error(`Non-JSON response at ${path}: ${snippet}`);
-  }
-
-  if (!response.ok) {
-    const detail = typeof payload === 'object' && payload && 'detail' in (payload as any)
-      ? String((payload as any).detail)
-      : typeof payload === 'object' && payload && 'error' in (payload as any)
-        ? String((payload as any).error)
-        : `HTTP ${response.status}`;
-    throw new Error(`${path}: ${detail}`);
-  }
-
-  return payload as T;
-}
-
-async function fetchWithFallback<T>(paths: string[], init?: RequestInit): Promise<T> {
-  const errors: string[] = [];
-  for (const path of paths) {
-    try {
-      return await fetchJsonPath<T>(path, init);
-    } catch (error: unknown) {
-      errors.push(error instanceof Error ? error.message : String(error));
-    }
-  }
-  throw new Error(errors.join(' | '));
-}
 
 function toNumber(value: unknown, fallback = 0): number {
   const num = Number(value);
@@ -462,7 +364,7 @@ function normalizeEndDay(raw: Record<string, unknown>, playerId: string): EndDay
 }
 
 export async function getPlayerDashboard(playerId: string): Promise<PlayerDashboardResponse> {
-  const raw = await fetchWithFallback<Record<string, unknown>>([
+  const raw = await fetchApiWithFallback<Record<string, unknown>>([
     `/gameplay/player/${playerId}/dashboard`,
     `/gameplay/${playerId}/dashboard`,
     `/player/${playerId}/dashboard`,
@@ -475,7 +377,7 @@ export async function getPlayerDashboard(playerId: string): Promise<PlayerDashbo
 
 export async function getPlayerActions(playerId: string): Promise<DailyActionHubResponse> {
   try {
-    const raw = await fetchWithFallback<Record<string, unknown>>([
+    const raw = await fetchApiWithFallback<Record<string, unknown>>([
       `/gameplay/player/${playerId}/actions`,
       `/gameplay/player/${playerId}/action-hub`,
       `/gameplay/${playerId}/actions`,
@@ -483,7 +385,7 @@ export async function getPlayerActions(playerId: string): Promise<DailyActionHub
     ]);
     return normalizeActionHub(raw, playerId);
   } catch {
-    const brief = await fetchWithFallback<Record<string, unknown>>([`/briefs/player/${playerId}/latest`]);
+    const brief = await fetchApiWithFallback<Record<string, unknown>>([`/briefs/player/${playerId}/latest`]);
     const hints = Array.isArray(brief.action_hints_json) ? brief.action_hints_json : [];
     return {
       player_id: playerId,
@@ -502,7 +404,7 @@ export async function previewPlayerAction(
   playerId: string,
   payload: ActionPreviewRequest,
 ): Promise<ActionPreviewResponse> {
-  const raw = await fetchWithFallback<Record<string, unknown>>(
+  const raw = await fetchApiWithFallback<Record<string, unknown>>(
     [
       `/gameplay/player/${playerId}/actions/preview`,
       `/gameplay/player/${playerId}/action-preview`,
@@ -517,7 +419,7 @@ export async function previewPlayerAction(
 }
 
 export async function getEndOfDaySummary(playerId: string): Promise<EndOfDaySummaryResponse> {
-  const raw = await fetchWithFallback<Record<string, unknown>>([
+  const raw = await fetchApiWithFallback<Record<string, unknown>>([
     `/gameplay/player/${playerId}/end-of-day-summary`,
     `/player/${playerId}/end-of-day-summary`,
     `/day/summary/${playerId}`,
@@ -526,7 +428,7 @@ export async function getEndOfDaySummary(playerId: string): Promise<EndOfDaySumm
 }
 
 export async function getWeeklySummary(playerId: string): Promise<WeeklyPlayerSummaryResponse> {
-  const raw = await fetchWithFallback<Record<string, unknown>>([
+  const raw = await fetchApiWithFallback<Record<string, unknown>>([
     `/gameplay/player/${playerId}/weekly-summary`,
     `/player/${playerId}/weekly-summary`,
     `/strategy/player/${playerId}/weekly`,
@@ -546,7 +448,7 @@ export async function executeAction(
   };
 
   try {
-    const unified = await fetchWithFallback<Record<string, unknown>>(
+    const unified = await fetchApiWithFallback<Record<string, unknown>>(
       [
         `/gameplay/player/${playerId}/actions/execute`,
         `/gameplay/player/${playerId}/execute-action`,
@@ -571,7 +473,7 @@ export async function executeAction(
   }
 
   if (canonical === 'operate_business') {
-    const raw = await fetchWithFallback<Record<string, unknown>>(
+    const raw = await fetchApiWithFallback<Record<string, unknown>>(
       [`/business/player/${playerId}/operate`],
       {
         method: 'POST',
@@ -593,7 +495,7 @@ export async function executeAction(
     if (!businessId) {
       throw new Error('Inventory purchase needs business_id.');
     }
-    const raw = await fetchWithFallback<Record<string, unknown>>(
+    const raw = await fetchApiWithFallback<Record<string, unknown>>(
       [`/business/player/${playerId}/inventory/purchase`],
       {
         method: 'POST',
@@ -617,7 +519,7 @@ export async function executeAction(
   }
 
   if (canonical === 'study') {
-    const raw = await fetchWithFallback<Record<string, unknown>>(
+    const raw = await fetchApiWithFallback<Record<string, unknown>>(
       [`/career/player/${playerId}/training/log`],
       {
         method: 'POST',
@@ -638,7 +540,7 @@ export async function executeAction(
   }
 
   if (canonical === 'debt_payment' || canonical === 'recovery_action') {
-    const raw = await fetchWithFallback<Record<string, unknown>>(
+    const raw = await fetchApiWithFallback<Record<string, unknown>>(
       [`/finance/player/${playerId}/recovery-action`],
       {
         method: 'POST',
@@ -662,7 +564,7 @@ export async function executeAction(
     if (!regionKey) {
       throw new Error('Region update needs region_key.');
     }
-    const raw = await fetchWithFallback<Record<string, unknown>>(
+    const raw = await fetchApiWithFallback<Record<string, unknown>>(
       [`/housing/player/${playerId}/region`],
       {
         method: 'POST',
@@ -683,7 +585,7 @@ export async function executeAction(
   }
 
   if (canonical === 'work_shift') {
-    const raw = await fetchWithFallback<Record<string, unknown>>(
+    const raw = await fetchApiWithFallback<Record<string, unknown>>(
       [`/jobs/work`],
       {
         method: 'POST',
@@ -704,7 +606,7 @@ export async function executeAction(
   }
 
   if (canonical === 'side_income') {
-    const raw = await fetchWithFallback<Record<string, unknown>>(
+    const raw = await fetchApiWithFallback<Record<string, unknown>>(
       [`/side-income/rideshare`],
       {
         method: 'POST',
@@ -728,7 +630,7 @@ export async function executeAction(
 
 export async function endDay(playerId: string): Promise<EndDayResponse> {
   try {
-    const unified = await fetchWithFallback<Record<string, unknown>>(
+    const unified = await fetchApiWithFallback<Record<string, unknown>>(
       [
         `/gameplay/player/${playerId}/end-day`,
         `/gameplay/${playerId}/end-day`,
@@ -741,7 +643,7 @@ export async function endDay(playerId: string): Promise<EndDayResponse> {
     // Fallback to legacy day progression endpoints below.
   }
 
-  const raw = await fetchWithFallback<Record<string, unknown>>(
+  const raw = await fetchApiWithFallback<Record<string, unknown>>(
     [
       `/day/run/${playerId}`,
       `/day/settle/${playerId}`,
@@ -753,7 +655,7 @@ export async function endDay(playerId: string): Promise<EndDayResponse> {
 
 export async function getPlayerNotifications(playerId: string): Promise<PlayerNotificationResponse> {
   try {
-    const raw = await fetchWithFallback<Record<string, unknown>>([
+    const raw = await fetchApiWithFallback<Record<string, unknown>>([
       `/gameplay/player/${playerId}/notifications`,
       `/player/${playerId}/notifications`,
     ]);
