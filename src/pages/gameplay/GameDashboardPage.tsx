@@ -333,6 +333,20 @@ function onboardingDockActionId(stepKey: string | null | undefined): string | nu
   return null;
 }
 
+function guidanceActionToDockActionId(
+  actionKey: string | null | undefined,
+  hasBusinessOption: boolean,
+): string | null {
+  const key = String(actionKey || '').trim().toLowerCase();
+  if (!key) return null;
+  if (key === 'work_shift' || key === 'side_income') return 'work';
+  if (key === 'recovery_action' || key === 'rest') return 'recovery';
+  if (key === 'end_day' || key === 'start_next_day') return 'advance_day';
+  if (key === 'change_region') return 'jobs';
+  if (key === 'explore_opportunity') return hasBusinessOption ? 'business' : 'stocks';
+  return null;
+}
+
 function deriveProgressionFeedback(
   before: ProgressionSummaryResponse | null,
   after: ProgressionSummaryResponse | null,
@@ -1400,6 +1414,14 @@ export default function GameDashboardPage({
       : 'completed',
   ).toLowerCase();
   const onboardingActive = onboardingStatus === 'not_started' || onboardingStatus === 'in_progress';
+  const guidedExperienceActive = hasOnboardingBundle
+    ? Boolean(
+      onboardingActive
+        || onboardingGuidanceState.data?.guided_experience_active
+        || onboardingConfigState.data?.guided_experience_active
+        || onboardingState.data?.guided_experience_active,
+    )
+    : false;
   const visibleSectionSet = useMemo(
     () => new Set((onboardingConfigState.data?.visible_sections || []).map((entry) => String(entry))),
     [onboardingConfigState.data?.visible_sections],
@@ -1419,10 +1441,10 @@ export default function GameDashboardPage({
   );
 
   const isSectionAllowedByOnboarding = useCallback((sectionKey: string): boolean => {
-    if (!onboardingActive) return true;
+    if (!guidedExperienceActive) return true;
     if (visibleSectionSet.size === 0) return true;
     return visibleSectionSet.has(sectionKey);
-  }, [onboardingActive, visibleSectionSet]);
+  }, [guidedExperienceActive, visibleSectionSet]);
 
   const isSectionVisible = useCallback((sectionKey: string): boolean => {
     if (!isSectionAllowedByOnboarding(sectionKey)) return false;
@@ -1432,11 +1454,11 @@ export default function GameDashboardPage({
   }, [isSectionAllowedByOnboarding]);
 
   const isOnboardingActionAllowed = useCallback((actionKey: string | null | undefined): boolean => {
-    if (!onboardingActive) return true;
+    if (!guidedExperienceActive) return true;
     if (!actionKey) return true;
     if (allowedActionsSet.size === 0) return true;
     return allowedActionsSet.has(String(actionKey));
-  }, [allowedActionsSet, onboardingActive]);
+  }, [allowedActionsSet, guidedExperienceActive]);
 
   const onboardingActionBlockReason = useCallback((actionKey: string | null | undefined): string => {
     const key = String(actionKey || '');
@@ -2289,7 +2311,7 @@ export default function GameDashboardPage({
     });
   }, [isMobile, scrollToSection]);
 
-  const highlightedSection = onboardingActive
+  const highlightedSection = guidedExperienceActive
     ? onboardingConfigState.data?.highlighted_section || null
     : null;
   const highlightedSecondaryGroup = useMemo(() => {
@@ -2318,8 +2340,8 @@ export default function GameDashboardPage({
     </FadeInView>
   ), [highlightedSection, highlightedSecondaryGroup]);
 
-  const secondaryHiddenByOnboarding = onboardingActive && UI_LAYOUT_CONFIG.onboarding.hideSecondaryDuringOnboarding;
-  const forceCollapsedSecondary = onboardingActive && UI_LAYOUT_CONFIG.onboarding.forceCollapseSecondary;
+  const secondaryHiddenByOnboarding = guidedExperienceActive && UI_LAYOUT_CONFIG.onboarding.hideSecondaryDuringOnboarding;
+  const forceCollapsedSecondary = guidedExperienceActive && UI_LAYOUT_CONFIG.onboarding.forceCollapseSecondary;
 
   const secondaryGroupVisibility = useMemo(() => ({
     economy_overview: UI_LAYOUT_CONFIG.secondaryGroups
@@ -2716,7 +2738,13 @@ export default function GameDashboardPage({
 
   const feedbackStyle = feedback ? feedbackToneStyle(feedback.tone) : null;
   const onboardingStepKey = onboardingGuidanceState.data?.step_key || onboardingState.data?.current_step_key || null;
-  const highlightedDockActionId = onboardingActive ? onboardingDockActionId(onboardingStepKey) : null;
+  const preferredGuidanceActionKey = onboardingConfigState.data?.highlighted_action_key
+    || onboardingGuidanceState.data?.required_action_key
+    || null;
+  const highlightedDockActionId = guidedExperienceActive
+    ? guidanceActionToDockActionId(preferredGuidanceActionKey, Boolean(activeBusinessRecord))
+      || onboardingDockActionId(onboardingStepKey)
+    : null;
   const onboardingLoadFailed = onboardingState.status === 'error'
     || onboardingGuidanceState.status === 'error'
     || onboardingConfigState.status === 'error'
@@ -2739,7 +2767,7 @@ export default function GameDashboardPage({
       )}
       footer={isMobile ? (
         <View style={styles.footerStack}>
-          {onboardingActive && onboardingState.data && onboardingGuidanceState.data ? (
+          {guidedExperienceActive && onboardingState.data && onboardingGuidanceState.data ? (
             <OnboardingBanner
               state={onboardingState.data}
               guidance={onboardingGuidanceState.data}
@@ -2755,10 +2783,10 @@ export default function GameDashboardPage({
               onSkip={handleSkipOnboarding}
             />
           ) : null}
-          {onboardingLoadFailed && !onboardingActive ? (
+          {onboardingLoadFailed && !guidedExperienceActive ? (
             <View style={styles.onboardingFallbackBox}>
               <Text style={styles.onboardingFallbackText}>
-                Tutorial unavailable right now. Read the Daily Brief, take one action, then end the day.
+                Guided early-day help is unavailable right now. Read the Daily Brief, take one action, then end the day.
               </Text>
             </View>
           ) : null}

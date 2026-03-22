@@ -201,7 +201,9 @@ export function rollDailyEvent(
   const index =
     ((hash >>> 1) % RANDOM_EVENT_POOL.length + RANDOM_EVENT_POOL.length) %
     RANDOM_EVENT_POOL.length;
-  return RANDOM_EVENT_POOL[index];
+  const rolled = RANDOM_EVENT_POOL[index];
+  if (gameDay <= 3 && rolled?.severity === 'high') return null;
+  return rolled;
 }
 
 /**

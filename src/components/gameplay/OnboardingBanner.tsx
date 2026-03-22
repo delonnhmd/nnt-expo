@@ -16,6 +16,8 @@ function stepHint(stepKey: string, guidance: OnboardingGuidanceResponse | null):
   if (stepKey === 'read_todays_brief') return 'Look for one risk and one opportunity, then act.';
   if (stepKey === 'first_income_action') return 'Tap Work in the lower action bar to earn real cash.';
   if (stepKey === 'end_first_day') return 'Tap End Day in the lower action bar to lock the result.';
+  if (stepKey === 'guided_day_2_pressure') return guidance?.blocker_reason || 'Bills, debt, and recovery now matter.';
+  if (stepKey === 'guided_day_3_opportunity') return guidance?.blocker_reason || 'Look for one safe opportunity without breaking your cash buffer.';
   return guidance?.blocker_reason || 'Follow the highlighted next step.';
 }
 
@@ -37,12 +39,14 @@ export default function OnboardingBanner({
   const title = guidance?.title || state.current_step_title || 'First Day Guide';
   const body = guidance?.body || state.current_step_body || 'Read the Daily Brief, take one action, then end the day.';
   const hint = stepHint(stepKey, guidance);
+  const guideTitle = guidance?.guided_day_number && guidance.guided_day_number > 1 ? 'Early Days Guide' : 'First Session Guide';
+  const guideLabel = guidance?.guided_label || state.guided_label || state.progress_label || '1/4 steps';
 
   return (
     <View style={styles.card}>
       <View style={styles.headerRow}>
-        <Text style={styles.title}>First Session Guide</Text>
-        <Text style={styles.stepPill}>{state.progress_label || '1/4 steps'}</Text>
+        <Text style={styles.title}>{guideTitle}</Text>
+        <Text style={styles.stepPill}>{guideLabel}</Text>
       </View>
 
       <Text style={styles.stepTitle}>{title}</Text>

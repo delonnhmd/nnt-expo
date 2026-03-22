@@ -14,6 +14,8 @@ function tomorrowFocus(summary: EndOfDaySummaryResponse): string {
 }
 
 export default function EndOfDaySummaryCard({ summary }: { summary: EndOfDaySummaryResponse }) {
+  const guidedSummaryActive = Number(summary.guided_day_number || 0) >= 1 && Number(summary.guided_day_number || 0) <= 3;
+
   return (
     <View style={styles.card}>
       <Text style={styles.heading}>End of Day Summary</Text>
@@ -48,6 +50,15 @@ export default function EndOfDaySummaryCard({ summary }: { summary: EndOfDaySumm
         <Text style={styles.storyText}>Biggest loss: {summary.biggest_loss}</Text>
       </View>
 
+      {guidedSummaryActive ? (
+        <View style={styles.lessonBox}>
+          <Text style={styles.lessonTitle}>{summary.guided_learning_title || `Day ${summary.guided_day_number} lesson`}</Text>
+          {summary.guided_earned_summary ? <Text style={styles.lessonText}>{summary.guided_earned_summary}</Text> : null}
+          {summary.guided_spent_summary ? <Text style={styles.lessonText}>{summary.guided_spent_summary}</Text> : null}
+          {summary.guided_change_summary ? <Text style={styles.lessonText}>{summary.guided_change_summary}</Text> : null}
+        </View>
+      ) : null}
+
       {summary.tomorrow_warnings.length > 0 ? (
         <View style={styles.warningBox}>
           <Text style={styles.warningTitle}>Tomorrow Warnings</Text>
@@ -61,7 +72,7 @@ export default function EndOfDaySummaryCard({ summary }: { summary: EndOfDaySumm
 
       <View style={styles.focusBox}>
         <Text style={styles.focusTitle}>Tomorrow Focus</Text>
-        <Text style={styles.focusText}>{tomorrowFocus(summary)}</Text>
+        <Text style={styles.focusText}>{summary.guided_watch_tomorrow || tomorrowFocus(summary)}</Text>
       </View>
     </View>
   );
@@ -130,6 +141,24 @@ const styles = StyleSheet.create({
   },
   storyText: {
     color: '#334155',
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  lessonBox: {
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    borderRadius: 10,
+    backgroundColor: '#eff6ff',
+    padding: 10,
+    gap: 4,
+  },
+  lessonTitle: {
+    color: '#1d4ed8',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  lessonText: {
+    color: '#1e3a8a',
     fontSize: 12,
     lineHeight: 17,
   },

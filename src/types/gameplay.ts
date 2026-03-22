@@ -122,6 +122,12 @@ export interface EndOfDaySummaryResponse {
   total_earned_xgp: number;
   total_spent_xgp: number;
   net_change_xgp: number;
+  guided_day_number?: number;
+  guided_learning_title?: string | null;
+  guided_earned_summary?: string | null;
+  guided_spent_summary?: string | null;
+  guided_change_summary?: string | null;
+  guided_watch_tomorrow?: string | null;
   biggest_gain: string;
   biggest_loss: string;
   stress_delta: number;

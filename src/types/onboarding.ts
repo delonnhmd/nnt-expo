@@ -18,6 +18,10 @@ export interface OnboardingStateResponse {
   current_step_body: string;
   progress_label: string;
   first_session_day_count: number;
+  guided_experience_active: boolean;
+  guided_day_number: number;
+  guided_phase?: string | null;
+  guided_label?: string | null;
   visible_modules: string[];
   unlocked_modules: string[];
   completed_step_keys: string[];
@@ -28,6 +32,10 @@ export interface OnboardingGuidanceResponse {
   player_id: string;
   as_of_date: string;
   onboarding_status: OnboardingStatus;
+  guided_experience_active: boolean;
+  guided_day_number: number;
+  guided_phase?: string | null;
+  guided_label?: string | null;
   step_key: string;
   title: string;
   body: string;
@@ -49,10 +57,15 @@ export interface OnboardingDashboardConfigResponse {
   player_id: string;
   as_of_date: string;
   onboarding_status: OnboardingStatus;
+  guided_experience_active: boolean;
+  guided_day_number: number;
+  guided_phase?: string | null;
+  guided_label?: string | null;
   visible_sections: string[];
   collapsed_sections: string[];
   hidden_sections: string[];
   highlighted_section?: string | null;
+  highlighted_action_key?: string | null;
   allowed_actions: string[];
   blocked_actions_for_onboarding: OnboardingBlockedAction[];
   debug_meta?: Record<string, unknown>;
