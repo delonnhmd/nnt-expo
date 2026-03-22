@@ -335,6 +335,8 @@ function normalizeNotifications(raw: Record<string, unknown>, playerId: string):
 }
 
 function canonicalActionKey(actionKey: GameplayActionKey): GameplayActionKey {
+  // Core logic freeze: frontend action canonicalization must stay aligned with backend action semantics.
+  // Small bug fixes are allowed; do not broaden matching rules casually.
   const raw = toString(actionKey).toLowerCase().trim();
   if (raw.includes('business') && raw.includes('operate')) return 'operate_business';
   if (raw.includes('inventory') || raw.includes('stock')) return 'buy_inventory';

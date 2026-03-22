@@ -4,6 +4,8 @@ import { recordInfo, recordWarning } from '@/lib/logger';
 import { DailySessionStatus } from '@/types/gameplay';
 import { RandomEventPersistedState } from '@/types/randomEvent';
 
+// Core logic freeze: this snapshot shape and canonical key are part of gameplay continuity.
+// Change only for a proven persistence bug and version the payload deliberately.
 export const GAMEPLAY_PERSISTENCE_VERSION = 1;
 
 const GAMEPLAY_STATE_STORAGE_KEY = (playerId: string) => `goldpenny:gameplay:state:${playerId}`;
