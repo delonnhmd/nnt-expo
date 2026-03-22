@@ -1,7 +1,7 @@
 # Step 45.6 — Final Wipe: Unused Files Report
 
 **Date:** 2025-10-04  
-**Project root:** `UI/pft-expo`  
+**Project root:** `PFT/pft-expo`  
 **Prior cleanup:** Step 43.5 (Legacy NNT archival to `archive/nnt-legacy/`)  
 
 ---

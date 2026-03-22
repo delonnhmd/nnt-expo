@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { theme } from '@/design/theme';
 import { creditTone, formatMoney, healthTone, stressTone } from '@/lib/gameplayFormatters';
+import { type JobIncomeContract } from '@/hooks/useJobIncome';
 import { GameplayEconomyState } from '@/types/economy';
 import { DashboardStatSnapshot } from '@/types/gameplay';
 
@@ -26,9 +27,13 @@ function StatTile({
 export default function PlayerStatsBar({
   stats,
   economy,
+  currentGameDay,
+  jobIncome,
 }: {
   stats: DashboardStatSnapshot;
   economy?: GameplayEconomyState | null;
+  currentGameDay?: number | null;
+  jobIncome?: JobIncomeContract | null;
 }) {
   const cashOnHand = economy?.cashOnHand ?? stats.cash_xgp;
   const debtAmount = economy?.debtAmount ?? stats.debt_xgp;
@@ -44,6 +49,7 @@ export default function PlayerStatsBar({
 
   return (
     <View style={styles.container}>
+      {currentGameDay != null ? <StatTile label="Day" value={String(currentGameDay)} /> : null}
       <StatTile label="Cash" value={formatMoney(cashOnHand)} />
       <StatTile label="Debt" value={formatMoney(debtAmount)} tone={debtAmount > 0 ? '#b91c1c' : '#166534'} />
       <StatTile label="Net Worth" value={formatMoney(netWorthAmount)} />
@@ -51,7 +57,14 @@ export default function PlayerStatsBar({
       <StatTile label="Stress" value={`${Math.round(stats.stress)}`} tone={stressTone(stats.stress)} />
       <StatTile label="Health" value={`${Math.round(stats.health)}`} tone={healthTone(stats.health)} />
       <StatTile label="Credit" value={`${Math.round(stats.credit_score)}`} tone={creditTone(stats.credit_score)} />
-      <StatTile label="Job" value={stats.current_job || 'Unassigned'} />
+      <StatTile label="Job" value={(jobIncome?.currentJob ?? stats.current_job) || 'Unassigned'} />
+      {jobIncome?.incomeAmount != null ? (
+        <StatTile
+          label="Income"
+          value={jobIncome.dailyIncomeLabel}
+          tone={jobIncome.incomeAmount > 0 ? '#166534' : theme.color.textSecondary}
+        />
+      ) : null}
       <StatTile label="Region" value={stats.region_key || 'Unknown'} />
     </View>
   );

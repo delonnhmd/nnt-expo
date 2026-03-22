@@ -10,7 +10,7 @@ export const WC_PROJECT_ID = process.env.EXPO_PUBLIC_WC_PROJECT_ID ?? '';
 export const WC_METADATA = {
   name: 'Gold Penny',
   description: 'Gold Penny mobile client',
-  url: 'https://nntpress.com',
+  url: 'https://goldpenny.app',
   icons: ['https://walletconnect.com/_next/static/media/walletconnect-logo.9c2a3e16.svg'],
 };
 

@@ -3,7 +3,7 @@
 **Date:** 2026-03-21  
 **Renames applied:**
 - `nnt-expo` → `pft-expo`
-- `NNT-token` → `UI`
+- `NNT-token` → `UI` → `PFT` (second rename applied after Step 45.6)
 
 ---
 
@@ -50,7 +50,7 @@
 ### 6. `FINAL_WIPE_UNUSED_REPORT_STEP45_6.md`
 | Field | Before | After |
 |---|---|---|
-| Project root reference | `` `nnt-token/nnt-expo` `` | `` `UI/pft-expo` `` |
+| Project root reference | `` `nnt-token/nnt-expo` `` | `` `PFT/pft-expo` `` |
 
 ---
 

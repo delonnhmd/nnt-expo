@@ -53,7 +53,9 @@ import PageContainer from '@/components/layout/PageContainer';
 import FadeInView from '@/components/motion/FadeInView';
 import SecondaryButton from '@/components/ui/SecondaryButton';
 import { ActionExecutionGuard, useDailySession } from '@/hooks/useDailySession';
+import { useDailyProgression } from '@/hooks/useDailyProgression';
 import { useEconomyState } from '@/hooks/useEconomyState';
+import { useJobIncome } from '@/hooks/useJobIncome';
 import {
   activateCommitment,
   cancelCommitment,
@@ -1341,6 +1343,12 @@ export default function GameDashboardPage({
 
   const notificationCount = notificationsState.data?.notifications.length || 0;
   const economyState = useEconomyState(dashboardState.data, eodState.data);
+  const jobIncome = useJobIncome(dashboardState.data, eodState.data);
+  const dailyProgression = useDailyProgression(
+    playerId,
+    dailySession.sessionStatus,
+    dailySession.pendingExecution || executingAction || endingDay,
+  );
 
   const openPreview = useCallback(
     async (action: DailyActionItem) => {
@@ -1491,6 +1499,7 @@ export default function GameDashboardPage({
       const result = await endDay(playerId);
       setLastEndDayResult(result);
       dailySession.endDay();
+      await dailyProgression.markDayAdvanced(result.settled_day);
       try {
         const onboardingPayload = await advanceOnboarding(playerId, { action_key: 'end_day' });
         applyOnboardingActionResult(onboardingPayload);
@@ -1575,18 +1584,20 @@ export default function GameDashboardPage({
     loadCommitmentSummary,
     loadCommitmentFeedback,
     loadCommitmentHistory,
+    dailyProgression,
     playerId,
   ]);
 
   const handleStartNextDay = useCallback(async () => {
+    const nextDayNumber = dailyProgression.markDayStarted();
     dailySession.resetSession({
       totalUnits: deriveSuggestedTimeUnits(dashboardState.data),
-      nextDayKey: `${Date.now()}`,
+      nextDayKey: String(nextDayNumber),
     });
     setLastEndDayResult(null);
     setFeedback({ tone: 'info', message: 'New day started. Choose your next action.' });
     await loadAll();
-  }, [dailySession, dashboardState.data, loadAll]);
+  }, [dailyProgression, dailySession, dashboardState.data, loadAll]);
 
   const refreshCommitmentSections = useCallback(async () => {
     await Promise.allSettled([
@@ -2032,7 +2043,7 @@ export default function GameDashboardPage({
           'day_controls',
           <View style={styles.dayControlCard}>
             <View style={styles.dayControlCopy}>
-              <Text style={styles.dayControlTitle}>Daily Session</Text>
+              <Text style={styles.dayControlTitle}>Daily Session — Day {dailyProgression.currentGameDay}</Text>
               <Text style={styles.dayControlMeta}>
                 {dailySession.remainingTimeUnits}/{dailySession.totalTimeUnits} time units left
               </Text>
@@ -2042,9 +2053,9 @@ export default function GameDashboardPage({
             </View>
             <View style={styles.dayControlButtons}>
               <TouchableOpacity
-                style={[styles.primaryActionButton, dailySession.sessionStatus !== 'active' ? styles.buttonDisabled : null]}
+                style={[styles.primaryActionButton, !dailyProgression.canAdvanceDay ? styles.buttonDisabled : null]}
                 onPress={handleEndDay}
-                disabled={dailySession.sessionStatus !== 'active' || endingDay || dailySession.pendingExecution}
+                disabled={!dailyProgression.canAdvanceDay || endingDay}
               >
                 <Text style={styles.primaryActionButtonText}>{endingDay ? 'Ending...' : 'End Day'}</Text>
               </TouchableOpacity>
@@ -2052,7 +2063,7 @@ export default function GameDashboardPage({
                 <TouchableOpacity
                   style={styles.secondaryActionButton}
                   onPress={handleStartNextDay}
-                  disabled={refreshing}
+                  disabled={refreshing || dailyProgression.isAdvancingDay}
                 >
                   <Text style={styles.secondaryActionButtonText}>Start Next Day</Text>
                 </TouchableOpacity>
@@ -2084,7 +2095,7 @@ export default function GameDashboardPage({
               ? wrapSection(
                 'player_stats',
                 <PrimaryDashboardSection title="Player Snapshot" summary={statsSummary} statusLabel={economyState.statusLabel}>
-                  <PlayerStatsBar stats={dashboardState.data.stats} economy={economyState} />
+                  <PlayerStatsBar stats={dashboardState.data.stats} economy={economyState} currentGameDay={dailyProgression.currentGameDay} jobIncome={jobIncome} />
                 </PrimaryDashboardSection>,
               )
               : null}

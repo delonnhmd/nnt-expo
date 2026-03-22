@@ -2,7 +2,7 @@
   "expo": {
     "name": "Gold Penny",
     "slug": "pft-expo",
-    "scheme": "nnt",
+    "scheme": "goldpenny",
     "version": "1.0.0",
     "platforms": [
       "android",
@@ -10,14 +10,14 @@
       "web"
     ],
     "android": {
-      "package": "nntpress.com",
+      "package": "com.goldpenny.pft",
       "versionCode": 2,
       "intentFilters": [
         {
           "action": "VIEW",
           "data": [
             {
-              "scheme": "nnt"
+              "scheme": "goldpenny"
             }
           ],
           "category": [
@@ -28,7 +28,7 @@
       ]
     },
     "ios": {
-      "bundleIdentifier": "5SUQ269Z4G",
+      "bundleIdentifier": "com.goldpenny.pft",
       "buildNumber": "1.0.1",
       "infoPlist": {
         "LSApplicationQueriesSchemes": [
