@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { BALANCE } from '@/lib/balanceConfig';
+import { recordInfo, recordWarning } from '@/lib/logger';
 import {
   DailyActionHistoryEntry,
   DailyActionItem,
@@ -89,7 +90,18 @@ export function useDailySession(playerId: string) {
       const k = normalizeActionKey(entry.action_key);
       snapshot.actionCounts[k] = (snapshot.actionCounts[k] || 0) + 1;
     }
-    AsyncStorage.setItem(sessionStorageKey, JSON.stringify(snapshot)).catch(() => {});
+    AsyncStorage.setItem(sessionStorageKey, JSON.stringify(snapshot)).catch((error) => {
+      recordWarning('dailySession', 'Failed to persist daily session snapshot.', {
+        action: 'persist_snapshot',
+        context: {
+          dayKey,
+          actionCount: actionsTakenToday.length,
+          remainingTimeUnits,
+          sessionStatus,
+        },
+        error,
+      });
+    });
   }, [
     dayKey,
     remainingTimeUnits,
@@ -128,7 +140,15 @@ export function useDailySession(playerId: string) {
       setSessionStatus('active');
       setPendingExecution(false);
       if (sessionStorageKey) {
-        AsyncStorage.removeItem(sessionStorageKey).catch(() => {});
+        AsyncStorage.removeItem(sessionStorageKey).catch((error) => {
+          recordWarning('dailySession', 'Failed to clear stale session snapshot.', {
+            action: 'initialize_day',
+            context: {
+              dayKey: key,
+            },
+            error,
+          });
+        });
       }
     };
 
@@ -163,17 +183,40 @@ export function useDailySession(playerId: string) {
               setActionsTakenToday([]);
               setSessionStatus(restoredStatus);
               setPendingExecution(false);
+              recordInfo('dailySession', 'Restored persisted session snapshot.', {
+                action: 'initialize_day',
+                context: {
+                  dayKey: normalizedDay,
+                  restoredRemainingTimeUnits: restoredUnits,
+                  restoredStatus,
+                  restoredActionTypes: Object.keys(restoredCounts).length,
+                },
+              });
               initializingRef.current = false;
               return;
             }
-          } catch {
+          } catch (error) {
+            recordWarning('dailySession', 'Stored session snapshot was invalid.', {
+              action: 'initialize_day',
+              context: {
+                dayKey: normalizedDay,
+              },
+              error,
+            });
             // Corrupted storage — fall through to fresh init.
           }
         }
         freshInit(normalizedDay, clamped);
         initializingRef.current = false;
       })
-      .catch(() => {
+      .catch((error) => {
+        recordWarning('dailySession', 'Failed to read persisted session snapshot.', {
+          action: 'initialize_day',
+          context: {
+            dayKey: normalizedDay,
+          },
+          error,
+        });
         freshInit(normalizedDay, clamped);
         initializingRef.current = false;
       });
@@ -261,11 +304,26 @@ export function useDailySession(playerId: string) {
     setActionsTakenToday([]);
     setSessionStatus('active');
     setPendingExecution(false);
+    recordInfo('dailySession', 'Session reset for new day.', {
+      action: 'reset_session',
+      context: {
+        nextDayKey: options?.nextDayKey || dayKey,
+        totalTimeUnits: clamped,
+      },
+    });
     // Clear stale storage so the incoming new day starts completely fresh.
     if (sessionStorageKey) {
-      AsyncStorage.removeItem(sessionStorageKey).catch(() => {});
+      AsyncStorage.removeItem(sessionStorageKey).catch((error) => {
+        recordWarning('dailySession', 'Failed to clear session snapshot during reset.', {
+          action: 'reset_session',
+          context: {
+            nextDayKey: options?.nextDayKey || dayKey,
+          },
+          error,
+        });
+      });
     }
-  }, [totalTimeUnits, sessionStorageKey]);
+  }, [dayKey, totalTimeUnits, sessionStorageKey]);
 
   const progress = useMemo(() => {
     if (totalTimeUnits <= 0) return 0;

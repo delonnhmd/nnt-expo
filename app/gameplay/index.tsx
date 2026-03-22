@@ -49,7 +49,7 @@ export default function GameplayIndexRoute() {
         <ContentStack style={styles.content}>
           <SectionCard
             title="Gameplay Dashboard"
-            summary="Enter your player ID to open the live daily simulation."
+            summary="Enter your player ID to open your daily gameplay dashboard."
           >
             <TextInput
               style={styles.input}
@@ -60,7 +60,7 @@ export default function GameplayIndexRoute() {
               placeholder="Player ID (for example: demo-player-1)"
               placeholderTextColor={theme.color.muted}
             />
-            <Text style={styles.hint}>The last player ID is remembered on this device for faster access.</Text>
+            <Text style={styles.hint}>The last player ID is stored on this device so you can return to gameplay more quickly.</Text>
             <PrimaryButton
               label="Open Dashboard"
               onPress={openDashboard}

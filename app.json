@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Gold Penny",
-    "description": "Gold Penny mobile gameplay client.",
+    "description": "Gold Penny is a daily strategy game from Penny Float.",
     "slug": "gold-penny-expo",
     "scheme": "goldpenny",
     "version": "1.0.1",
@@ -53,7 +53,6 @@
           "metamask",
           "trust",
           "rainbow",
-          "zerion",
           "argent",
           "uniswap",
           "wc",

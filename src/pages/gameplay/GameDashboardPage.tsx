@@ -59,6 +59,7 @@ import { useEconomyState } from '@/hooks/useEconomyState';
 import { useExpenseDebt } from '@/hooks/useExpenseDebt';
 import { useJobIncome } from '@/hooks/useJobIncome';
 import { useRandomEvent } from '@/hooks/useRandomEvent';
+import { recordError, recordInfo, recordWarning } from '@/lib/logger';
 import {
   activateCommitment,
   cancelCommitment,
@@ -200,6 +201,18 @@ function initialSection<T>(): SectionState<T> {
 function normalizeError(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);
+}
+
+function recordSettledFailures(action: string, results: PromiseSettledResult<unknown>[]) {
+  const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+  if (failures.length === 0) return;
+  recordWarning('gameplay', 'One or more gameplay refresh requests failed.', {
+    action,
+    context: {
+      failureCount: failures.length,
+      messages: failures.slice(0, 3).map((result) => normalizeError(result.reason)),
+    },
+  });
 }
 
 function deriveSuggestedTimeUnits(snapshot: PlayerDashboardResponse | null): number {
@@ -1109,7 +1122,7 @@ export default function GameDashboardPage({
 
   const loadAll = useCallback(async () => {
     setRefreshing(true);
-    await Promise.allSettled([
+    const results = await Promise.allSettled([
       loadOnboardingBundle(),
       loadDashboard(),
       loadActionHub(),
@@ -1140,6 +1153,7 @@ export default function GameDashboardPage({
       loadCommitmentFeedback(),
       loadCommitmentHistory(),
     ]);
+    recordSettledFailures('load_all', results);
     setRefreshing(false);
   }, [
     loadActionHub,
@@ -1181,14 +1195,28 @@ export default function GameDashboardPage({
       try {
         const payload = await advanceOnboarding(playerId, { action_key: String(actionKey) });
         applyOnboardingActionResult(payload);
-      } catch {
+      } catch (error) {
+        recordWarning('gameplay', 'Onboarding progression refresh failed after action.', {
+          action: 'refresh_after_action',
+          context: {
+            actionKey: String(actionKey),
+          },
+          error,
+        });
         // Best-effort onboarding refresh; keep gameplay flow alive.
       }
     }
     if (actionKey) {
       try {
         await refreshCommitment(playerId, { actionKey: String(actionKey) });
-      } catch {
+      } catch (error) {
+        recordWarning('gameplay', 'Commitment refresh failed after action.', {
+          action: 'refresh_after_action',
+          context: {
+            actionKey: String(actionKey),
+          },
+          error,
+        });
         // Commitment refresh is best-effort and should not break action flow.
       }
     }
@@ -1222,6 +1250,7 @@ export default function GameDashboardPage({
       loadCommitmentFeedback(),
       loadCommitmentHistory(),
     ]);
+    recordSettledFailures('refresh_after_action', results);
     const progressionResult = results[4];
     const commitmentSummaryResult = results[24];
 
@@ -1411,6 +1440,13 @@ export default function GameDashboardPage({
         setPreviewPayload(payload);
       } catch (error) {
         if (previewRequestIdRef.current !== requestId) return;
+        recordWarning('gameplay', 'Action preview failed.', {
+          action: 'open_preview',
+          context: {
+            actionKey: String(action.action_key),
+          },
+          error,
+        });
         setPreviewError(normalizeError(error));
       } finally {
         if (previewRequestIdRef.current === requestId) {
@@ -1501,6 +1537,14 @@ export default function GameDashboardPage({
       resetPreviewState();
       const followUpFeedback = await refreshAfterAction(action.action_key);
       const supplementalMessage = followUpFeedback.map((item) => item.message).find(Boolean);
+      recordInfo('gameplay', 'Gameplay action executed successfully.', {
+        action: 'execute_action',
+        context: {
+          actionKey: String(action.action_key),
+          consumedTimeUnits: consumed,
+          followUpFeedbackCount: followUpFeedback.length,
+        },
+      });
       setFeedback({
         tone: 'success',
         message: supplementalMessage
@@ -1517,6 +1561,13 @@ export default function GameDashboardPage({
         time_cost_units: 0,
         success: false,
         error_message: message,
+      });
+      recordError('gameplay', 'Gameplay action execution failed.', {
+        action: 'execute_action',
+        context: {
+          actionKey: String(action.action_key),
+        },
+        error,
       });
       setFeedback({ tone: 'error', message: message || 'Action failed.' });
     } finally {
@@ -1545,14 +1596,24 @@ export default function GameDashboardPage({
       try {
         const onboardingPayload = await advanceOnboarding(playerId, { action_key: 'end_day' });
         applyOnboardingActionResult(onboardingPayload);
-      } catch {
+      } catch (error) {
+        recordWarning('gameplay', 'Onboarding refresh failed after end day.', {
+          action: 'end_day',
+          error,
+        });
         // End-day onboarding evaluation is best-effort.
       }
+      recordInfo('gameplay', 'Day ended successfully.', {
+        action: 'end_day',
+        context: {
+          settledDay: result.settled_day,
+        },
+      });
       setFeedback({
         tone: 'success',
         message: result.summary_headline || result.message || 'Day settled successfully.',
       });
-      await Promise.allSettled([
+      const refreshResults = await Promise.allSettled([
         loadOnboardingBundle(),
         loadDashboard(),
         loadActionHub(),
@@ -1583,7 +1644,12 @@ export default function GameDashboardPage({
         loadCommitmentFeedback(),
         loadCommitmentHistory(),
       ]);
+      recordSettledFailures('end_day_refresh', refreshResults);
     } catch (error) {
+      recordError('gameplay', 'Ending day failed.', {
+        action: 'end_day',
+        error,
+      });
       setFeedback({
         tone: 'error',
         message: normalizeError(error),
@@ -1642,6 +1708,12 @@ export default function GameDashboardPage({
         nextDayKey: String(nextDayNumber),
       });
       setLastEndDayResult(null);
+      recordInfo('gameplay', 'Started next gameplay day.', {
+        action: 'start_next_day',
+        context: {
+          nextDayNumber,
+        },
+      });
       setFeedback({ tone: 'info', message: 'New day started. Choose your next action.' });
       await loadAll();
     } finally {
@@ -1650,7 +1722,7 @@ export default function GameDashboardPage({
   }, [dailyProgression, dailySession, dashboardState.data, loadAll]);
 
   const refreshCommitmentSections = useCallback(async () => {
-    await Promise.allSettled([
+    const results = await Promise.allSettled([
       loadCommitmentAvailable(),
       loadCommitmentSummary(),
       loadCommitmentFeedback(),
@@ -1658,6 +1730,7 @@ export default function GameDashboardPage({
       loadStrategyRecommendation(),
       loadShortHorizonPlans(),
     ]);
+    recordSettledFailures('refresh_commitment_sections', results);
   }, [
     loadCommitmentAvailable,
     loadCommitmentSummary,

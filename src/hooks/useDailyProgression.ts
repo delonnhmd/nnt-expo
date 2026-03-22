@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { recordInfo, recordWarning } from '@/lib/logger';
 import { DailySessionStatus } from '@/types/gameplay';
 
 const DAY_STORAGE_KEY = (playerId: string) => `goldpenny:gameplay:day:${playerId}`;
@@ -74,7 +75,14 @@ export function useDailyProgression(
             setLastProcessedDay(parsed);
           }
         }
-      } catch {
+      } catch (error) {
+        recordWarning('dailyProgression', 'Failed to hydrate persisted day state.', {
+          action: 'load_persisted_state',
+          context: {
+            hasPlayerId: Boolean(playerId),
+          },
+          error,
+        });
         // Continue with safe defaults when storage is unavailable.
       }
     }
@@ -98,7 +106,20 @@ export function useDailyProgression(
 
       setLastProcessedDay(processedDay);
       await AsyncStorage.setItem(LAST_PROCESSED_KEY(playerId), String(processedDay));
-    } catch {
+      recordInfo('dailyProgression', 'Marked day as settled.', {
+        action: 'mark_day_advanced',
+        context: {
+          processedDay,
+        },
+      });
+    } catch (error) {
+      recordWarning('dailyProgression', 'Failed to persist settled day.', {
+        action: 'mark_day_advanced',
+        context: {
+          currentDay: currentGameDayRef.current,
+        },
+        error,
+      });
       // Proceed even when persistence fails — in-memory update is applied.
     } finally {
       setIsAdvancingDay(false);
@@ -112,7 +133,21 @@ export function useDailyProgression(
     const nextDay = currentGameDayRef.current + 1;
     setCurrentGameDay(nextDay);
     currentGameDayRef.current = nextDay;
-    AsyncStorage.setItem(DAY_STORAGE_KEY(playerId), String(nextDay)).catch(() => {});
+    recordInfo('dailyProgression', 'Started next day.', {
+      action: 'mark_day_started',
+      context: {
+        nextDay,
+      },
+    });
+    AsyncStorage.setItem(DAY_STORAGE_KEY(playerId), String(nextDay)).catch((error) => {
+      recordWarning('dailyProgression', 'Failed to persist current day.', {
+        action: 'mark_day_started',
+        context: {
+          nextDay,
+        },
+        error,
+      });
+    });
     // Allow another call only after React's event loop has processed the state update.
     setTimeout(() => { markingDayRef.current = false; }, 0);
     return nextDay;

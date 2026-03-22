@@ -3,6 +3,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { BACKEND } from '@/constants';
+import { recordError, recordWarning } from '@/lib/logger';
 
 // ─── Canonical AsyncStorage key registry ─────────────────────────────────────
 // Authoritative key names. All active writes use these.
@@ -34,10 +35,31 @@ export async function getBaseUrl(): Promise<string> {
     if (override && /^https?:\/\//i.test(override)) {
       return override.replace(/\/$/, '');
     }
-  } catch {
+    if (override) {
+      recordWarning('apiClient', 'Ignoring invalid backend override.', {
+        action: 'get_base_url',
+        context: {
+          overrideLength: override.length,
+        },
+      });
+    }
+  } catch (error) {
+    recordWarning('apiClient', 'Failed to read backend override.', {
+      action: 'get_base_url',
+      error,
+    });
     // Use compiled BACKEND when local override lookup fails.
   }
-  return (BACKEND || '').replace(/\/$/, '');
+  const normalized = (BACKEND || '').replace(/\/$/, '');
+  if (!normalized) {
+    recordError('apiClient', 'Backend URL is not configured.', {
+      action: 'get_base_url',
+      context: {
+        hasCompiledBackend: Boolean(BACKEND),
+      },
+    });
+  }
+  return normalized;
 }
 
 /**
@@ -50,7 +72,11 @@ async function resolveIdentityUid(): Promise<string> {
   try {
     const uid = await AsyncStorage.getItem(KEY_IDENTITY_UID);
     if (uid) return uid;
-  } catch {
+  } catch (error) {
+    recordWarning('apiClient', 'Failed to read canonical identity key.', {
+      action: 'resolve_identity_uid',
+      error,
+    });
     // Fall through.
   }
 
@@ -58,7 +84,11 @@ async function resolveIdentityUid(): Promise<string> {
   let uid = '';
   try {
     uid = (await AsyncStorage.getItem(LEGACY_KEY_IDENTITY_UID)) || '';
-  } catch {
+  } catch (error) {
+    recordWarning('apiClient', 'Failed to read legacy identity key.', {
+      action: 'resolve_identity_uid',
+      error,
+    });
     uid = '';
   }
 
@@ -69,7 +99,11 @@ async function resolveIdentityUid(): Promise<string> {
   // Write to canonical key; silently continue on failure.
   try {
     await AsyncStorage.setItem(KEY_IDENTITY_UID, uid);
-  } catch {
+  } catch (error) {
+    recordWarning('apiClient', 'Failed to persist canonical identity key.', {
+      action: 'resolve_identity_uid',
+      error,
+    });
     // No-op — continue without persistence.
   }
 
@@ -98,34 +132,72 @@ export async function getIdentityHeaders(): Promise<Record<string, string>> {
 export async function fetchApi<T>(path: string, init?: RequestInit): Promise<T> {
   const base = await getBaseUrl();
   if (!base) {
-    throw new Error('Backend URL is not configured. Set EXPO_PUBLIC_BACKEND or the backend override in Settings.');
+    const configError = new Error('A server connection is not configured for this build.');
+    recordError('apiClient', 'Backend URL missing before request.', {
+      action: 'fetch_api',
+      context: {
+        path,
+        method: init?.method || 'GET',
+      },
+      error: configError,
+    });
+    throw configError;
   }
 
   let adminToken: string | null = null;
   try {
     adminToken = await AsyncStorage.getItem(KEY_ADMIN_TOKEN);
-  } catch {
+  } catch (error) {
+    recordWarning('apiClient', 'Failed to read admin token.', {
+      action: 'fetch_api',
+      context: {
+        path,
+      },
+      error,
+    });
     adminToken = null;
   }
 
   const identityHeaders = await getIdentityHeaders();
 
-  const response = await fetch(`${base}${path}`, {
-    ...init,
-    headers: {
-      'content-type': 'application/json',
-      ...identityHeaders,
-      ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {}),
-      ...(init?.headers || {}),
-    },
-  } as RequestInit);
+  let response: Response;
+  try {
+    response = await fetch(`${base}${path}`, {
+      ...init,
+      headers: {
+        'content-type': 'application/json',
+        ...identityHeaders,
+        ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {}),
+        ...(init?.headers || {}),
+      },
+    } as RequestInit);
+  } catch (error) {
+    recordError('apiClient', 'Network request failed.', {
+      action: 'fetch_api',
+      context: {
+        path,
+        method: init?.method || 'GET',
+      },
+      error,
+    });
+    throw error instanceof Error ? error : new Error(String(error));
+  }
 
   const text = await response.text();
   let payload: unknown = null;
   try {
     payload = text ? JSON.parse(text) : null;
-  } catch {
+  } catch (error) {
     const snippet = (text || '').slice(0, 180);
+    recordError('apiClient', 'Received non-JSON response.', {
+      action: 'fetch_api',
+      context: {
+        path,
+        status: response.status,
+        snippet,
+      },
+      error,
+    });
     throw new Error(`Non-JSON response at ${path}: ${snippet}`);
   }
 
@@ -136,6 +208,15 @@ export async function fetchApi<T>(path: string, init?: RequestInit): Promise<T> 
         : typeof payload === 'object' && payload && 'error' in (payload as object)
           ? String((payload as any).error)
           : `HTTP ${response.status}`;
+    recordWarning('apiClient', 'API request returned a non-success status.', {
+      action: 'fetch_api',
+      context: {
+        path,
+        method: init?.method || 'GET',
+        status: response.status,
+        detail,
+      },
+    });
     throw new Error(`${path}: ${detail}`);
   }
 

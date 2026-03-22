@@ -9,6 +9,7 @@ import {
   RANDOM_EVENT_POOL,
   rollDailyEvent,
 } from '@/lib/gameEvents';
+import { recordInfo, recordWarning } from '@/lib/logger';
 import {
   ActiveRandomEvent,
   RandomEventPersistedState,
@@ -73,7 +74,14 @@ export function useRandomEvent(
           }
           // Persisted event is from a different day — fall through to roll for today.
         }
-      } catch {
+      } catch (error) {
+        recordWarning('randomEvent', 'Failed to load persisted event state.', {
+          action: 'load_or_roll',
+          context: {
+            currentGameDay,
+          },
+          error,
+        });
         // Storage read failed — fall through to fresh roll.
       }
 
@@ -88,6 +96,13 @@ export function useRandomEvent(
           isResolved: false,
         };
         if (!cancelled) setActiveEvent(event);
+        recordInfo('randomEvent', 'Rolled daily random event.', {
+          action: 'load_or_roll',
+          context: {
+            currentGameDay,
+            eventId: definition.eventId,
+          },
+        });
         try {
           await AsyncStorage.setItem(
             EVENT_STORAGE_KEY(playerId),
@@ -97,7 +112,15 @@ export function useRandomEvent(
               isResolved: false,
             } as RandomEventPersistedState),
           );
-        } catch {
+        } catch (error) {
+          recordWarning('randomEvent', 'Failed to persist rolled event.', {
+            action: 'load_or_roll',
+            context: {
+              currentGameDay,
+              eventId: definition.eventId,
+            },
+            error,
+          });
           // Non-critical — event remains active in memory.
         }
       } else {
@@ -105,7 +128,14 @@ export function useRandomEvent(
         // Clear any stale persisted event from a previous day.
         try {
           await AsyncStorage.removeItem(EVENT_STORAGE_KEY(playerId));
-        } catch {
+        } catch (error) {
+          recordWarning('randomEvent', 'Failed to clear stale event state.', {
+            action: 'load_or_roll',
+            context: {
+              currentGameDay,
+            },
+            error,
+          });
           // Non-critical.
         }
       }
@@ -123,6 +153,7 @@ export function useRandomEvent(
     // Guard against double-invoke from rapid taps on dismiss / apply buttons.
     if (resolvingRef.current) return;
     resolvingRef.current = true;
+    const resolvingEventId = activeEvent?.eventId || null;
     setActiveEvent(null);
     try {
       const raw = await AsyncStorage.getItem(EVENT_STORAGE_KEY(playerId));
@@ -133,21 +164,51 @@ export function useRandomEvent(
           JSON.stringify({ ...persisted, isResolved: true }),
         );
       }
-    } catch {
+      recordInfo('randomEvent', 'Resolved active random event.', {
+        action: 'resolve_event',
+        context: {
+          currentGameDay,
+          eventId: resolvingEventId,
+        },
+      });
+    } catch (error) {
+      recordWarning('randomEvent', 'Failed to persist resolved event state.', {
+        action: 'resolve_event',
+        context: {
+          currentGameDay,
+          eventId: resolvingEventId,
+        },
+        error,
+      });
       // Non-critical.
     }
-  }, [playerId]);
+  }, [activeEvent?.eventId, currentGameDay, playerId]);
 
   const applyRecoveryAction = useCallback(
-    (_recoveryActionId: string): void => {
+    (recoveryActionId: string): void => {
+      recordInfo('randomEvent', 'Applied recovery action to random event.', {
+        action: 'apply_recovery_action',
+        context: {
+          recoveryActionId,
+          eventId: activeEvent?.eventId || null,
+          currentGameDay,
+        },
+      });
       resolveEvent();
     },
-    [resolveEvent],
+    [activeEvent?.eventId, currentGameDay, resolveEvent],
   );
 
   const dismissEvent = useCallback((): void => {
+    recordInfo('randomEvent', 'Dismissed random event.', {
+      action: 'dismiss_event',
+      context: {
+        eventId: activeEvent?.eventId || null,
+        currentGameDay,
+      },
+    });
     resolveEvent();
-  }, [resolveEvent]);
+  }, [activeEvent?.eventId, currentGameDay, resolveEvent]);
 
   const availableRecoveryActions = getAvailableRecoveryActions(cashOnHand);
 

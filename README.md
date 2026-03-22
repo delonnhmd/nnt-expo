@@ -1,6 +1,6 @@
 # Gold Penny Expo App
 
-Mobile client for the Gold Penny gameplay experience.
+Mobile app for the Gold Penny gameplay experience from Penny Float.
 
 Primary domains:
 - Main website: https://www.pennyfloat.com
@@ -12,13 +12,25 @@ Create a local `.env` file from `.env.example` before running the app.
 
 Runtime environment variables:
 - `EXPO_PUBLIC_BACKEND`: required for gameplay API requests
-- `EXPO_PUBLIC_RPC_URL`: required only for wallet connect / signing flows
-- `EXPO_PUBLIC_WC_PROJECT_ID`: required only for wallet connect / signing flows
+- `EXPO_PUBLIC_RPC_URL`: required only for optional external-wallet connection and signing flows
+- `EXPO_PUBLIC_WC_PROJECT_ID`: required only for optional external-wallet connection and signing flows
 - `EXPO_PUBLIC_DEBUG`: optional, set to `1` to enable verbose client logging
 
 Behavior when env is missing:
 - missing `EXPO_PUBLIC_BACKEND`: gameplay API requests fail with a clear runtime error and Settings can still provide an override URL
-- missing WalletConnect env values: the app still boots, but wallet connect actions fail with a clear runtime error when invoked
+- missing wallet connection env values: the app still boots, but optional wallet actions stay unavailable until the build is configured
+
+## Privacy And Permissions
+
+Current app behavior:
+- local storage is used for remembered player ID, advanced connection settings, session continuity, and recent redacted diagnostics
+- network access is used for gameplay API requests, updates, and optional wallet connection flows
+- wallet connection is optional and only starts after explicit user action
+- no active camera, photo library, location, clipboard, or background-processing feature is part of the app experience
+
+Diagnostics posture:
+- recent diagnostics store only short messages, source labels, and timestamps for production troubleshooting
+- sensitive values such as tokens, addresses, signatures, and wallet deep-link URIs are redacted before persistence
 
 ## Development
 
@@ -101,7 +113,7 @@ yarn build:prod:all
 Environment separation assumptions:
 - development profile can target local/dev backends through `.env` or Settings override
 - preview profile should use non-production backend values when available
-- production profile should use production backend and WalletConnect settings only
+- production profile should use production backend and wallet connection settings only
 - no secrets are stored in this repo; final environment values belong in EAS or local secure configuration
 
 ## Manual Release Items
@@ -110,6 +122,7 @@ These are intentionally not stored in the repo and still require Apple / Google 
 - App Store Connect app record and certificates
 - Google Play app record and signing setup
 - Final production backend URL
-- Final WalletConnect project ID and production RPC endpoint
+- Final wallet connection project ID and production RPC endpoint
 - Final store artwork / screenshots / listing copy
 - Optional universal-link / associated-domain setup for hosted deep links
+- App Store privacy answers and Google Play data-safety answers based on the final production backend and analytics posture
