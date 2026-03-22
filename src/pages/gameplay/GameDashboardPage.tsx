@@ -179,6 +179,12 @@ import {
   buildPlanningSummary,
   buildWorldSummary,
 } from '@/lib/uiSummaryFormatters';
+import {
+  buildBasketPressureSignals,
+  buildBottleneckOpportunityHints,
+  buildDailyBriefImpactBullets,
+  buildJobChangeHints,
+} from '@/lib/worldEconomySignalMapper';
 import { theme } from '@/design/theme';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 
@@ -385,18 +391,45 @@ function overlayDashboardWithEconomySummary(
 
   const headline = summary.daily_brief?.headline || dashboard.headline;
   const dailyBrief = buildBundleBrief(summary);
-  const topOpportunities = toDashboardSignalItems(
+
+  let topOpportunities = toDashboardSignalItems(
     summary.player_opportunities,
     'backend_opportunity',
     'economy',
     'medium',
   );
-  const topRisks = toDashboardSignalItems(
+  // If the backend provided no player_opportunities, derive from supply-chain bottlenecks and job changes.
+  if (topOpportunities.length === 0 && summary.daily_brief) {
+    const derived = [
+      ...buildBottleneckOpportunityHints(summary.daily_brief.top_bottlenecks || []),
+      ...buildJobChangeHints(summary.daily_brief.top_job_changes || []),
+    ].slice(0, 3);
+    topOpportunities = derived.map((item, index) => ({
+      key: `derived_opportunity_${index}`,
+      title: item.title,
+      description: item.description,
+      category: 'economy',
+      severity: 'medium' as DashboardSignalItem['severity'],
+    }));
+  }
+
+  let topRisks = toDashboardSignalItems(
     summary.player_warnings,
     'backend_warning',
     'economy',
     'medium',
   );
+  // If the backend provided no player_warnings, derive from basket price movers.
+  if (topRisks.length === 0 && summary.daily_brief) {
+    const derived = buildBasketPressureSignals(summary.daily_brief.top_basket_movers || []);
+    topRisks = derived.map((item, index) => ({
+      key: `derived_risk_${index}`,
+      title: item.title,
+      description: item.description,
+      category: 'economy',
+      severity: 'medium' as DashboardSignalItem['severity'],
+    }));
+  }
 
   return {
     ...dashboard,
@@ -2214,6 +2247,10 @@ export default function GameDashboardPage({
     return `${leadOpportunity}. Risk: ${leadRisk}.`;
   }, [effectiveDashboard]);
   const statsSummary = useMemo(() => economyState.summaryLine, [economyState.summaryLine]);
+  const dailyBriefImpactBullets = useMemo(
+    () => buildDailyBriefImpactBullets(economyPresentationSummaryState.data?.daily_brief),
+    [economyPresentationSummaryState.data?.daily_brief],
+  );
 
   const economyStatusLabel = useMemo(
     () =>
@@ -2439,7 +2476,7 @@ export default function GameDashboardPage({
               ? wrapSection(
                 'daily_brief',
                 <PrimaryDashboardSection title="Daily Brief" summary={dailyBriefSummary}>
-                  <DailyBriefCard dashboard={effectiveDashboard} />
+                  <DailyBriefCard dashboard={effectiveDashboard} impactBullets={dailyBriefImpactBullets} />
                 </PrimaryDashboardSection>,
               )
               : null}

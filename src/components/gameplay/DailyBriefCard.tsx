@@ -29,12 +29,28 @@ function SignalList({
   );
 }
 
-export default function DailyBriefCard({ dashboard }: { dashboard: PlayerDashboardResponse }) {
+export default function DailyBriefCard({
+  dashboard,
+  impactBullets,
+}: {
+  dashboard: PlayerDashboardResponse;
+  impactBullets?: string[];
+}) {
+  const bullets = (impactBullets || []).filter(Boolean).slice(0, 3);
+
   return (
     <View style={styles.card}>
       <Text style={styles.headerLabel}>Daily Brief</Text>
       <Text style={styles.headline}>{dashboard.headline || 'Today at Gold Penny'}</Text>
       <Text style={styles.summary}>{dashboard.daily_brief || 'No summary available.'}</Text>
+      {bullets.length > 0 ? (
+        <View style={styles.impactBox}>
+          <Text style={styles.impactTitle}>Driving Signals</Text>
+          {bullets.map((bullet, index) => (
+            <Text key={`impact_${index}`} style={styles.impactBullet}>• {bullet}</Text>
+          ))}
+        </View>
+      ) : null}
       <View style={styles.signalGrid}>
         <SignalList
           title="Top Opportunities"
@@ -119,5 +135,25 @@ const styles = StyleSheet.create({
   emptyText: {
     color: '#64748b',
     fontSize: 12,
+  },
+  impactBox: {
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 10,
+    backgroundColor: '#f8fafc',
+    padding: 10,
+    gap: 4,
+  },
+  impactTitle: {
+    color: '#475569',
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  impactBullet: {
+    color: '#334155',
+    fontSize: 12,
+    lineHeight: 18,
   },
 });
