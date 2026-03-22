@@ -6,6 +6,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import PrimaryButton from '@/components/ui/PrimaryButton';
+import { theme } from '@/design/theme';
 import { costPressureTone, marginTone } from '@/lib/economyPresentationFormatters';
 import { BusinessMarginItem } from '@/types/economyPresentation';
 import { BusinessPlanItem } from '@/types/strategicPlanning';
@@ -67,39 +68,75 @@ export default function BusinessOperationsCard({
   return (
     <View style={styles.card}>
       <View style={styles.titleRow}>
-        <Text style={styles.title}>{businessLabel(activeRecord.business_type)}</Text>
-        {activeRecord.operating_mode ? (
-          <Text style={styles.modeBadge}>{activeRecord.operating_mode.replace(/_/g, ' ')}</Text>
-        ) : null}
+        <View style={styles.titleBlock}>
+          <Text style={styles.kicker}>Business today</Text>
+          <Text style={styles.title}>{businessLabel(activeRecord.business_type)}</Text>
+        </View>
+        <View style={styles.modeBadge}>
+          <Text style={styles.modeBadgeText}>{activeRecord.operating_mode ? activeRecord.operating_mode.replace(/_/g, ' ') : 'standard mode'}</Text>
+        </View>
       </View>
 
       {margins ? (
         <View style={styles.signalsRow}>
-          <Text style={[styles.marginBadge, { color: marginTone(margins.margin_outlook) }]}>
-            {String(margins.margin_outlook).replace(/_/g, ' ').toUpperCase()}
-          </Text>
-          <Text style={styles.signalItem}>Demand: {margins.demand_outlook}</Text>
-          <Text style={[styles.signalItem, { color: costPressureTone(margins.cost_pressure) }]}>
-            Cost: {margins.cost_pressure}
-          </Text>
+          <View style={[styles.signalChip, { backgroundColor: `${marginTone(margins.margin_outlook)}12` }]}>
+            <Text style={[styles.signalChipText, { color: marginTone(margins.margin_outlook) }]}>
+              {String(margins.margin_outlook).replace(/_/g, ' ')}
+            </Text>
+          </View>
+          <View style={styles.signalChip}>
+            <Text style={styles.signalChipText}>Demand {margins.demand_outlook}</Text>
+          </View>
+          <View style={[styles.signalChip, { backgroundColor: `${costPressureTone(margins.cost_pressure)}12` }]}>
+            <Text style={[styles.signalChipText, { color: costPressureTone(margins.cost_pressure) }]}>Cost {margins.cost_pressure}</Text>
+          </View>
         </View>
       ) : null}
 
-      <View style={styles.guidanceBox}>
-        <Text style={styles.guidanceTitle}>{readinessCopy}</Text>
-        <Text style={styles.explainer}>{whyItMatters}</Text>
+      <View style={styles.outcomeBox}>
+        <Text style={styles.outcomeLabel}>Should you run it?</Text>
+        <Text style={styles.outcomeTitle}>{readinessCopy}</Text>
+        <Text style={styles.explainer} numberOfLines={3}>{whyItMatters}</Text>
       </View>
 
-      <Text style={styles.recommendation}>{recommendation}</Text>
-      <Text style={styles.watchText}>Watch item: {watchItem}</Text>
+      <View style={styles.metricRow}>
+        <View style={styles.metricCard}>
+          <Text style={styles.metricLabel}>Last result</Text>
+          <Text style={[styles.metricValue, latestProfit != null ? { color: latestProfit >= 0 ? '#166534' : '#b91c1c' } : null]}>
+            {latestProfit != null ? `${latestProfit >= 0 ? '+' : ''}${latestProfit.toFixed(1)} XGP` : 'No run yet'}
+          </Text>
+        </View>
+        <View style={styles.metricCard}>
+          <Text style={styles.metricLabel}>7d trend</Text>
+          <Text style={[styles.metricValue, trailingProfit != null ? { color: trailingProfit >= 0 ? '#166534' : '#b91c1c' } : null]}>
+            {trailingProfit != null ? `${trailingProfit >= 0 ? '+' : ''}${trailingProfit.toFixed(1)} XGP` : 'No trend yet'}
+          </Text>
+        </View>
+        <View style={styles.metricCard}>
+          <Text style={styles.metricLabel}>Inventory</Text>
+          <Text style={styles.metricValue}>{inventoryUnits} units</Text>
+        </View>
+      </View>
+
+      <View style={styles.whyBox}>
+        <Text style={styles.whyTitle}>Why this matters</Text>
+        <Text style={styles.recommendation} numberOfLines={3}>{recommendation}</Text>
+        <Text style={styles.watchText} numberOfLines={2}>Watch: {watchItem}</Text>
+      </View>
 
       {margins && (margins.risk_factors.length > 0 || margins.opportunity_factors.length > 0) ? (
         <View style={styles.bullets}>
           {margins.risk_factors[0] ? (
-            <Text style={styles.riskText}>Risk: {margins.risk_factors[0]}</Text>
+            <View style={styles.calloutBox}>
+              <Text style={styles.calloutLabel}>Risk</Text>
+              <Text style={styles.riskText} numberOfLines={2}>{margins.risk_factors[0]}</Text>
+            </View>
           ) : null}
           {margins.opportunity_factors[0] ? (
-            <Text style={styles.oppText}>Upside: {margins.opportunity_factors[0]}</Text>
+            <View style={styles.calloutBox}>
+              <Text style={styles.calloutLabel}>Upside</Text>
+              <Text style={styles.oppText} numberOfLines={2}>{margins.opportunity_factors[0]}</Text>
+            </View>
           ) : null}
         </View>
       ) : null}
@@ -122,20 +159,6 @@ export default function BusinessOperationsCard({
         </View>
       ) : null}
 
-      {latestProfit != null ? (
-        <Text style={styles.profitLine}>
-          {'Last profit: '}
-          <Text style={{ color: latestProfit >= 0 ? '#166534' : '#b91c1c' }}>
-            {latestProfit >= 0 ? '+' : ''}{latestProfit.toFixed(1)} XGP
-          </Text>
-          {trailingProfit != null ? (
-            <Text style={styles.trailingProfit}>
-              {'  7d avg: '}{trailingProfit >= 0 ? '+' : ''}{trailingProfit.toFixed(1)} XGP
-            </Text>
-          ) : null}
-        </Text>
-      ) : null}
-
       {!sessionActive ? (
         <Text style={styles.blockerText}>Day ended — start the next day to operate.</Text>
       ) : null}
@@ -153,113 +176,179 @@ export default function BusinessOperationsCard({
 const styles = StyleSheet.create({
   card: {
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 12,
+    borderColor: '#dbe4ef',
+    borderRadius: theme.radius.xl,
     backgroundColor: '#ffffff',
-    padding: 14,
-    gap: 8,
+    padding: theme.spacing.lg,
+    gap: theme.spacing.md,
   },
   titleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    gap: theme.spacing.sm,
+  },
+  titleBlock: {
+    flex: 1,
+    gap: theme.spacing.xxs,
+  },
+  kicker: {
+    color: theme.color.info,
+    ...theme.typography.caption,
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+    fontWeight: '800',
   },
   title: {
-    color: '#0f172a',
-    fontSize: 17,
+    color: theme.color.textPrimary,
+    ...theme.typography.headingMd,
     fontWeight: '800',
   },
   modeBadge: {
-    color: '#64748b',
-    fontSize: 11,
-    fontWeight: '600',
+    borderRadius: theme.radius.pill,
+    backgroundColor: '#f8fafc',
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+  },
+  modeBadgeText: {
+    color: theme.color.textSecondary,
+    ...theme.typography.caption,
+    fontWeight: '700',
     textTransform: 'capitalize',
   },
   signalsRow: {
     flexDirection: 'row',
-    gap: 10,
+    gap: theme.spacing.sm,
     flexWrap: 'wrap',
     alignItems: 'center',
   },
-  marginBadge: {
-    fontSize: 11,
-    fontWeight: '900',
+  signalChip: {
+    borderRadius: theme.radius.pill,
+    backgroundColor: '#f8fafc',
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
   },
-  signalItem: {
-    color: '#334155',
-    fontSize: 12,
-    fontWeight: '600',
+  signalChipText: {
+    color: theme.color.textPrimary,
+    ...theme.typography.caption,
+    fontWeight: '800',
   },
-  explainer: {
-    color: '#475569',
-    fontSize: 12,
-    lineHeight: 17,
-  },
-  guidanceBox: {
+  outcomeBox: {
     borderWidth: 1,
-    borderColor: '#dbeafe',
-    borderRadius: 10,
+    borderColor: '#bfdbfe',
+    borderRadius: theme.radius.xl,
     backgroundColor: '#f8fbff',
-    padding: 10,
-    gap: 4,
+    padding: theme.spacing.md,
+    gap: theme.spacing.xs,
   },
-  guidanceTitle: {
+  outcomeLabel: {
     color: '#1d4ed8',
-    fontSize: 12,
+    ...theme.typography.caption,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    fontWeight: '800',
+  },
+  outcomeTitle: {
+    color: theme.color.textPrimary,
+    ...theme.typography.headingSm,
     fontWeight: '800',
   },
   recommendation: {
-    color: '#1e40af',
-    fontSize: 12,
-    lineHeight: 17,
+    color: theme.color.textPrimary,
+    ...theme.typography.bodySm,
     fontWeight: '600',
   },
+  explainer: {
+    color: theme.color.textSecondary,
+    ...theme.typography.bodySm,
+  },
+  metricRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.sm,
+  },
+  metricCard: {
+    flex: 1,
+    minWidth: 108,
+    borderWidth: 1,
+    borderColor: '#dbe4ef',
+    borderRadius: theme.radius.lg,
+    backgroundColor: '#ffffff',
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm,
+    gap: theme.spacing.xxs,
+  },
+  metricLabel: {
+    color: theme.color.textSecondary,
+    ...theme.typography.caption,
+    textTransform: 'uppercase',
+    fontWeight: '800',
+  },
+  metricValue: {
+    color: theme.color.textPrimary,
+    ...theme.typography.bodyMd,
+    fontWeight: '800',
+  },
+  whyBox: {
+    gap: theme.spacing.xs,
+  },
+  whyTitle: {
+    color: theme.color.textSecondary,
+    ...theme.typography.caption,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    fontWeight: '800',
+  },
   watchText: {
-    color: '#475569',
-    fontSize: 12,
-    lineHeight: 17,
+    color: theme.color.textSecondary,
+    ...theme.typography.bodySm,
   },
   bullets: {
-    gap: 3,
+    gap: theme.spacing.sm,
+  },
+  calloutBox: {
+    borderRadius: theme.radius.lg,
+    backgroundColor: '#f8fafc',
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm,
+    gap: theme.spacing.xxs,
+  },
+  calloutLabel: {
+    color: theme.color.textSecondary,
+    ...theme.typography.caption,
+    textTransform: 'uppercase',
+    fontWeight: '800',
   },
   riskText: {
     color: '#b91c1c',
-    fontSize: 12,
-    lineHeight: 17,
+    ...theme.typography.bodySm,
   },
   oppText: {
     color: '#166534',
-    fontSize: 12,
-    lineHeight: 17,
+    ...theme.typography.bodySm,
   },
   inventoryRow: {
     flexDirection: 'row',
-    gap: 12,
+    gap: theme.spacing.sm,
     flexWrap: 'wrap',
   },
   inventoryItem: {
-    color: '#475569',
-    fontSize: 12,
-    fontWeight: '600',
+    color: theme.color.textSecondary,
+    ...theme.typography.caption,
+    fontWeight: '700',
+    borderRadius: theme.radius.pill,
+    backgroundColor: '#f8fafc',
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
   },
   inventoryWarning: {
     color: '#b45309',
-    fontSize: 12,
-    lineHeight: 17,
+    ...theme.typography.bodySm,
     fontWeight: '600',
-  },
-  profitLine: {
-    color: '#334155',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  trailingProfit: {
-    color: '#64748b',
-    fontSize: 12,
   },
   blockerText: {
     color: '#b45309',
-    fontSize: 12,
+    ...theme.typography.bodySm,
     fontWeight: '600',
   },
 });

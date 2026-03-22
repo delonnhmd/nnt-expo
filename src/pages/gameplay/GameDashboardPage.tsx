@@ -3651,20 +3651,21 @@ const styles = StyleSheet.create({
   },
   feedbackBox: {
     borderWidth: 1,
-    borderRadius: theme.radius.md,
-    paddingVertical: theme.spacing.sm,
+    borderRadius: theme.radius.xl,
+    paddingVertical: theme.spacing.md,
     paddingHorizontal: theme.spacing.md,
-    gap: theme.spacing.xxs,
+    gap: theme.spacing.xs,
   },
   feedbackLabel: {
     ...theme.typography.caption,
     fontWeight: '800',
     textTransform: 'uppercase',
+    letterSpacing: 0.8,
   },
   feedbackText: {
     ...theme.typography.bodySm,
     fontWeight: '600',
-    lineHeight: 19,
+    lineHeight: 18,
   },
   dayControlCard: {
     borderWidth: 1,

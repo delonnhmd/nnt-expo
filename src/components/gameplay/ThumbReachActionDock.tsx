@@ -53,11 +53,14 @@ export default function ThumbReachActionDock({
   return (
     <BottomActionBar>
       <View style={styles.summaryRow}>
-        <View style={styles.dayPill}>
-          <Text style={styles.dayPillText}>Day {dayNumber}</Text>
+        <View style={styles.summaryBlock}>
+          <View style={styles.dayPill}>
+            <Text style={styles.dayPillText}>Day {dayNumber}</Text>
+          </View>
+          <Text style={styles.summaryTitle}>Primary actions</Text>
         </View>
         <Text style={styles.summaryText}>
-          {remainingTimeUnits}/{totalTimeUnits} units left • {sessionStatus === 'active' ? 'Ready to act' : 'Day settled'}
+          {remainingTimeUnits}/{totalTimeUnits} units left • {sessionStatus === 'active' ? 'Act now' : 'Review and restart'}
         </Text>
       </View>
 
@@ -71,14 +74,16 @@ export default function ThumbReachActionDock({
             },
           ]}
         >
+          <Text style={[styles.feedbackLabel, { color: feedbackStyle.color }]}>Latest result</Text>
           <Text style={[styles.feedbackText, { color: feedbackStyle.color }]} numberOfLines={3}>
             {feedback.message}
           </Text>
         </View>
       ) : (
-        <Text style={styles.hintText}>Daily loop: check the brief, take one clear action, then settle the day.</Text>
+        <Text style={styles.hintText}>Read the brief, take one clear move, then close the day.</Text>
       )}
 
+      <Text style={styles.rowLabel}>Main lane</Text>
       <View style={styles.primaryRow}>
         <PrimaryButton
           label={primaryAction.label}
@@ -114,6 +119,7 @@ export default function ThumbReachActionDock({
         )}
       </View>
 
+      <Text style={styles.rowLabel}>Quick access</Text>
       <View style={styles.secondaryRow}>
         {secondaryActions.map((action) => (
           action.emphasis === 'primary' ? (
@@ -149,18 +155,28 @@ export default function ThumbReachActionDock({
 const styles = StyleSheet.create({
   summaryRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
     gap: theme.spacing.sm,
+  },
+  summaryBlock: {
+    gap: theme.spacing.xs,
   },
   dayPill: {
     borderRadius: 999,
-    backgroundColor: '#eff6ff',
+    backgroundColor: '#e0ecff',
     paddingHorizontal: theme.spacing.sm,
     paddingVertical: theme.spacing.xxs,
+    alignSelf: 'flex-start',
   },
   dayPillText: {
     color: '#1d4ed8',
     ...theme.typography.caption,
+    fontWeight: '800',
+  },
+  summaryTitle: {
+    color: theme.color.textPrimary,
+    ...theme.typography.headingSm,
     fontWeight: '800',
   },
   summaryText: {
@@ -168,12 +184,20 @@ const styles = StyleSheet.create({
     ...theme.typography.bodySm,
     fontWeight: '600',
     flex: 1,
+    textAlign: 'right',
   },
   feedbackBox: {
     borderWidth: 1,
-    borderRadius: theme.radius.md,
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.xs,
+    borderRadius: theme.radius.lg,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    gap: theme.spacing.xxs,
+  },
+  feedbackLabel: {
+    ...theme.typography.caption,
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+    fontWeight: '800',
   },
   feedbackText: {
     ...theme.typography.bodySm,
@@ -183,6 +207,14 @@ const styles = StyleSheet.create({
   hintText: {
     color: theme.color.textSecondary,
     ...theme.typography.caption,
+    lineHeight: 16,
+  },
+  rowLabel: {
+    color: theme.color.muted,
+    ...theme.typography.caption,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    fontWeight: '800',
   },
   primaryRow: {
     flexDirection: 'row',
@@ -198,7 +230,7 @@ const styles = StyleSheet.create({
   },
   secondaryButton: {
     flexGrow: 1,
-    flexBasis: '30%',
+    flexBasis: '42%',
     minWidth: 92,
   },
   highlightedButton: {

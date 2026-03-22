@@ -14,11 +14,12 @@ export default function BottomActionBar({
 const styles = StyleSheet.create({
   bar: {
     borderTopWidth: 1,
-    borderTopColor: theme.color.border,
-    backgroundColor: theme.color.surface,
+    borderTopColor: '#dbe4ef',
+    backgroundColor: '#fcfdff',
     paddingHorizontal: theme.spacing.lg,
-    paddingVertical: theme.spacing.sm,
-    gap: theme.spacing.sm,
-    ...theme.shadow.sm,
+    paddingTop: theme.spacing.md,
+    paddingBottom: theme.spacing.md,
+    gap: theme.spacing.md,
+    ...theme.shadow.md,
   },
 });

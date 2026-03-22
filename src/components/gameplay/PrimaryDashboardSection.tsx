@@ -47,9 +47,9 @@ export default function PrimaryDashboardSection({
 
 const styles = StyleSheet.create({
   card: {
-    gap: theme.spacing.xs,
+    gap: theme.spacing.sm,
   },
   body: {
-    gap: theme.spacing.sm,
+    gap: theme.spacing.md,
   },
 });

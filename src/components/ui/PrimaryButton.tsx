@@ -37,23 +37,28 @@ export default function PrimaryButton({
 
 const styles = StyleSheet.create({
   button: {
-    minHeight: 44,
-    borderRadius: theme.radius.md,
+    minHeight: 52,
+    borderRadius: theme.radius.lg,
     backgroundColor: theme.color.accent,
+    borderWidth: 1,
+    borderColor: '#1e40af',
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
     gap: theme.spacing.xs,
     paddingHorizontal: theme.spacing.lg,
+    ...theme.shadow.sm,
   },
   disabled: {
     opacity: 0.45,
   },
   pressed: {
-    opacity: 0.85,
+    opacity: 0.9,
+    transform: [{ scale: 0.99 }],
   },
   text: {
     color: '#ffffff',
     ...theme.typography.label,
+    fontWeight: '800',
   },
 });

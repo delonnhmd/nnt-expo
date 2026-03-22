@@ -9,7 +9,27 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { GameplayEconomyState } from '@/types/economy';
 import { DashboardStatSnapshot } from '@/types/gameplay';
 
-function StatTile({
+function MetricTile({
+  label,
+  value,
+  note,
+  tone,
+}: {
+  label: string;
+  value: string;
+  note?: string | null;
+  tone?: string;
+}) {
+  return (
+    <View style={styles.metricTile}>
+      <Text style={styles.metricLabel}>{label}</Text>
+      <Text style={[styles.metricValue, tone ? { color: tone } : null]} numberOfLines={1}>{value}</Text>
+      {note ? <Text style={styles.metricNote} numberOfLines={2}>{note}</Text> : null}
+    </View>
+  );
+}
+
+function DetailPill({
   label,
   value,
   tone,
@@ -19,9 +39,9 @@ function StatTile({
   tone?: string;
 }) {
   return (
-    <View style={styles.tile}>
-      <Text style={styles.label}>{label}</Text>
-      <Text style={[styles.value, tone ? { color: tone } : null]}>{value}</Text>
+    <View style={styles.detailPill}>
+      <Text style={styles.detailLabel}>{label}</Text>
+      <Text style={[styles.detailValue, tone ? { color: tone } : null]} numberOfLines={1}>{value}</Text>
     </View>
   );
 }
@@ -51,73 +71,99 @@ export default function PlayerStatsBar({
         : economy.netCashFlow > 0
           ? '#166534'
           : theme.color.textSecondary;
+  const debtTone = debtAmount > 0 ? '#b91c1c' : '#166534';
+  const pressureTone = economy?.debtPressure === 'critical'
+    ? '#b91c1c'
+    : economy?.debtPressure === 'high'
+      ? '#b45309'
+      : theme.color.textSecondary;
+  const pressureLabel = economy
+    ? economy.debtPressure.charAt(0).toUpperCase() + economy.debtPressure.slice(1)
+    : 'Stable';
+  const netFlowValue = economy ? economy.cashFlowLabel : 'Unavailable';
+  const netFlowNote = expenseDebt?.expenseAmount != null && jobIncome?.incomeAmount != null
+    ? `${jobIncome.dailyIncomeLabel} income vs ${expenseDebt.expenseLabel} costs`
+    : 'Daily cash direction';
 
   return (
     <View style={styles.container}>
-      {currentGameDay != null ? <StatTile label="Day" value={String(currentGameDay)} /> : null}
-      <StatTile label="Cash" value={formatMoney(cashOnHand)} />
-      <StatTile label="Net Worth" value={formatMoney(netWorthAmount)} />
-      {economy ? <StatTile label="Cash Flow" value={economy.cashFlowLabel} tone={cashFlowTone} /> : null}
-      {!isMobile ? <StatTile label="Debt" value={formatMoney(debtAmount)} tone={debtAmount > 0 ? '#b91c1c' : '#166534'} /> : null}
-      {economy ? (
-        <StatTile
-          label="Pressure"
-          value={economy.debtPressure.charAt(0).toUpperCase() + economy.debtPressure.slice(1)}
-          tone={economy.debtPressure === 'critical' ? '#b91c1c' : economy.debtPressure === 'high' ? '#b45309' : theme.color.textSecondary}
-        />
-      ) : null}
-      <StatTile label="Stress" value={`${Math.round(stats.stress)}`} tone={stressTone(stats.stress)} />
-      <StatTile label="Health" value={`${Math.round(stats.health)}`} tone={healthTone(stats.health)} />
-      <StatTile label="Job" value={(jobIncome?.currentJob ?? stats.current_job) || 'Unassigned'} />
-      {!isMobile && jobIncome?.incomeAmount != null ? (
-        <StatTile
-          label="Income"
-          value={jobIncome.dailyIncomeLabel}
-          tone={jobIncome.incomeAmount > 0 ? '#166534' : theme.color.textSecondary}
-        />
-      ) : null}
-      {!isMobile && expenseDebt?.expenseAmount != null ? (
-        <StatTile
-          label="Expenses"
-          value={expenseDebt.expenseLabel}
-          tone={expenseDebt.expenseAmount > 0 ? '#b45309' : theme.color.textSecondary}
-        />
-      ) : null}
-      <StatTile label="Credit" value={`${Math.round(stats.credit_score)}`} tone={creditTone(stats.credit_score)} />
-      {!isMobile ? <StatTile label="Region" value={stats.region_key || 'Unknown'} /> : null}
+      <View style={styles.primaryGrid}>
+        <MetricTile label="Cash" value={formatMoney(cashOnHand)} note="Available to survive or act today" />
+        <MetricTile label="Debt" value={formatMoney(debtAmount)} tone={debtTone} note="What is already pulling against you" />
+        <MetricTile label="Net Flow" value={netFlowValue} tone={cashFlowTone} note={netFlowNote} />
+        <MetricTile label="Pressure" value={pressureLabel} tone={pressureTone} note="How hard current obligations are hitting" />
+      </View>
+
+      <View style={styles.secondaryGrid}>
+        {currentGameDay != null ? <DetailPill label="Day" value={String(currentGameDay)} /> : null}
+        <DetailPill label="Job" value={(jobIncome?.currentJob ?? stats.current_job) || 'Unassigned'} />
+        <DetailPill label="Stress" value={`${Math.round(stats.stress)}`} tone={stressTone(stats.stress)} />
+        <DetailPill label="Health" value={`${Math.round(stats.health)}`} tone={healthTone(stats.health)} />
+        <DetailPill label="Credit" value={`${Math.round(stats.credit_score)}`} tone={creditTone(stats.credit_score)} />
+        {!isMobile ? <DetailPill label="Net Worth" value={formatMoney(netWorthAmount)} /> : null}
+        {!isMobile && expenseDebt?.expenseAmount != null ? <DetailPill label="Expenses" value={expenseDebt.expenseLabel} tone={theme.color.warning} /> : null}
+        {!isMobile ? <DetailPill label="Region" value={stats.region_key || 'Unknown'} /> : null}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    borderWidth: 1,
-    borderColor: theme.color.border,
-    borderRadius: theme.radius.lg,
-    backgroundColor: theme.color.surface,
-    padding: theme.spacing.sm,
+    gap: theme.spacing.md,
+  },
+  primaryGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: theme.spacing.xs,
+    gap: theme.spacing.sm,
   },
-  tile: {
-    minWidth: 112,
+  metricTile: {
+    minWidth: 138,
     flex: 1,
     borderWidth: 1,
-    borderColor: theme.color.border,
-    borderRadius: theme.radius.md,
-    backgroundColor: theme.color.surfaceAlt,
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.sm,
-    gap: theme.spacing.xxs,
+    borderColor: '#dbe4ef',
+    borderRadius: theme.radius.xl,
+    backgroundColor: '#ffffff',
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.md,
+    gap: theme.spacing.xs,
   },
-  label: {
+  metricLabel: {
     ...theme.typography.caption,
     color: theme.color.textSecondary,
     textTransform: 'uppercase',
-    fontWeight: '700',
+    fontWeight: '800',
   },
-  value: {
+  metricValue: {
+    ...theme.typography.headingMd,
+    color: theme.color.textPrimary,
+    fontWeight: '800',
+  },
+  metricNote: {
+    ...theme.typography.caption,
+    color: theme.color.textSecondary,
+    lineHeight: 15,
+  },
+  secondaryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.sm,
+  },
+  detailPill: {
+    borderRadius: theme.radius.lg,
+    backgroundColor: '#f8fafc',
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm,
+    minWidth: 96,
+    gap: theme.spacing.xxs,
+  },
+  detailLabel: {
+    ...theme.typography.caption,
+    color: theme.color.textSecondary,
+    textTransform: 'uppercase',
+    fontWeight: '800',
+  },
+  detailValue: {
     ...theme.typography.bodySm,
     color: theme.color.textPrimary,
     fontWeight: '700',

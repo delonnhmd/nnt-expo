@@ -25,10 +25,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: theme.spacing.sm,
     flexWrap: 'wrap',
+    paddingTop: theme.spacing.xs,
   },
   summary: {
     color: theme.color.textSecondary,
     ...theme.typography.bodySm,
     flexShrink: 1,
+    lineHeight: 18,
   },
 });

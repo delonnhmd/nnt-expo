@@ -34,11 +34,11 @@ export default function SecondaryButton({
 
 const styles = StyleSheet.create({
   button: {
-    minHeight: 44,
+    minHeight: 48,
     borderWidth: 1,
-    borderColor: theme.color.border,
-    borderRadius: theme.radius.md,
-    backgroundColor: theme.color.surface,
+    borderColor: '#d5deea',
+    borderRadius: theme.radius.lg,
+    backgroundColor: '#ffffff',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: theme.spacing.lg,
@@ -47,10 +47,11 @@ const styles = StyleSheet.create({
     opacity: 0.45,
   },
   pressed: {
-    backgroundColor: theme.color.surfaceAlt,
+    backgroundColor: '#f8fafc',
   },
   text: {
-    color: theme.color.textSecondary,
+    color: theme.color.textPrimary,
     ...theme.typography.label,
+    fontWeight: '700',
   },
 });

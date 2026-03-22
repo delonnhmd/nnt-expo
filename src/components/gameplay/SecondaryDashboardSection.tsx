@@ -24,7 +24,7 @@ export default function SecondaryDashboardSection({
   statusLabel?: string | null;
 }) {
   return (
-    <SurfaceCard style={styles.card}>
+    <SurfaceCard variant="muted" style={styles.card}>
       <SectionHeader
         title={title}
         collapsible
@@ -39,6 +39,6 @@ export default function SecondaryDashboardSection({
 
 const styles = StyleSheet.create({
   card: {
-    gap: theme.spacing.xxs,
+    gap: theme.spacing.sm,
   },
 });

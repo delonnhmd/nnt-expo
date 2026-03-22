@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
+import { theme } from '@/design/theme';
 import { formatDelta, formatMoney } from '@/lib/gameplayFormatters';
 import { EndOfDaySummaryResponse } from '@/types/gameplay';
 
@@ -15,10 +16,15 @@ function tomorrowFocus(summary: EndOfDaySummaryResponse): string {
 
 export default function EndOfDaySummaryCard({ summary }: { summary: EndOfDaySummaryResponse }) {
   const guidedSummaryActive = Number(summary.guided_day_number || 0) >= 1 && Number(summary.guided_day_number || 0) <= 3;
+  const netTone = summary.net_change_xgp >= 0 ? '#166534' : '#b91c1c';
 
   return (
     <View style={styles.card}>
-      <Text style={styles.heading}>End of Day Summary</Text>
+      <View style={styles.headerBlock}>
+        <Text style={styles.kicker}>Day closed</Text>
+        <Text style={styles.heading}>End of Day Summary</Text>
+      </View>
+
       <View style={styles.grid}>
         <View style={styles.metricCard}>
           <Text style={styles.metricLabel}>Earned</Text>
@@ -30,25 +36,38 @@ export default function EndOfDaySummaryCard({ summary }: { summary: EndOfDaySumm
         </View>
         <View style={styles.metricCard}>
           <Text style={styles.metricLabel}>Net</Text>
-          <Text style={[styles.metricValue, { color: summary.net_change_xgp >= 0 ? '#166534' : '#b91c1c' }]}>
+          <Text style={[styles.metricValue, { color: netTone }]}>
             {formatMoney(summary.net_change_xgp)}
           </Text>
         </View>
       </View>
 
-      <Text style={styles.copy}>Biggest Gain: {summary.biggest_gain}</Text>
-      <Text style={styles.copy}>Biggest Loss: {summary.biggest_loss}</Text>
-      <Text style={styles.copy}>Stress Δ: {formatDelta(summary.stress_delta)}</Text>
-      <Text style={styles.copy}>Health Δ: {formatDelta(summary.health_delta)}</Text>
-      <Text style={styles.copy}>Skill Δ: {formatDelta(summary.skill_delta)}</Text>
-      <Text style={styles.copy}>Credit Δ: {formatDelta(summary.credit_score_delta, 0)}</Text>
-      <Text style={styles.copy}>Distress: {summary.distress_state}</Text>
-
       <View style={styles.storyBox}>
-        <Text style={styles.storyTitle}>What changed today</Text>
-        <Text style={styles.storyText}>Biggest gain: {summary.biggest_gain}</Text>
-        <Text style={styles.storyText}>Biggest loss: {summary.biggest_loss}</Text>
+        <Text style={styles.storyTitle}>What mattered most</Text>
+        <Text style={styles.storyHeadline} numberOfLines={2}>{summary.biggest_gain}</Text>
+        <Text style={styles.storyText} numberOfLines={2}>Main drag: {summary.biggest_loss}</Text>
       </View>
+
+      <View style={styles.deltaRow}>
+        <View style={styles.deltaChip}>
+          <Text style={styles.deltaLabel}>Stress</Text>
+          <Text style={styles.deltaValue}>{formatDelta(summary.stress_delta)}</Text>
+        </View>
+        <View style={styles.deltaChip}>
+          <Text style={styles.deltaLabel}>Health</Text>
+          <Text style={styles.deltaValue}>{formatDelta(summary.health_delta)}</Text>
+        </View>
+        <View style={styles.deltaChip}>
+          <Text style={styles.deltaLabel}>Skill</Text>
+          <Text style={styles.deltaValue}>{formatDelta(summary.skill_delta)}</Text>
+        </View>
+        <View style={styles.deltaChip}>
+          <Text style={styles.deltaLabel}>Credit</Text>
+          <Text style={styles.deltaValue}>{formatDelta(summary.credit_score_delta, 0)}</Text>
+        </View>
+      </View>
+
+      <Text style={styles.copy}>Distress state: {summary.distress_state}</Text>
 
       {guidedSummaryActive ? (
         <View style={styles.lessonBox}>
@@ -61,8 +80,8 @@ export default function EndOfDaySummaryCard({ summary }: { summary: EndOfDaySumm
 
       {summary.tomorrow_warnings.length > 0 ? (
         <View style={styles.warningBox}>
-          <Text style={styles.warningTitle}>Tomorrow Warnings</Text>
-          {summary.tomorrow_warnings.map((item, index) => (
+          <Text style={styles.warningTitle}>Watch tomorrow</Text>
+          {summary.tomorrow_warnings.slice(0, 2).map((item, index) => (
             <Text key={`tomorrow_${index}`} style={styles.warningText}>
               • {item}
             </Text>
@@ -81,123 +100,159 @@ export default function EndOfDaySummaryCard({ summary }: { summary: EndOfDaySumm
 const styles = StyleSheet.create({
   card: {
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 12,
+    borderColor: '#dbe4ef',
+    borderRadius: theme.radius.xl,
     backgroundColor: '#ffffff',
-    padding: 14,
-    gap: 8,
+    padding: theme.spacing.lg,
+    gap: theme.spacing.md,
+  },
+  headerBlock: {
+    gap: theme.spacing.xxs,
+  },
+  kicker: {
+    color: theme.color.info,
+    ...theme.typography.caption,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    fontWeight: '800',
   },
   heading: {
-    color: '#0f172a',
-    fontSize: 18,
+    color: theme.color.textPrimary,
+    ...theme.typography.headingLg,
     fontWeight: '800',
   },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: theme.spacing.sm,
   },
   metricCard: {
     flex: 1,
     minWidth: 120,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 10,
+    borderColor: '#dbe4ef',
+    borderRadius: theme.radius.lg,
     backgroundColor: '#f8fafc',
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    gap: 3,
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.sm,
+    gap: theme.spacing.xxs,
   },
   metricLabel: {
-    color: '#64748b',
+    color: theme.color.textSecondary,
     textTransform: 'uppercase',
-    fontSize: 11,
-    fontWeight: '700',
+    ...theme.typography.caption,
+    fontWeight: '800',
   },
   metricValue: {
-    color: '#0f172a',
-    fontSize: 14,
+    color: theme.color.textPrimary,
+    ...theme.typography.bodyMd,
     fontWeight: '800',
   },
   copy: {
-    color: '#334155',
-    fontSize: 13,
-    lineHeight: 18,
+    color: theme.color.textSecondary,
+    ...theme.typography.bodySm,
   },
   storyBox: {
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 10,
+    borderColor: '#dbe4ef',
+    borderRadius: theme.radius.xl,
     backgroundColor: '#f8fafc',
-    padding: 10,
-    gap: 4,
+    padding: theme.spacing.md,
+    gap: theme.spacing.xs,
   },
   storyTitle: {
-    color: '#475569',
-    fontSize: 11,
+    color: theme.color.textSecondary,
+    ...theme.typography.caption,
     fontWeight: '800',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
+  },
+  storyHeadline: {
+    color: theme.color.textPrimary,
+    ...theme.typography.bodyMd,
+    fontWeight: '700',
   },
   storyText: {
-    color: '#334155',
-    fontSize: 12,
-    lineHeight: 17,
+    color: theme.color.textSecondary,
+    ...theme.typography.bodySm,
+  },
+  deltaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.sm,
+  },
+  deltaChip: {
+    borderRadius: theme.radius.lg,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#dbe4ef',
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm,
+    minWidth: 88,
+    gap: theme.spacing.xxs,
+  },
+  deltaLabel: {
+    color: theme.color.textSecondary,
+    ...theme.typography.caption,
+    textTransform: 'uppercase',
+    fontWeight: '800',
+  },
+  deltaValue: {
+    color: theme.color.textPrimary,
+    ...theme.typography.bodySm,
+    fontWeight: '700',
   },
   lessonBox: {
     borderWidth: 1,
     borderColor: '#bfdbfe',
-    borderRadius: 10,
+    borderRadius: theme.radius.xl,
     backgroundColor: '#eff6ff',
-    padding: 10,
-    gap: 4,
+    padding: theme.spacing.md,
+    gap: theme.spacing.xs,
   },
   lessonTitle: {
     color: '#1d4ed8',
-    fontSize: 12,
+    ...theme.typography.bodySm,
     fontWeight: '800',
   },
   lessonText: {
     color: '#1e3a8a',
-    fontSize: 12,
-    lineHeight: 17,
+    ...theme.typography.bodySm,
   },
   warningBox: {
     borderWidth: 1,
     borderColor: '#fecaca',
-    borderRadius: 10,
+    borderRadius: theme.radius.xl,
     backgroundColor: '#fef2f2',
-    padding: 10,
-    gap: 4,
+    padding: theme.spacing.md,
+    gap: theme.spacing.xs,
   },
   warningTitle: {
     color: '#b91c1c',
-    fontSize: 12,
-    fontWeight: '700',
+    ...theme.typography.label,
+    fontWeight: '800',
   },
   warningText: {
     color: '#7f1d1d',
-    fontSize: 12,
-    lineHeight: 17,
+    ...theme.typography.bodySm,
   },
   focusBox: {
     borderWidth: 1,
     borderColor: '#bfdbfe',
-    borderRadius: 10,
+    borderRadius: theme.radius.xl,
     backgroundColor: '#eff6ff',
-    padding: 10,
-    gap: 4,
+    padding: theme.spacing.md,
+    gap: theme.spacing.xs,
   },
   focusTitle: {
     color: '#1e40af',
-    fontSize: 11,
+    ...theme.typography.caption,
     fontWeight: '800',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
   },
   focusText: {
     color: '#1e3a8a',
-    fontSize: 12,
-    lineHeight: 17,
+    ...theme.typography.bodySm,
   },
 });

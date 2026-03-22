@@ -22,7 +22,7 @@ export default function SectionHeader({
         <Text style={styles.title}>{title}</Text>
         {summary ? <Text style={styles.summary}>{summary}</Text> : null}
       </View>
-      {collapsible ? <Text style={styles.chevron}>{expanded ? '^' : 'v'}</Text> : null}
+      {collapsible ? <Text style={styles.chevron}>{expanded ? 'Hide' : 'Show'}</Text> : null}
     </View>
   );
 
@@ -39,7 +39,7 @@ export default function SectionHeader({
 
 const styles = StyleSheet.create({
   buttonWrap: {
-    borderRadius: theme.radius.sm,
+    borderRadius: theme.radius.md,
     minHeight: 44,
     justifyContent: 'center',
   },
@@ -51,18 +51,21 @@ const styles = StyleSheet.create({
   },
   copy: {
     flex: 1,
-    gap: theme.spacing.xxs,
+    gap: theme.spacing.xs,
   },
   title: {
     color: theme.color.textPrimary,
-    ...theme.typography.headingSm,
+    ...theme.typography.headingMd,
+    fontWeight: '800',
   },
   summary: {
     color: theme.color.textSecondary,
-    ...theme.typography.bodySm,
+    ...theme.typography.caption,
   },
   chevron: {
-    color: theme.color.muted,
+    color: theme.color.info,
     ...theme.typography.label,
+    fontWeight: '800',
+    textTransform: 'uppercase',
   },
 });

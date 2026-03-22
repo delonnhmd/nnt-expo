@@ -1,32 +1,14 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
+import { theme } from '@/design/theme';
 import { PlayerDashboardResponse } from '@/types/gameplay';
 
-function SignalList({
-  title,
-  items,
-  tone,
-}: {
-  title: string;
-  items: { title: string; description: string }[];
-  tone: string;
-}) {
-  return (
-    <View style={styles.signalSection}>
-      <Text style={[styles.signalTitle, { color: tone }]}>{title}</Text>
-      {items.length > 0 ? (
-        items.slice(0, 3).map((item, index) => (
-          <View key={`${title}_${index}`} style={styles.signalItem}>
-            <Text style={styles.signalItemTitle}>{item.title}</Text>
-            <Text style={styles.signalItemText}>{item.description}</Text>
-          </View>
-        ))
-      ) : (
-        <Text style={styles.emptyText}>No major signals yet.</Text>
-      )}
-    </View>
-  );
+function firstMeaningfulLine(value: string | null | undefined): string {
+  return String(value || '')
+    .split(/(?<=[.!?])\s+/)
+    .map((entry) => entry.trim())
+    .find(Boolean) || 'No summary available.';
 }
 
 export default function DailyBriefCard({
@@ -37,57 +19,76 @@ export default function DailyBriefCard({
   impactBullets?: string[];
 }) {
   const bullets = (impactBullets || []).filter(Boolean).slice(0, 3);
-  const recommendedActions = (dashboard.recommended_actions || []).filter(Boolean).slice(0, 3);
-  const hasSignals = dashboard.top_opportunities.length > 0 || dashboard.top_risks.length > 0;
+  const recommendedActions = (dashboard.recommended_actions || []).filter(Boolean).slice(0, 2);
+  const leadRisk = dashboard.top_risks[0] || null;
+  const leadOpportunity = dashboard.top_opportunities[0] || null;
+  const primarySignal = leadRisk || leadOpportunity;
+  const secondarySignal = leadRisk && leadOpportunity
+    ? leadOpportunity
+    : dashboard.top_risks[1] || dashboard.top_opportunities[1] || null;
+  const summary = firstMeaningfulLine(dashboard.daily_brief);
 
   return (
     <View style={styles.card}>
-      <Text style={styles.headerLabel}>Daily Brief</Text>
-      <Text style={styles.headline}>{dashboard.headline || 'Today at Gold Penny'}</Text>
-      <Text style={styles.summary}>{dashboard.daily_brief || 'No summary available.'}</Text>
-      {recommendedActions.length > 0 ? (
-        <View style={styles.recommendationBox}>
-          <Text style={styles.recommendationTitle}>Best Next Moves</Text>
-          {recommendedActions.map((action, index) => (
-            <View key={`${action.action_key}_${index}`} style={styles.recommendationItem}>
-              <Text style={styles.recommendationAction}>{action.title}</Text>
-              <Text style={styles.recommendationReason}>{action.reason}</Text>
-            </View>
-          ))}
+      <View style={styles.heroBlock}>
+        <Text style={styles.headerLabel}>Daily Brief</Text>
+        <Text style={styles.headline}>{dashboard.headline || 'Today at Gold Penny'}</Text>
+        <Text style={styles.summary} numberOfLines={3}>{summary}</Text>
+      </View>
+
+      {primarySignal ? (
+        <View style={[styles.primarySignalBox, leadRisk ? styles.primarySignalRisk : styles.primarySignalOpportunity]}>
+          <Text style={styles.primarySignalLabel}>{leadRisk ? 'Watch now' : 'Best opening'}</Text>
+          <Text style={styles.primarySignalTitle} numberOfLines={2}>{primarySignal.title}</Text>
+          <Text style={styles.primarySignalText} numberOfLines={2}>{primarySignal.description}</Text>
         </View>
-      ) : (
-        <View style={styles.neutralBox}>
-          <Text style={styles.neutralTitle}>Best Next Move</Text>
-          <Text style={styles.neutralBody}>No direct move is flagged right now. Protect cash first, then take the lowest-risk action that improves tomorrow&apos;s position.</Text>
+      ) : null}
+
+      <View style={styles.bottomGrid}>
+        <View style={styles.quickActionBox}>
+          <Text style={styles.quickActionTitle}>Best next move</Text>
+          {recommendedActions.length > 0 ? (
+            recommendedActions.map((action, index) => (
+              <View key={`${action.action_key}_${index}`} style={styles.quickActionItem}>
+                <Text style={styles.quickActionIndex}>0{index + 1}</Text>
+                <View style={styles.quickActionCopy}>
+                  <Text style={styles.quickActionName} numberOfLines={1}>{action.title}</Text>
+                  <Text style={styles.quickActionReason} numberOfLines={2}>
+                    {action.reason || 'Review this action in the hub.'}
+                  </Text>
+                </View>
+              </View>
+            ))
+          ) : (
+            <Text style={styles.neutralBody}>
+              No direct move is flagged. Protect cash first, then choose the lowest-risk action that improves tomorrow.
+            </Text>
+          )}
         </View>
-      )}
+
+        <View style={styles.secondarySignalBox}>
+          <Text style={styles.secondarySignalTitle}>{secondarySignal ? 'Secondary signal' : 'Brief status'}</Text>
+          {secondarySignal ? (
+            <>
+              <Text style={styles.secondarySignalHeadline} numberOfLines={1}>{secondarySignal.title}</Text>
+              <Text style={styles.secondarySignalText} numberOfLines={3}>{secondarySignal.description}</Text>
+            </>
+          ) : (
+            <Text style={styles.secondarySignalText}>
+              No second major signal is standing out. Use cash pressure and the main brief to guide the day.
+            </Text>
+          )}
+        </View>
+      </View>
+
       {bullets.length > 0 ? (
         <View style={styles.impactBox}>
-          <Text style={styles.impactTitle}>Driving Signals</Text>
+          <Text style={styles.impactTitle}>Driving signals</Text>
           {bullets.map((bullet, index) => (
-            <Text key={`impact_${index}`} style={styles.impactBullet}>• {bullet}</Text>
+            <Text key={`impact_${index}`} style={styles.impactBullet} numberOfLines={2}>• {bullet}</Text>
           ))}
         </View>
       ) : null}
-      <View style={styles.signalGrid}>
-        <SignalList
-          title="Top Opportunities"
-          tone="#166534"
-          items={dashboard.top_opportunities.map((entry) => ({
-            title: entry.title,
-            description: entry.description,
-          }))}
-        />
-        <SignalList
-          title="Top Risks"
-          tone="#b91c1c"
-          items={dashboard.top_risks.map((entry) => ({
-            title: entry.title,
-            description: entry.description,
-          }))}
-        />
-      </View>
-      {!hasSignals ? <Text style={styles.footerHint}>The economy snapshot is still partial. Use the Daily Brief headline and your cash pressure as the main guide.</Text> : null}
     </View>
   );
 }
@@ -95,137 +96,150 @@ export default function DailyBriefCard({
 const styles = StyleSheet.create({
   card: {
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 12,
-    backgroundColor: '#ffffff',
-    padding: 14,
-    gap: 10,
+    borderColor: '#d6e1f2',
+    borderRadius: theme.radius.xl,
+    backgroundColor: '#fdfefe',
+    padding: theme.spacing.lg,
+    gap: theme.spacing.md,
+  },
+  heroBlock: {
+    gap: theme.spacing.xs,
   },
   headerLabel: {
-    fontSize: 11,
+    ...theme.typography.caption,
     textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    color: '#475569',
-    fontWeight: '700',
+    letterSpacing: 0.8,
+    color: '#1d4ed8',
+    fontWeight: '800',
   },
   headline: {
-    fontSize: 20,
-    lineHeight: 26,
-    color: '#0f172a',
+    ...theme.typography.headingLg,
+    color: theme.color.textPrimary,
     fontWeight: '800',
   },
   summary: {
-    color: '#334155',
-    fontSize: 14,
+    color: theme.color.textSecondary,
+    ...theme.typography.bodyMd,
     lineHeight: 20,
   },
-  signalGrid: {
+  primarySignalBox: {
+    borderWidth: 1,
+    borderRadius: theme.radius.xl,
+    padding: theme.spacing.md,
+    gap: theme.spacing.xs,
+  },
+  primarySignalRisk: {
+    borderColor: '#fecaca',
+    backgroundColor: '#fff6f5',
+  },
+  primarySignalOpportunity: {
+    borderColor: '#bbf7d0',
+    backgroundColor: '#f3fff7',
+  },
+  primarySignalLabel: {
+    ...theme.typography.caption,
+    color: theme.color.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    fontWeight: '800',
+  },
+  primarySignalTitle: {
+    color: theme.color.textPrimary,
+    ...theme.typography.headingSm,
+    fontWeight: '800',
+  },
+  primarySignalText: {
+    color: theme.color.textSecondary,
+    ...theme.typography.bodySm,
+  },
+  bottomGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    gap: theme.spacing.sm,
   },
-  signalSection: {
-    flex: 1,
+  quickActionBox: {
+    flex: 1.2,
     minWidth: 220,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 10,
-    padding: 10,
-    backgroundColor: '#f8fafc',
-    gap: 8,
+    borderColor: '#dbe4ef',
+    borderRadius: theme.radius.xl,
+    backgroundColor: '#ffffff',
+    padding: theme.spacing.md,
+    gap: theme.spacing.sm,
   },
-  signalTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  signalItem: {
-    gap: 2,
-  },
-  signalItemTitle: {
-    color: '#0f172a',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  signalItemText: {
-    color: '#475569',
-    fontSize: 12,
-    lineHeight: 17,
-  },
-  emptyText: {
-    color: '#64748b',
-    fontSize: 12,
-  },
-  impactBox: {
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 10,
-    backgroundColor: '#f8fafc',
-    padding: 10,
-    gap: 4,
-  },
-  recommendationBox: {
-    borderWidth: 1,
-    borderColor: '#bfdbfe',
-    borderRadius: 10,
-    backgroundColor: '#eff6ff',
-    padding: 10,
-    gap: 8,
-  },
-  neutralBox: {
-    borderWidth: 1,
-    borderColor: '#dbeafe',
-    borderRadius: 10,
-    backgroundColor: '#f8fbff',
-    padding: 10,
-    gap: 4,
-  },
-  neutralTitle: {
-    color: '#1e40af',
-    fontSize: 11,
-    fontWeight: '800',
+  quickActionTitle: {
+    color: '#1d4ed8',
+    ...theme.typography.caption,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
+    fontWeight: '800',
+  },
+  quickActionItem: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    alignItems: 'flex-start',
+  },
+  quickActionIndex: {
+    color: '#1d4ed8',
+    ...theme.typography.label,
+    fontWeight: '800',
+    minWidth: 20,
+  },
+  quickActionCopy: {
+    flex: 1,
+    gap: theme.spacing.xxs,
+  },
+  quickActionName: {
+    color: theme.color.textPrimary,
+    ...theme.typography.bodyMd,
+    fontWeight: '700',
+  },
+  quickActionReason: {
+    color: theme.color.textSecondary,
+    ...theme.typography.bodySm,
   },
   neutralBody: {
-    color: '#334155',
-    fontSize: 12,
-    lineHeight: 17,
+    color: theme.color.textSecondary,
+    ...theme.typography.bodySm,
   },
-  recommendationTitle: {
-    color: '#1d4ed8',
-    fontSize: 11,
-    fontWeight: '800',
+  secondarySignalBox: {
+    flex: 0.9,
+    minWidth: 180,
+    borderWidth: 1,
+    borderColor: '#dbe4ef',
+    borderRadius: theme.radius.xl,
+    backgroundColor: '#f8fafc',
+    padding: theme.spacing.md,
+    gap: theme.spacing.xs,
+  },
+  secondarySignalTitle: {
+    color: theme.color.textSecondary,
+    ...theme.typography.caption,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.7,
+    fontWeight: '800',
   },
-  recommendationItem: {
-    gap: 2,
-  },
-  recommendationAction: {
-    color: '#0f172a',
-    fontSize: 13,
+  secondarySignalHeadline: {
+    color: theme.color.textPrimary,
+    ...theme.typography.bodyMd,
     fontWeight: '700',
   },
-  recommendationReason: {
-    color: '#334155',
-    fontSize: 12,
-    lineHeight: 17,
+  secondarySignalText: {
+    color: theme.color.textSecondary,
+    ...theme.typography.bodySm,
+  },
+  impactBox: {
+    gap: theme.spacing.xs,
   },
   impactTitle: {
-    color: '#475569',
-    fontSize: 11,
-    fontWeight: '800',
+    color: theme.color.textSecondary,
+    ...theme.typography.caption,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.7,
+    fontWeight: '800',
   },
   impactBullet: {
-    color: '#334155',
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  footerHint: {
-    color: '#64748b',
-    fontSize: 12,
-    lineHeight: 17,
+    color: theme.color.textSecondary,
+    ...theme.typography.bodySm,
   },
 });

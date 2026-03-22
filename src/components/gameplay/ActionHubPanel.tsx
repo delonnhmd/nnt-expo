@@ -60,7 +60,10 @@ function ActionSection({
   if (!collapsible || !isMobile) {
     return (
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{title}</Text>
+        <View style={styles.sectionHeaderStatic}>
+          <Text style={styles.sectionEyebrow}>{title === 'Recommended' ? 'Main lane' : title === 'Available' ? 'More options' : 'Unavailable now'}</Text>
+          <Text style={styles.sectionTitle}>{title}</Text>
+        </View>
         {body}
       </View>
     );
@@ -69,7 +72,10 @@ function ActionSection({
   return (
     <View style={styles.section}>
       <Pressable onPress={() => setExpanded((prev) => !prev)} style={styles.sectionHeaderButton}>
-        <Text style={styles.sectionTitle}>{title}</Text>
+        <View style={styles.sectionHeaderStatic}>
+          <Text style={styles.sectionEyebrow}>{title === 'Available' ? 'More options' : 'Unavailable now'}</Text>
+          <Text style={styles.sectionTitle}>{title}</Text>
+        </View>
         <Text style={styles.sectionToggle}>{expanded ? 'Hide' : 'Show'}</Text>
       </Pressable>
       <CollapsibleSection expanded={expanded}>{body}</CollapsibleSection>
@@ -96,13 +102,16 @@ export default function ActionHubPanel({
 }) {
   return (
     <SurfaceCard style={styles.card}>
-      <Text style={styles.heading}>Action Hub</Text>
-      <Text style={styles.subheading}>Pick your next move, review the tradeoffs, and then commit.</Text>
+      <View style={styles.headingBlock}>
+        <Text style={styles.eyebrow}>Daily control area</Text>
+        <Text style={styles.heading}>Action Hub</Text>
+        <Text style={styles.subheading}>Use the dock for the fastest move, or open a preview here before spending time.</Text>
+      </View>
       <SurfaceCard variant="muted" style={styles.timeBox}>
         <View style={styles.timeTopRow}>
-          <Text style={styles.timeTitle}>Day Progress</Text>
+          <Text style={styles.timeTitle}>Session Tempo</Text>
           <Text style={styles.timeMeta}>
-            {remainingTimeUnits}/{totalTimeUnits} units left • {sessionStatus === 'active' ? 'Active' : 'Ended'}
+            {remainingTimeUnits}/{totalTimeUnits} units left · {sessionStatus === 'active' ? 'Action window open' : 'Day settled'}
           </Text>
         </View>
         <ProgressMeter progress={progressRatio} />
@@ -110,10 +119,10 @@ export default function ActionHubPanel({
 
       {hub.top_tradeoffs.length > 0 ? (
         <SurfaceCard variant="highlighted" style={styles.infoBox}>
-          <Text style={styles.infoTitle}>Top Tradeoffs</Text>
+          <Text style={styles.infoTitle}>Best setup</Text>
           {hub.top_tradeoffs.slice(0, 3).map((item, index) => (
             <Text key={`tradeoff_${index}`} style={styles.infoText}>
-              - {item}
+              • {item}
             </Text>
           ))}
         </SurfaceCard>
@@ -121,10 +130,10 @@ export default function ActionHubPanel({
 
       {hub.next_risk_warnings.length > 0 ? (
         <SurfaceCard variant="warning" style={styles.warningBox}>
-          <Text style={styles.warningTitle}>Immediate Risks</Text>
+          <Text style={styles.warningTitle}>Watch before acting</Text>
           {hub.next_risk_warnings.slice(0, 3).map((item, index) => (
             <Text key={`warning_${index}`} style={styles.warningText}>
-              - {item}
+              • {item}
             </Text>
           ))}
         </SurfaceCard>
@@ -158,18 +167,30 @@ export default function ActionHubPanel({
 
 const styles = StyleSheet.create({
   card: {
-    gap: theme.spacing.md,
+    gap: theme.spacing.lg,
+  },
+  headingBlock: {
+    gap: theme.spacing.xs,
+  },
+  eyebrow: {
+    color: theme.color.info,
+    ...theme.typography.caption,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    fontWeight: '800',
   },
   heading: {
     color: theme.color.textPrimary,
-    ...theme.typography.headingMd,
+    ...theme.typography.headingLg,
+    fontWeight: '800',
   },
   subheading: {
     color: theme.color.textSecondary,
     ...theme.typography.bodySm,
+    lineHeight: 18,
   },
   timeBox: {
-    gap: theme.spacing.sm,
+    gap: theme.spacing.md,
   },
   timeTopRow: {
     flexDirection: 'row',
@@ -179,53 +200,69 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   timeTitle: {
-    color: theme.color.textSecondary,
+    color: theme.color.textPrimary,
     ...theme.typography.label,
+    fontWeight: '800',
   },
   timeMeta: {
     color: theme.color.textSecondary,
     ...theme.typography.caption,
   },
   infoBox: {
-    gap: theme.spacing.xxs,
+    gap: theme.spacing.xs,
   },
   infoTitle: {
     color: theme.color.info,
     ...theme.typography.label,
+    fontWeight: '800',
   },
   infoText: {
     color: '#1e3a8a',
     ...theme.typography.bodySm,
   },
   warningBox: {
-    gap: theme.spacing.xxs,
+    gap: theme.spacing.xs,
   },
   warningTitle: {
     color: '#92400e',
     ...theme.typography.label,
+    fontWeight: '800',
   },
   warningText: {
     color: '#78350f',
     ...theme.typography.bodySm,
   },
   section: {
-    gap: theme.spacing.sm,
+    gap: theme.spacing.md,
+  },
+  sectionHeaderStatic: {
+    flex: 1,
+    gap: theme.spacing.xxs,
   },
   sectionHeaderButton: {
     minHeight: 44,
-    borderRadius: theme.radius.sm,
+    borderRadius: theme.radius.md,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: theme.spacing.sm,
   },
+  sectionEyebrow: {
+    color: theme.color.muted,
+    ...theme.typography.caption,
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+    fontWeight: '800',
+  },
   sectionTitle: {
-    color: theme.color.textSecondary,
+    color: theme.color.textPrimary,
     ...theme.typography.headingSm,
+    fontWeight: '800',
   },
   sectionToggle: {
     color: theme.color.info,
     ...theme.typography.label,
+    fontWeight: '800',
   },
   empty: {
     color: theme.color.muted,

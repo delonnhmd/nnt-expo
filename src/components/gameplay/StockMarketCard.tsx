@@ -74,22 +74,22 @@ export default function StockMarketCard({
   return (
     <View style={styles.card}>
       <View style={styles.headerRow}>
-        <View>
+        <View style={styles.headerCopy}>
+          <Text style={styles.kicker}>Market side lane</Text>
           <Text style={styles.heading}>Sector Stocks</Text>
           <Text style={styles.meta}>
-            Day {market.latest_day ?? '?'} closes only. Trades execute against canonical backend price.
+            Day {market.latest_day ?? '?'} close pricing only. Trade only after core cash needs are covered.
           </Text>
         </View>
         <View style={styles.summaryPill}>
-          <Text style={styles.summaryPillLabel}>Holdings</Text>
+          <Text style={styles.summaryPillLabel}>Held</Text>
           <Text style={styles.summaryPillValue}>{market.portfolio.holdings_count}</Text>
         </View>
       </View>
 
       <View style={styles.guidanceBox}>
-        <Text style={styles.guidanceTitle}>How to use this</Text>
-        <Text style={styles.guidanceText}>Stocks are optional upside. Prices update once per day from the backend close, so protect essentials and debt cash before chasing gains.</Text>
-        <Text style={styles.guidanceHint}>Every trade includes a fee, so short-term flipping needs a real edge.</Text>
+        <Text style={styles.guidanceTitle}>Quick read</Text>
+        <Text style={styles.guidanceText}>Optional upside only. Prices move once per day, every trade costs a fee, and weak cash discipline matters more than a missed stock gain.</Text>
       </View>
 
       <View style={styles.portfolioGrid}>
@@ -143,21 +143,32 @@ export default function StockMarketCard({
               </View>
 
               <View style={styles.signalRow}>
-                <Text style={styles.signalText}>{stock.sector_signal_summary}</Text>
-                <Text style={styles.volatilityBadge}>{volatilityLabelText(stock.volatility_label)}</Text>
+                <Text style={styles.signalText} numberOfLines={2}>{stock.sector_signal_summary}</Text>
+                <View style={styles.volatilityBadge}>
+                  <Text style={styles.volatilityBadgeText}>{volatilityLabelText(stock.volatility_label)}</Text>
+                </View>
               </View>
-
-              <Text style={styles.actionHint}>
-                {stock.holdings_quantity > 0
-                  ? 'You already hold this name. Trim or add only if the signal still fits your cash plan.'
-                  : 'Use this only if you can tolerate a short-term swing and still cover your core obligations.'}
-              </Text>
 
               <View style={styles.holdingRow}>
-                <Text style={styles.holdingText}>Held: {stock.holdings_quantity} share(s)</Text>
-                <Text style={styles.holdingText}>Value: {formatMoney(stock.holdings_market_value)}</Text>
-                <Text style={[styles.holdingText, { color: changeTone(stock.holdings_unrealized_pnl) }]}>P&L: {formatMoney(stock.holdings_unrealized_pnl)}</Text>
+                <View style={styles.holdingChip}>
+                  <Text style={styles.holdingLabel}>Held</Text>
+                  <Text style={styles.holdingValue}>{stock.holdings_quantity} share(s)</Text>
+                </View>
+                <View style={styles.holdingChip}>
+                  <Text style={styles.holdingLabel}>Owned value</Text>
+                  <Text style={styles.holdingValue}>{formatMoney(stock.holdings_market_value)}</Text>
+                </View>
+                <View style={styles.holdingChip}>
+                  <Text style={styles.holdingLabel}>P&L</Text>
+                  <Text style={[styles.holdingValue, { color: changeTone(stock.holdings_unrealized_pnl) }]}>{formatMoney(stock.holdings_unrealized_pnl)}</Text>
+                </View>
               </View>
+
+              <Text style={styles.actionHint} numberOfLines={2}>
+                {stock.holdings_quantity > 0
+                  ? 'Add or trim only if this still fits the day plan and your cash buffer remains safe.'
+                  : 'Treat this as optional exposure, not a rescue plan for weak cash flow.'}
+              </Text>
 
               <View style={styles.tradeRow}>
                 <TradeButton
@@ -190,11 +201,11 @@ export default function StockMarketCard({
 const styles = StyleSheet.create({
   card: {
     borderWidth: 1,
-    borderColor: theme.color.border,
-    borderRadius: theme.radius.lg,
+    borderColor: '#dbe4ef',
+    borderRadius: theme.radius.xl,
     backgroundColor: theme.color.surface,
-    padding: theme.spacing.md,
-    gap: theme.spacing.md,
+    padding: theme.spacing.lg,
+    gap: theme.spacing.lg,
   },
   headerRow: {
     flexDirection: 'row',
@@ -202,9 +213,21 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: theme.spacing.sm,
   },
+  headerCopy: {
+    flex: 1,
+    gap: theme.spacing.xxs,
+  },
+  kicker: {
+    color: theme.color.info,
+    ...theme.typography.caption,
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+    fontWeight: '800',
+  },
   heading: {
-    ...theme.typography.headingSm,
+    ...theme.typography.headingMd,
     color: theme.color.textPrimary,
+    fontWeight: '800',
   },
   meta: {
     ...theme.typography.bodySm,
@@ -227,7 +250,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   summaryPillValue: {
-    ...theme.typography.bodySm,
+    ...theme.typography.bodyMd,
     color: theme.color.textPrimary,
     fontWeight: '800',
   },
@@ -240,9 +263,9 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 110,
     borderWidth: 1,
-    borderColor: theme.color.border,
-    borderRadius: theme.radius.md,
-    backgroundColor: theme.color.surfaceAlt,
+    borderColor: '#dbe4ef',
+    borderRadius: theme.radius.lg,
+    backgroundColor: '#ffffff',
     padding: theme.spacing.sm,
     gap: theme.spacing.xxs,
   },
@@ -253,9 +276,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   tileValue: {
-    ...theme.typography.bodySm,
+    ...theme.typography.bodyMd,
     color: theme.color.textPrimary,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   warning: {
     ...theme.typography.bodySm,
@@ -265,10 +288,10 @@ const styles = StyleSheet.create({
   guidanceBox: {
     borderWidth: 1,
     borderColor: '#dbeafe',
-    borderRadius: theme.radius.md,
+    borderRadius: theme.radius.xl,
     backgroundColor: '#f8fbff',
-    padding: theme.spacing.sm,
-    gap: theme.spacing.xxs,
+    padding: theme.spacing.md,
+    gap: theme.spacing.xs,
   },
   guidanceTitle: {
     ...theme.typography.caption,
@@ -279,11 +302,6 @@ const styles = StyleSheet.create({
   guidanceText: {
     ...theme.typography.bodySm,
     color: theme.color.textPrimary,
-  },
-  guidanceHint: {
-    ...theme.typography.caption,
-    color: theme.color.textSecondary,
-    fontWeight: '600',
   },
   neutralHint: {
     ...theme.typography.bodySm,
@@ -311,10 +329,10 @@ const styles = StyleSheet.create({
   },
   stockRow: {
     borderWidth: 1,
-    borderColor: theme.color.border,
-    borderRadius: theme.radius.md,
-    backgroundColor: theme.color.surfaceAlt,
-    padding: theme.spacing.sm,
+    borderColor: '#dbe4ef',
+    borderRadius: theme.radius.xl,
+    backgroundColor: '#ffffff',
+    padding: theme.spacing.md,
     gap: theme.spacing.sm,
   },
   stockHeader: {
@@ -327,7 +345,7 @@ const styles = StyleSheet.create({
     gap: theme.spacing.xxs,
   },
   stockName: {
-    ...theme.typography.label,
+    ...theme.typography.headingSm,
     color: theme.color.textPrimary,
     fontWeight: '800',
   },
@@ -340,7 +358,7 @@ const styles = StyleSheet.create({
     gap: theme.spacing.xxs,
   },
   stockPrice: {
-    ...theme.typography.bodySm,
+    ...theme.typography.bodyMd,
     color: theme.color.textPrimary,
     fontWeight: '800',
   },
@@ -356,7 +374,7 @@ const styles = StyleSheet.create({
   },
   signalText: {
     ...theme.typography.bodySm,
-    color: theme.color.textSecondary,
+    color: theme.color.textPrimary,
     flex: 1,
   },
   actionHint: {
@@ -364,6 +382,12 @@ const styles = StyleSheet.create({
     color: theme.color.textSecondary,
   },
   volatilityBadge: {
+    borderRadius: theme.radius.pill,
+    backgroundColor: '#eff6ff',
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+  },
+  volatilityBadgeText: {
     ...theme.typography.caption,
     color: '#1d4ed8',
     fontWeight: '800',
@@ -374,10 +398,23 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: theme.spacing.sm,
   },
-  holdingText: {
+  holdingChip: {
+    borderRadius: theme.radius.lg,
+    backgroundColor: '#f8fafc',
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm,
+    gap: theme.spacing.xxs,
+  },
+  holdingLabel: {
     ...theme.typography.caption,
     color: theme.color.textSecondary,
-    fontWeight: '600',
+    textTransform: 'uppercase',
+    fontWeight: '800',
+  },
+  holdingValue: {
+    ...theme.typography.bodySm,
+    color: theme.color.textPrimary,
+    fontWeight: '700',
   },
   tradeRow: {
     flexDirection: 'row',
