@@ -47,6 +47,8 @@ export function useDailyProgression(
   currentGameDayRef.current = currentGameDay;
 
   const initialized = useRef(false);
+  // Prevents markDayStarted from advancing more than one day per button press.
+  const markingDayRef = useRef(false);
 
   useEffect(() => {
     if (!playerId || initialized.current) return;
@@ -104,10 +106,15 @@ export function useDailyProgression(
   }, [playerId]);
 
   const markDayStarted = useCallback((): number => {
+    // Synchronous guard prevents double-advance on rapid double-tap of "Start Next Day".
+    if (markingDayRef.current) return currentGameDayRef.current;
+    markingDayRef.current = true;
     const nextDay = currentGameDayRef.current + 1;
     setCurrentGameDay(nextDay);
     currentGameDayRef.current = nextDay;
     AsyncStorage.setItem(DAY_STORAGE_KEY(playerId), String(nextDay)).catch(() => {});
+    // Allow another call only after React's event loop has processed the state update.
+    setTimeout(() => { markingDayRef.current = false; }, 0);
     return nextDay;
   }, [playerId]);
 

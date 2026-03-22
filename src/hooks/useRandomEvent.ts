@@ -40,11 +40,15 @@ export function useRandomEvent(
   const [activeEvent, setActiveEvent] = useState<ActiveRandomEvent | null>(null);
   // Track which day has already been processed to avoid duplicate rolls.
   const processedDayRef = useRef<number>(-1);
+  // Guard: prevents double-invocation of resolveEvent (e.g. rapid double-tap).
+  const resolvingRef = useRef(false);
 
   useEffect(() => {
     if (!playerId || currentGameDay < 1) return;
     if (processedDayRef.current === currentGameDay) return;
     processedDayRef.current = currentGameDay;
+    // New day: reset the resolve guard so the incoming event can be dismissed.
+    resolvingRef.current = false;
 
     let cancelled = false;
 
@@ -116,6 +120,9 @@ export function useRandomEvent(
 
   // Mark the current event as resolved in both state and storage.
   const resolveEvent = useCallback(async (): Promise<void> => {
+    // Guard against double-invoke from rapid taps on dismiss / apply buttons.
+    if (resolvingRef.current) return;
+    resolvingRef.current = true;
     setActiveEvent(null);
     try {
       const raw = await AsyncStorage.getItem(EVENT_STORAGE_KEY(playerId));

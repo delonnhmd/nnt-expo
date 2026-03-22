@@ -403,7 +403,11 @@ export default function GameDashboardPage({
   const [endingDay, setEndingDay] = useState(false);
   const [lastEndDayResult, setLastEndDayResult] = useState<EndDayResponse | null>(null);
 
-  const dailySession = useDailySession();
+  // Synchronous ref guards prevent double-tap races on day transitions.
+  const endDayGuardRef = useRef(false);
+  const startingNextDayRef = useRef(false);
+
+  const dailySession = useDailySession(playerId);
   const { isMobile } = useBreakpoint();
   const scrollRef = useRef<ScrollView | null>(null);
   const [activeShellTab, setActiveShellTab] = useState<'home' | 'actions' | 'progress' | 'insights' | 'profile'>('home');
@@ -1496,12 +1500,15 @@ export default function GameDashboardPage({
   }, [dailySession, onExecuteAction, refreshAfterAction, selectedAction, selectedActionGuard]);
 
   const handleEndDay = useCallback(async () => {
+    // synchronous ref guard fires before any state reads to close the double-tap race window
+    if (endDayGuardRef.current) return;
     if (dailySession.sessionStatus !== 'active') {
       setFeedback({ tone: 'info', message: 'Day already ended. Start next day to continue.' });
       return;
     }
     if (dailySession.pendingExecution || executingAction || endingDay) return;
 
+    endDayGuardRef.current = true;
     setEndingDay(true);
     dailySession.setPendingExecution(true);
     try {
@@ -1556,6 +1563,7 @@ export default function GameDashboardPage({
         message: normalizeError(error),
       });
     } finally {
+      endDayGuardRef.current = false;
       setEndingDay(false);
       dailySession.setPendingExecution(false);
     }
@@ -1598,14 +1606,21 @@ export default function GameDashboardPage({
   ]);
 
   const handleStartNextDay = useCallback(async () => {
-    const nextDayNumber = dailyProgression.markDayStarted();
-    dailySession.resetSession({
-      totalUnits: deriveSuggestedTimeUnits(dashboardState.data),
-      nextDayKey: String(nextDayNumber),
-    });
-    setLastEndDayResult(null);
-    setFeedback({ tone: 'info', message: 'New day started. Choose your next action.' });
-    await loadAll();
+    // Synchronous ref guard prevents double-advance if the button is tapped twice.
+    if (startingNextDayRef.current) return;
+    startingNextDayRef.current = true;
+    try {
+      const nextDayNumber = dailyProgression.markDayStarted();
+      dailySession.resetSession({
+        totalUnits: deriveSuggestedTimeUnits(dashboardState.data),
+        nextDayKey: String(nextDayNumber),
+      });
+      setLastEndDayResult(null);
+      setFeedback({ tone: 'info', message: 'New day started. Choose your next action.' });
+      await loadAll();
+    } finally {
+      startingNextDayRef.current = false;
+    }
   }, [dailyProgression, dailySession, dashboardState.data, loadAll]);
 
   const refreshCommitmentSections = useCallback(async () => {

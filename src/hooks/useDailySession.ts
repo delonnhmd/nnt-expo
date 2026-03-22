@@ -1,5 +1,7 @@
-import { useCallback, useMemo, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { BALANCE } from '@/lib/balanceConfig';
 import {
   DailyActionHistoryEntry,
   DailyActionItem,
@@ -13,35 +15,21 @@ export interface ActionExecutionGuard {
   timeCostUnits: number;
 }
 
-const DEFAULT_TOTAL_TIME_UNITS = 10;
-const MIN_TOTAL_TIME_UNITS = 6;
-const MAX_TOTAL_TIME_UNITS = 16;
+// Constants sourced from BALANCE so all tuning is centralised in balanceConfig.
+const DEFAULT_TOTAL_TIME_UNITS = BALANCE.DEFAULT_TOTAL_TIME_UNITS;
+const MIN_TOTAL_TIME_UNITS = BALANCE.MIN_TOTAL_TIME_UNITS;
+const MAX_TOTAL_TIME_UNITS = BALANCE.MAX_TOTAL_TIME_UNITS;
+const DEFAULT_ACTION_TIME_COST: Record<string, number> = BALANCE.ACTION_TIME_COST;
+const DEFAULT_ACTION_CAPS: Record<string, number> = BALANCE.ACTION_CAPS;
 
-const DEFAULT_ACTION_TIME_COST: Record<string, number> = {
-  work_shift: 3,
-  side_income: 3,
-  operate_business: 2,
-  buy_inventory: 1,
-  rest: 2,
-  study: 2,
-  debt_payment: 1,
-  recovery_action: 1,
-  switch_job: 1,
-  change_region: 1,
-};
-
-const DEFAULT_ACTION_CAPS: Record<string, number> = {
-  work_shift: 2,
-  side_income: 2,
-  operate_business: 1,
-  buy_inventory: 2,
-  rest: 2,
-  study: 2,
-  debt_payment: 1,
-  recovery_action: 1,
-  switch_job: 1,
-  change_region: 1,
-};
+/** Minimal set of fields persisted to AsyncStorage to survive mid-day reloads. */
+interface PersistedSessionState {
+  dayKey: string;
+  remainingTimeUnits: number;
+  actionCounts: Record<string, number>;
+  sessionStatus: DailySessionStatus;
+  totalTimeUnits: number;
+}
 
 function normalizeActionKey(key: GameplayActionKey): string {
   const raw = String(key || '').toLowerCase().trim();
@@ -67,36 +55,129 @@ function clampTotalUnits(value: number | undefined): number {
   return Math.max(MIN_TOTAL_TIME_UNITS, Math.min(MAX_TOTAL_TIME_UNITS, Math.round(parsed)));
 }
 
-export function useDailySession() {
+export function useDailySession(playerId: string) {
   const [dayKey, setDayKey] = useState<string>('');
   const [totalTimeUnits, setTotalTimeUnits] = useState<number>(DEFAULT_TOTAL_TIME_UNITS);
   const [remainingTimeUnits, setRemainingTimeUnits] = useState<number>(DEFAULT_TOTAL_TIME_UNITS);
   const [actionsTakenToday, setActionsTakenToday] = useState<DailyActionHistoryEntry[]>([]);
   const [sessionStatus, setSessionStatus] = useState<DailySessionStatus>('active');
   const [pendingExecution, setPendingExecution] = useState<boolean>(false);
+  // Action counts from before this app session (loaded from storage after a reload).
+  // Combined with live actionsTakenToday to enforce caps across restarts.
+  const [restoredActionCounts, setRestoredActionCounts] = useState<Record<string, number>>({});
 
+  // Prevents concurrent initializeDay calls while a storage read is in flight.
+  const initializingRef = useRef(false);
+
+  const sessionStorageKey = useMemo(
+    () => (playerId ? `goldpenny:gameplay:session:${playerId}` : null),
+    [playerId],
+  );
+
+  // Persist key session state so a mid-day reload cannot reset time units or action caps.
+  useEffect(() => {
+    if (!dayKey || !sessionStorageKey) return;
+    const snapshot: PersistedSessionState = {
+      dayKey,
+      remainingTimeUnits,
+      actionCounts: { ...restoredActionCounts },
+      sessionStatus,
+      totalTimeUnits,
+    };
+    // Merge in live session counts so the snapshot always reflects total actions taken today.
+    for (const entry of actionsTakenToday) {
+      const k = normalizeActionKey(entry.action_key);
+      snapshot.actionCounts[k] = (snapshot.actionCounts[k] || 0) + 1;
+    }
+    AsyncStorage.setItem(sessionStorageKey, JSON.stringify(snapshot)).catch(() => {});
+  }, [
+    dayKey,
+    remainingTimeUnits,
+    restoredActionCounts,
+    sessionStatus,
+    totalTimeUnits,
+    actionsTakenToday,
+    sessionStorageKey,
+  ]);
+
+  // Derived action counts: persisted (pre-reload) + live (this session).
   const actionCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
+    const counts: Record<string, number> = { ...restoredActionCounts };
     for (const entry of actionsTakenToday) {
       const normalized = normalizeActionKey(entry.action_key);
       counts[normalized] = (counts[normalized] || 0) + 1;
     }
     return counts;
-  }, [actionsTakenToday]);
+  }, [actionsTakenToday, restoredActionCounts]);
 
   const initializeDay = useCallback((nextDayKey: string, suggestedTotalUnits?: number) => {
     const normalizedDay = String(nextDayKey || '').trim();
     if (!normalizedDay) return;
     if (normalizedDay === dayKey) return;
+    if (initializingRef.current) return;
+    initializingRef.current = true;
 
     const clamped = clampTotalUnits(suggestedTotalUnits);
-    setDayKey(normalizedDay);
-    setTotalTimeUnits(clamped);
-    setRemainingTimeUnits(clamped);
-    setActionsTakenToday([]);
-    setSessionStatus('active');
-    setPendingExecution(false);
-  }, [dayKey]);
+
+    const freshInit = (key: string, units: number) => {
+      setDayKey(key);
+      setTotalTimeUnits(units);
+      setRemainingTimeUnits(units);
+      setRestoredActionCounts({});
+      setActionsTakenToday([]);
+      setSessionStatus('active');
+      setPendingExecution(false);
+      if (sessionStorageKey) {
+        AsyncStorage.removeItem(sessionStorageKey).catch(() => {});
+      }
+    };
+
+    if (!sessionStorageKey) {
+      freshInit(normalizedDay, clamped);
+      initializingRef.current = false;
+      return;
+    }
+
+    AsyncStorage.getItem(sessionStorageKey)
+      .then((raw) => {
+        if (raw) {
+          try {
+            const persisted: PersistedSessionState = JSON.parse(raw);
+            if (persisted.dayKey === normalizedDay) {
+              // Same game day found in storage — restore to prevent reload-to-reset exploits.
+              const restoredUnits = Math.max(
+                0,
+                Math.min(MAX_TOTAL_TIME_UNITS, Number(persisted.remainingTimeUnits) || 0),
+              );
+              const restoredTotal = clampTotalUnits(persisted.totalTimeUnits);
+              const restoredStatus: DailySessionStatus =
+                persisted.sessionStatus === 'ended' ? 'ended' : 'active';
+              const restoredCounts =
+                typeof persisted.actionCounts === 'object' && persisted.actionCounts !== null
+                  ? (persisted.actionCounts as Record<string, number>)
+                  : {};
+              setDayKey(normalizedDay);
+              setTotalTimeUnits(restoredTotal);
+              setRemainingTimeUnits(restoredUnits);
+              setRestoredActionCounts(restoredCounts);
+              setActionsTakenToday([]);
+              setSessionStatus(restoredStatus);
+              setPendingExecution(false);
+              initializingRef.current = false;
+              return;
+            }
+          } catch {
+            // Corrupted storage — fall through to fresh init.
+          }
+        }
+        freshInit(normalizedDay, clamped);
+        initializingRef.current = false;
+      })
+      .catch(() => {
+        freshInit(normalizedDay, clamped);
+        initializingRef.current = false;
+      });
+  }, [dayKey, sessionStorageKey]);
 
   const estimateTimeCost = useCallback(
     (actionKey: GameplayActionKey, explicitCost?: number): number => {
@@ -176,10 +257,15 @@ export function useDailySession() {
     }
     setTotalTimeUnits(clamped);
     setRemainingTimeUnits(clamped);
+    setRestoredActionCounts({});
     setActionsTakenToday([]);
     setSessionStatus('active');
     setPendingExecution(false);
-  }, [totalTimeUnits]);
+    // Clear stale storage so the incoming new day starts completely fresh.
+    if (sessionStorageKey) {
+      AsyncStorage.removeItem(sessionStorageKey).catch(() => {});
+    }
+  }, [totalTimeUnits, sessionStorageKey]);
 
   const progress = useMemo(() => {
     if (totalTimeUnits <= 0) return 0;
