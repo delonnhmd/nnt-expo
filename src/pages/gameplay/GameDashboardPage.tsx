@@ -41,6 +41,7 @@ import ProgressionSummaryCard from '@/components/gameplay/ProgressionSummaryCard
 import RecoveryVsPushCard from '@/components/gameplay/RecoveryVsPushCard';
 import RegionMemoryCard from '@/components/gameplay/RegionMemoryCard';
 import ShortHorizonPlansCard from '@/components/gameplay/ShortHorizonPlansCard';
+import StockMarketCard from '@/components/gameplay/StockMarketCard';
 import SecondaryDashboardSection from '@/components/gameplay/SecondaryDashboardSection';
 import PrimaryDashboardSection from '@/components/gameplay/PrimaryDashboardSection';
 import StreaksCard from '@/components/gameplay/StreaksCard';
@@ -77,6 +78,7 @@ import {
   replaceCommitment,
 } from '@/lib/api/commitment';
 import { getPlayerBusinesses } from '@/lib/api/business';
+import { buyStock, getStockMarketSnapshot, sellStock } from '@/lib/api/stocks';
 import {
   getBusinessMargins,
   getCommutePressure,
@@ -143,6 +145,7 @@ import {
   AvailableCommitmentItem,
 } from '@/types/commitment';
 import { PlayerBusinessesResponse } from '@/types/business';
+import { StockMarketSnapshotResponse } from '@/types/stocks';
 import {
   BusinessMarginsResponse,
   CommutePressureResponse,
@@ -491,6 +494,7 @@ export default function GameDashboardPage({
   const [debtVsGrowthState, setDebtVsGrowthState] = useState<SectionState<DebtVsGrowthResponse>>(initialSection);
   const [businessPlanState, setBusinessPlanState] = useState<SectionState<BusinessPlanResponse>>(initialSection);
   const [playerBusinessesState, setPlayerBusinessesState] = useState<SectionState<PlayerBusinessesResponse>>(initialSection);
+  const [stockMarketState, setStockMarketState] = useState<SectionState<StockMarketSnapshotResponse>>(initialSection);
   const [recoveryVsPushState, setRecoveryVsPushState] = useState<SectionState<RecoveryVsPushResponse>>(initialSection);
   const [strategyRecommendationState, setStrategyRecommendationState] = useState<SectionState<StrategyRecommendationResponse>>(initialSection);
   const [futurePreparationState, setFuturePreparationState] = useState<SectionState<FuturePreparationResponse>>(initialSection);
@@ -522,11 +526,13 @@ export default function GameDashboardPage({
   const [previewPayload, setPreviewPayload] = useState<ActionPreviewResponse | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [executingAction, setExecutingAction] = useState(false);
+  const [pendingStockTrade, setPendingStockTrade] = useState<{ stockId: string; side: 'buy' | 'sell' } | null>(null);
   const [endingDay, setEndingDay] = useState(false);
   const [lastEndDayResult, setLastEndDayResult] = useState<EndDayResponse | null>(null);
 
   // Synchronous ref guards prevent double-tap races on day transitions.
   const executeActionGuardRef = useRef(false);
+  const stockTradeGuardRef = useRef(false);
   const endDayGuardRef = useRef(false);
   const startingNextDayRef = useRef(false);
   const commitmentGuardRef = useRef(false);
@@ -956,6 +962,24 @@ export default function GameDashboardPage({
     }
   }, [playerId]);
 
+  const loadStockMarket = useCallback(async () => {
+    setStockMarketState((prev) => ({ ...prev, status: 'loading', error: null }));
+    try {
+      const data = await getStockMarketSnapshot(playerId);
+      setStockMarketState({
+        status: data.stocks.length > 0 ? 'ready' : 'empty',
+        data,
+        error: null,
+      });
+    } catch (error) {
+      setStockMarketState({
+        status: 'error',
+        data: null,
+        error: normalizeError(error),
+      });
+    }
+  }, [playerId]);
+
   const loadRecoveryVsPush = useCallback(async () => {
     setRecoveryVsPushState((prev) => ({ ...prev, status: 'loading', error: null }));
     try {
@@ -1359,6 +1383,8 @@ export default function GameDashboardPage({
       loadHousingTradeoff(),
       loadDebtVsGrowth(),
       loadBusinessPlan(),
+      loadPlayerBusinesses(),
+      loadStockMarket(),
       loadRecoveryVsPush(),
       loadStrategyRecommendation(),
       loadFuturePreparation(),
@@ -1379,6 +1405,7 @@ export default function GameDashboardPage({
     loadOnboardingBundle,
     loadBusinessPlan,
     loadPlayerBusinesses,
+    loadStockMarket,
     loadDashboard,
     loadDebtVsGrowth,
     loadEconomyOverviewWithFallback,
@@ -1460,6 +1487,7 @@ export default function GameDashboardPage({
       loadCommitmentFeedback(),
       loadCommitmentHistory(),
       loadPlayerBusinesses(),
+      loadStockMarket(),
     ]);
     recordSettledFailures('refresh_after_action', results);
     const progressionResult = results[4];
@@ -1486,6 +1514,7 @@ export default function GameDashboardPage({
     loadActionHub,
     loadBusinessPlan,
     loadPlayerBusinesses,
+    loadStockMarket,
     loadDashboard,
     loadDebtVsGrowth,
     loadEconomyOverviewWithFallback,
@@ -1959,6 +1988,7 @@ export default function GameDashboardPage({
         loadCommitmentFeedback(),
         loadCommitmentHistory(),
         loadPlayerBusinesses(),
+        loadStockMarket(),
       ]);
       recordSettledFailures('end_day_refresh', refreshResults);
     } catch (error) {
@@ -1984,6 +2014,7 @@ export default function GameDashboardPage({
     loadOnboardingBundle,
     loadBusinessPlan,
     loadPlayerBusinesses,
+    loadStockMarket,
     loadDashboard,
     loadDebtVsGrowth,
     loadEconomyOverviewWithFallback,
@@ -2376,6 +2407,13 @@ export default function GameDashboardPage({
     [playerBusinessesState.data],
   );
 
+  const stockMarketSummary = useMemo(() => {
+    const market = stockMarketState.data;
+    if (!market) return 'Ten sector stocks priced from the canonical daily close.';
+    const pnl = market.portfolio.total_unrealized_pnl_xgp;
+    return `${market.stocks.length} stocks. ${market.portfolio.holdings_count} held. Unrealized ${pnl > 0 ? '+' : ''}${pnl.toFixed(2)} xgp.`;
+  }, [stockMarketState.data]);
+
   const businessMarginForActive = useMemo(() => {
     if (!activeBusinessRecord || !businessMarginsState.data) return null;
     return businessMarginsState.data.items.find(
@@ -2401,6 +2439,54 @@ export default function GameDashboardPage({
       ? `${typeLabel} — ${String(marginLabel).replace(/_/g, ' ')}`
       : typeLabel;
   }, [activeBusinessRecord, businessMarginForActive, dailySession]);
+
+  const handleTradeStock = useCallback(async (stockId: string, side: 'buy' | 'sell', shares: number) => {
+    if (stockTradeGuardRef.current) return;
+    if (!Number.isInteger(shares) || shares <= 0) {
+      setFeedback({ tone: 'error', message: 'Trade quantity must be a positive whole number.' });
+      return;
+    }
+    if (dailySession.sessionStatus !== 'active') {
+      setFeedback({ tone: 'error', message: 'Day ended. Start next day to continue trading.' });
+      return;
+    }
+    if (dailySession.pendingExecution || executingAction || endingDay) {
+      setFeedback({ tone: 'error', message: 'Another gameplay update is still in progress.' });
+      return;
+    }
+
+    stockTradeGuardRef.current = true;
+    setPendingStockTrade({ stockId, side });
+    try {
+      const result = side === 'buy'
+        ? await buyStock(playerId, stockId, shares)
+        : await sellStock(playerId, stockId, shares);
+
+      const refreshResults = await Promise.allSettled([
+        loadStockMarket(),
+        loadDashboard(),
+      ]);
+      recordSettledFailures('stock_trade_refresh', refreshResults);
+
+      const detail = side === 'buy'
+        ? `Bought ${result.shares} share(s) of ${result.stock_id}`
+        : `Sold ${result.shares} share(s) of ${result.stock_id}`;
+      setFeedback({
+        tone: 'success',
+        message: `${detail} at ${result.execution_price.toFixed(2)} xgp. Fee ${result.fee_amount.toFixed(2)} xgp. Cash ${result.remaining_cash_xgp.toFixed(2)} xgp.`,
+      });
+    } catch (error) {
+      recordError('gameplay', 'Stock trade failed.', {
+        action: 'stock_trade',
+        context: { stockId, side, shares },
+        error,
+      });
+      setFeedback({ tone: 'error', message: normalizeError(error) || 'Stock trade failed.' });
+    } finally {
+      stockTradeGuardRef.current = false;
+      setPendingStockTrade(null);
+    }
+  }, [dailySession.pendingExecution, dailySession.sessionStatus, endingDay, executingAction, loadDashboard, loadStockMarket, playerId]);
 
   const planningStatusLabel = useMemo(
     () =>
@@ -2621,6 +2707,39 @@ export default function GameDashboardPage({
               </PrimaryDashboardSection>,
             )
           : null}
+
+        {isSectionVisible('stock_market') && (stockMarketState.status === 'loading' || stockMarketState.status === 'idle') ? (
+          <LoadingStateCard label="Loading stock market..." />
+        ) : null}
+        {isSectionVisible('stock_market') && stockMarketState.status === 'error' ? (
+          <ErrorStateCard
+            title="Stock market unavailable"
+            message={stockMarketState.error || undefined}
+            onRetry={loadStockMarket}
+          />
+        ) : null}
+        {isSectionVisible('stock_market') && stockMarketState.status === 'ready' && stockMarketState.data ? (
+          wrapSection(
+            'stock_market',
+            <PrimaryDashboardSection title="Stock Market" summary={stockMarketSummary}>
+              <StockMarketCard
+                market={stockMarketState.data}
+                sessionActive={dailySession.sessionStatus === 'active'}
+                pendingTradeStockId={pendingStockTrade?.stockId ?? null}
+                pendingTradeSide={pendingStockTrade?.side ?? null}
+                onBuyOne={(stockId) => {
+                  void handleTradeStock(stockId, 'buy', 1);
+                }}
+                onSellOne={(stockId) => {
+                  void handleTradeStock(stockId, 'sell', 1);
+                }}
+                onSellAll={(stockId, quantity) => {
+                  void handleTradeStock(stockId, 'sell', quantity);
+                }}
+              />
+            </PrimaryDashboardSection>,
+          )
+        ) : null}
 
         {randomEvent.activeEvent && dailySession.sessionStatus === 'active'
           ? wrapSection(

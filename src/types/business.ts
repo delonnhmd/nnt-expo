@@ -29,13 +29,13 @@ export interface BusinessProfitSnapshot {
   trailing_7d_profit_xgp?: number;
   inventory_estimated_value_xgp?: number;
   business_estimated_value_xgp?: number;
-  business_type_breakdown?: Array<{
+  business_type_breakdown?: {
     business_type: string;
     count: number;
     active_count: number;
     inventory_value_xgp: number;
     latest_daily_profit_xgp: number;
-  }>;
+  }[];
 }
 
 export interface PlayerBusinessesResponse {
