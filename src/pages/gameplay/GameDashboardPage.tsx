@@ -309,7 +309,7 @@ function deriveCommitmentFeedback(
   return null;
 }
 
-const LEGACY_SECONDARY_SECTION_KEYS = new Set<string>([
+const SECONDARY_GROUP_SECTION_KEYS = new Set<string>([
   'market_overview',
   'price_trends',
   'business_margins',
@@ -368,7 +368,7 @@ export default function GameDashboardPage({
   const [commitmentFeedbackState, setCommitmentFeedbackState] = useState<SectionState<CommitmentFeedbackResponse>>(initialSection);
   const [commitmentHistoryState, setCommitmentHistoryState] = useState<SectionState<CommitmentHistoryResponse>>(initialSection);
   const [commitmentBusy, setCommitmentBusy] = useState(false);
-  const [onboardingStateState, setOnboardingStateState] = useState<SectionState<OnboardingStateResponse>>(initialSection);
+  const [onboardingState, setOnboardingState] = useState<SectionState<OnboardingStateResponse>>(initialSection);
   const [onboardingGuidanceState, setOnboardingGuidanceState] = useState<SectionState<OnboardingGuidanceResponse>>(initialSection);
   const [onboardingConfigState, setOnboardingConfigState] = useState<SectionState<OnboardingDashboardConfigResponse>>(initialSection);
   const [onboardingUnlockState, setOnboardingUnlockState] = useState<SectionState<OnboardingUnlockScheduleResponse>>(initialSection);
@@ -931,17 +931,17 @@ export default function GameDashboardPage({
   }, [playerId]);
 
   const loadOnboardingState = useCallback(async (): Promise<OnboardingStateResponse | null> => {
-    setOnboardingStateState((prev) => ({ ...prev, status: 'loading', error: null }));
+    setOnboardingState((prev) => ({ ...prev, status: 'loading', error: null }));
     try {
       const data = await getOnboardingState(playerId);
-      setOnboardingStateState({
+      setOnboardingState({
         status: data ? 'ready' : 'empty',
         data,
         error: null,
       });
       return data;
     } catch (error) {
-      setOnboardingStateState({
+      setOnboardingState({
         status: 'error',
         data: null,
         error: normalizeError(error),
@@ -1031,7 +1031,7 @@ export default function GameDashboardPage({
     dashboard_config: OnboardingDashboardConfigResponse;
     unlock_schedule: OnboardingUnlockScheduleResponse;
   }) => {
-    setOnboardingStateState({ status: 'ready', data: payload.state, error: null });
+    setOnboardingState({ status: 'ready', data: payload.state, error: null });
     setOnboardingGuidanceState({ status: 'ready', data: payload.guidance, error: null });
     setOnboardingConfigState({ status: 'ready', data: payload.dashboard_config, error: null });
     setOnboardingUnlockState({ status: 'ready', data: payload.unlock_schedule, error: null });
@@ -1039,7 +1039,7 @@ export default function GameDashboardPage({
   }, []);
 
   const onboardingStatus = String(
-    onboardingStateState.data?.onboarding_status ||
+    onboardingState.data?.onboarding_status ||
     onboardingConfigState.data?.onboarding_status ||
     'not_started',
   ).toLowerCase();
@@ -1070,7 +1070,7 @@ export default function GameDashboardPage({
 
   const isSectionVisible = useCallback((sectionKey: string): boolean => {
     if (!isSectionAllowedByOnboarding(sectionKey)) return false;
-    if (LEGACY_SECONDARY_SECTION_KEYS.has(sectionKey)) return false;
+    if (SECONDARY_GROUP_SECTION_KEYS.has(sectionKey)) return false;
     if (UI_LAYOUT_CONFIG.hideByDefault.includes(sectionKey)) return false;
     return true;
   }, [isSectionAllowedByOnboarding]);
@@ -1258,7 +1258,7 @@ export default function GameDashboardPage({
 
   useEffect(() => {
     setCoachmarkDismissed(false);
-  }, [onboardingConfigState.data?.highlighted_section, onboardingStateState.data?.current_step_key]);
+  }, [onboardingConfigState.data?.highlighted_section, onboardingState.data?.current_step_key]);
 
   const activeDayKey = useMemo(() => {
     return (
@@ -1987,17 +1987,17 @@ export default function GameDashboardPage({
           </View>
         ) : null}
 
-        {onboardingStateState.status === 'error' ? (
+        {onboardingState.status === 'error' ? (
           <ErrorStateCard
             title="Onboarding unavailable"
-            message={onboardingStateState.error || undefined}
+            message={onboardingState.error || undefined}
             onRetry={loadOnboardingBundle}
           />
         ) : null}
-        {onboardingStateState.data && onboardingGuidanceState.data && onboardingActive ? (
+        {onboardingState.data && onboardingGuidanceState.data && onboardingActive ? (
           <>
             <OnboardingBanner
-              state={onboardingStateState.data}
+              state={onboardingState.data}
               guidance={onboardingGuidanceState.data}
               busy={onboardingBusy}
               onAdvance={handleAdvanceOnboarding}
@@ -2011,13 +2011,13 @@ export default function GameDashboardPage({
                 onDismiss={() => setCoachmarkDismissed(true)}
               />
             ) : null}
-            <OnboardingProgressCard state={onboardingStateState.data} />
+            <OnboardingProgressCard state={onboardingState.data} />
             {onboardingUnlockState.data ? <OnboardingUnlockPreviewCard schedule={onboardingUnlockState.data} /> : null}
           </>
         ) : null}
-        {onboardingStateState.data && !onboardingActive && onboardingUnlockState.data ? (
+        {onboardingState.data && !onboardingActive && onboardingUnlockState.data ? (
           <FirstSessionSummaryCard
-            state={onboardingStateState.data}
+            state={onboardingState.data}
             unlockSchedule={onboardingUnlockState.data}
           />
         ) : null}

@@ -45,12 +45,17 @@ const DEFAULT_ACTION_CAPS: Record<string, number> = {
 
 function normalizeActionKey(key: GameplayActionKey): string {
   const raw = String(key || '').toLowerCase().trim();
+  if (raw === 'switch_job' || (raw.includes('switch') && raw.includes('job'))) return 'switch_job';
+  if (raw === 'change_region' || ((raw.includes('change') || raw.includes('move')) && raw.includes('region'))) {
+    return 'change_region';
+  }
+  if (raw === 'recovery_action' || (raw.includes('recovery') && raw.includes('action'))) return 'recovery_action';
   if (raw.includes('business') && raw.includes('operate')) return 'operate_business';
   if (raw.includes('inventory') || raw.includes('stock')) return 'buy_inventory';
   if (raw.includes('ride') || raw.includes('delivery') || raw.includes('side_income')) return 'side_income';
-  if (raw.includes('work') || raw.includes('job') || raw.includes('shift')) return 'work_shift';
+  if (raw.includes('work') || raw.includes('shift')) return 'work_shift';
   if (raw.includes('study') || raw.includes('train') || raw.includes('cert')) return 'study';
-  if (raw.includes('debt') || raw.includes('payment') || raw.includes('recovery')) return 'debt_payment';
+  if (raw.includes('debt') || raw.includes('payment')) return 'debt_payment';
   if (raw.includes('housing') || raw.includes('region') || raw.includes('move')) return 'change_region';
   if (raw.includes('rest') || raw.includes('recover') || raw.includes('sleep')) return 'rest';
   return raw;

@@ -10,13 +10,18 @@ import PrimaryButton from '@/components/ui/PrimaryButton';
 import SectionCard from '@/components/ui/SectionCard';
 import { theme } from '@/design/theme';
 
+const PLAYER_ID_STORAGE_KEY = 'goldpenny:gameplay:lastPlayerId';
+const LEGACY_PLAYER_ID_STORAGE_KEY = 'gameplay:lastPlayerId';
+
 export default function GameplayIndexRoute() {
   const [playerId, setPlayerId] = useState('');
 
   useEffect(() => {
     (async () => {
       try {
-        const remembered = await AsyncStorage.getItem('gameplay:lastPlayerId');
+        const remembered =
+          (await AsyncStorage.getItem(PLAYER_ID_STORAGE_KEY)) ||
+          (await AsyncStorage.getItem(LEGACY_PLAYER_ID_STORAGE_KEY));
         if (remembered) setPlayerId(remembered);
       } catch {
         // Ignore storage read issues and allow manual entry.
@@ -28,7 +33,7 @@ export default function GameplayIndexRoute() {
     const trimmed = playerId.trim();
     if (!trimmed) return;
     try {
-      await AsyncStorage.setItem('gameplay:lastPlayerId', trimmed);
+      await AsyncStorage.setItem(PLAYER_ID_STORAGE_KEY, trimmed);
     } catch {
       // Persisting last player is optional.
     }
