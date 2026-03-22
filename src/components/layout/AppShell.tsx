@@ -12,6 +12,7 @@ export default function AppShell({
   subtitle,
   headerRight,
   children,
+  footer,
   bottomNavItems,
   activeBottomNavKey,
 }: {
@@ -19,6 +20,7 @@ export default function AppShell({
   subtitle?: string | null;
   headerRight?: React.ReactNode;
   children: React.ReactNode;
+  footer?: React.ReactNode;
   bottomNavItems?: BottomNavItem[];
   activeBottomNavKey?: string | null;
 }) {
@@ -27,6 +29,7 @@ export default function AppShell({
       <View style={styles.container}>
         <TopBar title={title} subtitle={subtitle} rightContent={headerRight} />
         <View style={styles.body}>{children}</View>
+        {footer ? footer : null}
         {bottomNavItems && bottomNavItems.length > 0 ? (
           <BottomNav items={bottomNavItems} activeKey={activeBottomNavKey || undefined} />
         ) : null}

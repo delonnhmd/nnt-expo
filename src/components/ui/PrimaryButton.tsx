@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text } from 'react-native';
+import { ActivityIndicator, Pressable, StyleProp, StyleSheet, Text, ViewStyle } from 'react-native';
 
 import { theme } from '@/design/theme';
 
@@ -8,11 +8,13 @@ export default function PrimaryButton({
   onPress,
   disabled,
   loading,
+  style,
 }: {
   label: string;
   onPress?: () => void;
   disabled?: boolean;
   loading?: boolean;
+  style?: StyleProp<ViewStyle>;
 }) {
   const blocked = Boolean(disabled || loading || !onPress);
 
@@ -22,6 +24,7 @@ export default function PrimaryButton({
       disabled={blocked}
       style={({ pressed }) => [
         styles.button,
+        style,
         blocked ? styles.disabled : null,
         pressed && !blocked ? styles.pressed : null,
       ]}

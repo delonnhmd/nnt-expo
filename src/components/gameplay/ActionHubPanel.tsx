@@ -1,10 +1,12 @@
-import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import CollapsibleSection from '@/components/gameplay/CollapsibleSection';
 import ProgressMeter from '@/components/ui/ProgressMeter';
 import SurfaceCard from '@/components/ui/SurfaceCard';
 import { theme } from '@/design/theme';
 import { ActionExecutionGuard } from '@/hooks/useDailySession';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { DailyActionHubResponse, DailyActionItem } from '@/types/gameplay';
 
 import ActionCard from './ActionCard';
@@ -14,15 +16,29 @@ function ActionSection({
   actions,
   onPreview,
   getExecutionGuard,
+  collapsible = false,
+  defaultExpanded = true,
 }: {
   title: string;
   actions: DailyActionItem[];
   onPreview: (action: DailyActionItem) => void;
   getExecutionGuard: (action: DailyActionItem) => ActionExecutionGuard;
+  collapsible?: boolean;
+  defaultExpanded?: boolean;
 }) {
-  return (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
+  const { isMobile } = useBreakpoint();
+  const [expanded, setExpanded] = useState(!collapsible || defaultExpanded);
+
+  useEffect(() => {
+    if (!collapsible || !isMobile) {
+      setExpanded(true);
+      return;
+    }
+    setExpanded(defaultExpanded);
+  }, [collapsible, defaultExpanded, isMobile]);
+
+  const body = (
+    <>
       {actions.length > 0 ? (
         actions.map((action, index) => {
           const executionGuard = getExecutionGuard(action);
@@ -38,6 +54,25 @@ function ActionSection({
       ) : (
         <Text style={styles.empty}>No actions available right now.</Text>
       )}
+    </>
+  );
+
+  if (!collapsible || !isMobile) {
+    return (
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        {body}
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.section}>
+      <Pressable onPress={() => setExpanded((prev) => !prev)} style={styles.sectionHeaderButton}>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        <Text style={styles.sectionToggle}>{expanded ? 'Hide' : 'Show'}</Text>
+      </Pressable>
+      <CollapsibleSection expanded={expanded}>{body}</CollapsibleSection>
     </View>
   );
 }
@@ -106,12 +141,16 @@ export default function ActionHubPanel({
         actions={hub.available_actions}
         onPreview={onPreviewAction}
         getExecutionGuard={getExecutionGuard}
+        collapsible
+        defaultExpanded={false}
       />
       <ActionSection
         title="Blocked"
         actions={hub.blocked_actions}
         onPreview={onPreviewAction}
         getExecutionGuard={getExecutionGuard}
+        collapsible
+        defaultExpanded={false}
       />
     </SurfaceCard>
   );
@@ -172,9 +211,21 @@ const styles = StyleSheet.create({
   section: {
     gap: theme.spacing.sm,
   },
+  sectionHeaderButton: {
+    minHeight: 44,
+    borderRadius: theme.radius.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.spacing.sm,
+  },
   sectionTitle: {
     color: theme.color.textSecondary,
     ...theme.typography.headingSm,
+  },
+  sectionToggle: {
+    color: theme.color.info,
+    ...theme.typography.label,
   },
   empty: {
     color: theme.color.muted,

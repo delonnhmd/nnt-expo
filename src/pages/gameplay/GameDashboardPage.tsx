@@ -47,6 +47,7 @@ import PrimaryDashboardSection from '@/components/gameplay/PrimaryDashboardSecti
 import StreaksCard from '@/components/gameplay/StreaksCard';
 import StrategyRecommendationCard from '@/components/gameplay/StrategyRecommendationCard';
 import SupplyChainStoryCard from '@/components/gameplay/SupplyChainStoryCard';
+import ThumbReachActionDock from '@/components/gameplay/ThumbReachActionDock';
 import WeeklySummaryCard from '@/components/gameplay/WeeklySummaryCard';
 import WeeklyMissionsCard from '@/components/gameplay/WeeklyMissionsCard';
 import WorldNarrativeCard from '@/components/gameplay/WorldNarrativeCard';
@@ -209,6 +210,8 @@ interface FeedbackState {
   message: string;
 }
 
+type MobilePrimarySectionKey = 'action_hub' | 'business_operations' | 'stock_market';
+
 function initialSection<T>(): SectionState<T> {
   return {
     status: 'idle',
@@ -316,6 +319,16 @@ function summarizeStatusLabel(states: SectionState<unknown>[]): string | null {
   if (statuses.every((status) => status === 'empty')) return 'empty';
   if (statuses.some((status) => status === 'ready')) return 'ready';
   return null;
+}
+
+function canonicalThumbActionKey(actionKey: GameplayActionKey): string {
+  const raw = String(actionKey || '').toLowerCase().trim();
+  if (!raw) return '';
+  if (raw === 'switch_job' || (raw.includes('switch') && raw.includes('job'))) return 'switch_job';
+  if (raw === 'recovery_action' || raw.includes('recovery')) return 'recovery_action';
+  if (raw.includes('rest') || raw.includes('recover') || raw.includes('sleep')) return 'recovery_action';
+  if (raw === 'work_shift' || raw.includes('work') || raw.includes('shift')) return 'work_shift';
+  return raw;
 }
 
 function deriveProgressionFeedback(
@@ -600,7 +613,13 @@ export default function GameDashboardPage({
   const dailySession = useDailySession(playerId);
   const { isMobile } = useBreakpoint();
   const scrollRef = useRef<ScrollView | null>(null);
+  const sectionOffsetsRef = useRef<Record<string, number>>({});
   const [activeShellTab, setActiveShellTab] = useState<'home' | 'actions' | 'progress' | 'insights' | 'profile'>('home');
+  const [expandedPrimarySections, setExpandedPrimarySections] = useState<Record<MobilePrimarySectionKey, boolean>>({
+    action_hub: false,
+    business_operations: false,
+    stock_market: false,
+  });
   const [expandedSecondaryGroups, setExpandedSecondaryGroups] = useState<Record<SecondaryGroupKey, boolean>>(() =>
     UI_LAYOUT_CONFIG.secondaryGroups.reduce((acc, group) => ({
       ...acc,
@@ -1837,16 +1856,13 @@ export default function GameDashboardPage({
     selectedActionGuard,
   ]);
 
-  const handleExecuteSelectedAction = useCallback(async () => {
-    if (!selectedAction) return;
+  const executeActionItem = useCallback(async (
+    action: DailyActionItem,
+    options?: { closePreview?: boolean; guard?: ActionExecutionGuard | null },
+  ) => {
     if (executeActionGuardRef.current) return;
-    const action = selectedAction;
-    if (selectedActionRef.current?.action_key !== action.action_key) {
-      setFeedback({ tone: 'error', message: 'Selected action changed. Review the latest preview before executing.' });
-      return;
-    }
 
-    const guard = selectedActionGuard || dailySession.canExecuteAction(action);
+    const guard = options?.guard || getExecutionGuard(action);
     if (!guard.allowed) {
       setFeedback({ tone: 'error', message: guard.reason || 'Action blocked right now.' });
       return;
@@ -1872,7 +1888,9 @@ export default function GameDashboardPage({
           health_delta: result.health_delta,
         },
       });
-      resetPreviewState();
+      if (options?.closePreview) {
+        resetPreviewState();
+      }
       const followUpFeedback = await refreshAfterAction(action.action_key);
       const supplementalMessage = followUpFeedback.map((item) => item.message).find(Boolean);
       recordInfo('gameplay', 'Gameplay action executed successfully.', {
@@ -1881,6 +1899,7 @@ export default function GameDashboardPage({
           actionKey: String(action.action_key),
           consumedTimeUnits: consumed,
           followUpFeedbackCount: followUpFeedback.length,
+          quickExecute: !options?.closePreview,
         },
       });
       setFeedback({
@@ -1911,7 +1930,23 @@ export default function GameDashboardPage({
       setExecutingAction(false);
       dailySession.setPendingExecution(false);
     }
-  }, [dailySession, onExecuteAction, refreshAfterAction, resetPreviewState, selectedAction, selectedActionGuard]);
+  }, [dailySession, getExecutionGuard, onExecuteAction, refreshAfterAction, resetPreviewState]);
+
+  const handleExecuteSelectedAction = useCallback(async () => {
+    if (!selectedAction) return;
+    const action = selectedAction;
+    if (selectedActionRef.current?.action_key !== action.action_key) {
+      setFeedback({ tone: 'error', message: 'Selected action changed. Review the latest preview before executing.' });
+      return;
+    }
+
+    const guard = selectedActionGuard || dailySession.canExecuteAction(action);
+    if (!guard.allowed) {
+      setFeedback({ tone: 'error', message: guard.reason || 'Action blocked right now.' });
+      return;
+    }
+    await executeActionItem(action, { closePreview: true, guard });
+  }, [dailySession, executeActionItem, selectedAction, selectedActionGuard]);
 
   const handleOperateBusiness = useCallback(async () => {
     if (executeActionGuardRef.current) return;
@@ -2237,6 +2272,38 @@ export default function GameDashboardPage({
     }
   }, [applyOnboardingActionResult, playerId]);
 
+  const isPrimarySectionExpanded = useCallback((sectionKey: MobilePrimarySectionKey): boolean => {
+    if (!isMobile) return true;
+    return expandedPrimarySections[sectionKey];
+  }, [expandedPrimarySections, isMobile]);
+
+  const togglePrimarySection = useCallback((sectionKey: MobilePrimarySectionKey) => {
+    if (!isMobile) return;
+    setExpandedPrimarySections((prev) => ({
+      ...prev,
+      [sectionKey]: !prev[sectionKey],
+    }));
+  }, [isMobile]);
+
+  const scrollToSection = useCallback((sectionKey: string) => {
+    const y = sectionOffsetsRef.current[sectionKey];
+    if (typeof y !== 'number') return;
+    scrollRef.current?.scrollTo({ y: Math.max(0, y - 24), animated: true });
+  }, []);
+
+  const openPrimarySection = useCallback((sectionKey: MobilePrimarySectionKey) => {
+    setActiveShellTab('actions');
+    if (isMobile) {
+      setExpandedPrimarySections((prev) => ({
+        ...prev,
+        [sectionKey]: true,
+      }));
+    }
+    requestAnimationFrame(() => {
+      scrollToSection(sectionKey);
+    });
+  }, [isMobile, scrollToSection]);
+
   const highlightedSection = onboardingActive && !coachmarkDismissed
     ? onboardingConfigState.data?.highlighted_section || null
     : null;
@@ -2251,6 +2318,9 @@ export default function GameDashboardPage({
   const wrapSection = useCallback((sectionKey: string, node: React.ReactNode) => (
     <FadeInView>
       <View
+        onLayout={(event) => {
+          sectionOffsetsRef.current[sectionKey] = event.nativeEvent.layout.y;
+        }}
         style={[
           styles.sectionShell,
           highlightedSection === sectionKey || highlightedSecondaryGroup === sectionKey
@@ -2462,6 +2532,28 @@ export default function GameDashboardPage({
     return `${market.stocks.length} stocks. ${market.portfolio.holdings_count} held. Unrealized ${pnl > 0 ? '+' : ''}${pnl.toFixed(2)} xgp.`;
   }, [stockMarketState.data]);
 
+  const thumbActionPool = useMemo(
+    () => effectiveActionHub
+      ? [...effectiveActionHub.recommended_actions, ...effectiveActionHub.available_actions]
+      : [],
+    [effectiveActionHub],
+  );
+
+  const workQuickAction = useMemo(
+    () => thumbActionPool.find((action) => canonicalThumbActionKey(action.action_key) === 'work_shift') ?? null,
+    [thumbActionPool],
+  );
+
+  const recoveryQuickAction = useMemo(
+    () => thumbActionPool.find((action) => canonicalThumbActionKey(action.action_key) === 'recovery_action') ?? null,
+    [thumbActionPool],
+  );
+
+  const switchJobQuickAction = useMemo(
+    () => thumbActionPool.find((action) => canonicalThumbActionKey(action.action_key) === 'switch_job') ?? null,
+    [thumbActionPool],
+  );
+
   const businessMarginForActive = useMemo(() => {
     if (!activeBusinessRecord || !businessMarginsState.data) return null;
     return businessMarginsState.data.items.find(
@@ -2536,6 +2628,56 @@ export default function GameDashboardPage({
     }
   }, [dailySession.pendingExecution, dailySession.sessionStatus, endingDay, executingAction, loadDashboard, loadStockMarket, playerId]);
 
+  const handleQuickWorkAction = useCallback(() => {
+    if (workQuickAction) {
+      void executeActionItem(workQuickAction);
+      return;
+    }
+    openPrimarySection('action_hub');
+  }, [executeActionItem, openPrimarySection, workQuickAction]);
+
+  const handleQuickRecoveryAction = useCallback(() => {
+    if (randomEvent.activeEvent && randomEvent.availableRecoveryActions.length > 0) {
+      setActiveShellTab('actions');
+      requestAnimationFrame(() => {
+        scrollToSection('random_event');
+      });
+      return;
+    }
+    if (recoveryQuickAction) {
+      void executeActionItem(recoveryQuickAction);
+      return;
+    }
+    openPrimarySection('action_hub');
+  }, [executeActionItem, openPrimarySection, randomEvent.activeEvent, randomEvent.availableRecoveryActions.length, recoveryQuickAction, scrollToSection]);
+
+  const handleQuickBusinessAction = useCallback(() => {
+    if (activeBusinessRecord) {
+      void handleOperateBusiness();
+      return;
+    }
+    openPrimarySection('business_operations');
+  }, [activeBusinessRecord, handleOperateBusiness, openPrimarySection]);
+
+  const handleQuickStockAction = useCallback(() => {
+    openPrimarySection('stock_market');
+  }, [openPrimarySection]);
+
+  const handleQuickJobAction = useCallback(() => {
+    if (switchJobQuickAction) {
+      void openPreview(switchJobQuickAction);
+      return;
+    }
+    openPrimarySection('action_hub');
+  }, [openPreview, openPrimarySection, switchJobQuickAction]);
+
+  const workQuickGuard = workQuickAction ? getExecutionGuard(workQuickAction) : null;
+  const recoveryQuickGuard = recoveryQuickAction ? getExecutionGuard(recoveryQuickAction) : null;
+  const switchJobQuickGuard = switchJobQuickAction ? getExecutionGuard(switchJobQuickAction) : null;
+  const businessQuickGuard = activeBusinessRecord
+    ? dailySession.canExecuteAction({ action_key: 'operate_business' })
+    : null;
+
   const planningStatusLabel = useMemo(
     () =>
       summarizeStatusLabel([
@@ -2604,6 +2746,56 @@ export default function GameDashboardPage({
           ) : null}
         </View>
       )}
+      footer={isMobile ? (
+        <ThumbReachActionDock
+          dayNumber={dailyProgression.currentGameDay}
+          remainingTimeUnits={dailySession.remainingTimeUnits}
+          totalTimeUnits={dailySession.totalTimeUnits}
+          sessionStatus={dailySession.sessionStatus}
+          feedback={feedback}
+          primaryAction={{
+            label: workQuickAction?.title || 'Work',
+            onPress: handleQuickWorkAction,
+            disabled: Boolean(workQuickAction && !workQuickGuard?.allowed),
+            emphasis: 'primary',
+          }}
+          advanceAction={dailySession.sessionStatus === 'ended'
+            ? {
+                label: dailyProgression.isAdvancingDay ? 'Starting...' : 'Start Next Day',
+                onPress: handleStartNextDay,
+                disabled: refreshing || dailyProgression.isAdvancingDay,
+                emphasis: 'primary',
+              }
+            : {
+                label: endingDay ? 'Ending...' : 'End Day',
+                onPress: handleEndDay,
+                disabled: !dailyProgression.canAdvanceDay || endingDay,
+                emphasis: 'secondary',
+              }}
+          secondaryActions={[
+            {
+              label: activeBusinessRecord ? 'Run Business' : 'Business',
+              onPress: handleQuickBusinessAction,
+              disabled: Boolean(activeBusinessRecord && businessQuickGuard && !businessQuickGuard.allowed),
+            },
+            {
+              label: randomEvent.activeEvent && randomEvent.availableRecoveryActions.length > 0 ? 'Recover Event' : 'Recover',
+              onPress: handleQuickRecoveryAction,
+              disabled: Boolean(!randomEvent.activeEvent && recoveryQuickAction && !recoveryQuickGuard?.allowed),
+            },
+            {
+              label: 'Stocks',
+              onPress: handleQuickStockAction,
+              disabled: stockMarketState.status === 'loading',
+            },
+            {
+              label: 'Jobs',
+              onPress: handleQuickJobAction,
+              disabled: Boolean(switchJobQuickAction && !switchJobQuickGuard?.allowed),
+            },
+          ]}
+        />
+      ) : null}
       bottomNavItems={isMobile ? mobileNavItems : undefined}
       activeBottomNavKey={isMobile ? activeShellTab : null}
     >
@@ -2618,7 +2810,7 @@ export default function GameDashboardPage({
           showsVerticalScrollIndicator={false}
         >
           <ContentStack gap={theme.spacing.md}>
-        {feedback && feedbackStyle ? (
+        {feedback && feedbackStyle && !isMobile ? (
           <View
             style={[
               styles.feedbackBox,
@@ -2668,7 +2860,7 @@ export default function GameDashboardPage({
           />
         ) : null}
 
-        {isSectionVisible('day_controls') ? wrapSection(
+        {!isMobile && isSectionVisible('day_controls') ? wrapSection(
           'day_controls',
           <View style={styles.dayControlCard}>
             <View style={styles.dayControlCopy}>
@@ -2720,19 +2912,19 @@ export default function GameDashboardPage({
 
         {dashboardState.status === 'ready' && effectiveDashboard ? (
           <>
-            {isSectionVisible('player_stats')
-              ? wrapSection(
-                'player_stats',
-                <PrimaryDashboardSection title="Player Snapshot" summary={statsSummary} statusLabel={economyState.statusLabel}>
-                  <PlayerStatsBar stats={effectiveDashboard.stats} economy={economyState} currentGameDay={dailyProgression.currentGameDay} jobIncome={jobIncome} expenseDebt={expenseDebt} />
-                </PrimaryDashboardSection>,
-              )
-              : null}
             {isSectionVisible('daily_brief')
               ? wrapSection(
                 'daily_brief',
                 <PrimaryDashboardSection title="Daily Brief" summary={dailyBriefSummary}>
                   <DailyBriefCard dashboard={effectiveDashboard} impactBullets={dailyBriefImpactBullets} />
+                </PrimaryDashboardSection>,
+              )
+              : null}
+            {isSectionVisible('player_stats')
+              ? wrapSection(
+                'player_stats',
+                <PrimaryDashboardSection title="Player Snapshot" summary={statsSummary} statusLabel={economyState.statusLabel}>
+                  <PlayerStatsBar stats={effectiveDashboard.stats} economy={economyState} currentGameDay={dailyProgression.currentGameDay} jobIncome={jobIncome} expenseDebt={expenseDebt} />
                 </PrimaryDashboardSection>,
               )
               : null}
@@ -2742,7 +2934,13 @@ export default function GameDashboardPage({
         {activeBusinessRecord
           ? wrapSection(
               'business_operations',
-              <PrimaryDashboardSection title="Your Business Today" summary={businessOperateSummary}>
+              <PrimaryDashboardSection
+                title="Your Business Today"
+                summary={businessOperateSummary}
+                collapsible={isMobile}
+                expanded={isPrimarySectionExpanded('business_operations')}
+                onToggle={() => togglePrimarySection('business_operations')}
+              >
                 <BusinessOperationsCard
                   activeRecord={activeBusinessRecord}
                   profitSnapshot={playerBusinessesState.data?.profit_snapshot ?? null}
@@ -2760,7 +2958,13 @@ export default function GameDashboardPage({
         {isSectionVisible('business_operations') && playerBusinessesState.status === 'ready' && !activeBusinessRecord ? (
           wrapSection(
             'business_operations',
-            <PrimaryDashboardSection title="Your Business Today" summary="No active business is running right now.">
+            <PrimaryDashboardSection
+              title="Your Business Today"
+              summary="No active business is running right now."
+              collapsible={isMobile}
+              expanded={isPrimarySectionExpanded('business_operations')}
+              onToggle={() => togglePrimarySection('business_operations')}
+            >
               <EmptyStateCard
                 title="No active business"
                 subtitle="Open or reactivate a business before relying on this lane for daily cash flow."
@@ -2782,7 +2986,13 @@ export default function GameDashboardPage({
         {isSectionVisible('stock_market') && stockMarketState.status === 'ready' && stockMarketState.data ? (
           wrapSection(
             'stock_market',
-            <PrimaryDashboardSection title="Stock Market" summary={stockMarketSummary}>
+            <PrimaryDashboardSection
+              title="Stock Market"
+              summary={stockMarketSummary}
+              collapsible={isMobile}
+              expanded={isPrimarySectionExpanded('stock_market')}
+              onToggle={() => togglePrimarySection('stock_market')}
+            >
               <StockMarketCard
                 market={stockMarketState.data}
                 sessionActive={dailySession.sessionStatus === 'active'}
@@ -2860,7 +3070,13 @@ export default function GameDashboardPage({
         {isSectionVisible('action_hub') && actionState.status === 'ready' && effectiveActionHub ? (
           wrapSection(
             'action_hub',
-            <PrimaryDashboardSection title="Action Hub" summary={actionHubSummary}>
+            <PrimaryDashboardSection
+              title="Action Hub"
+              summary={actionHubSummary}
+              collapsible={isMobile}
+              expanded={isPrimarySectionExpanded('action_hub')}
+              onToggle={() => togglePrimarySection('action_hub')}
+            >
               <ActionHubPanel
                 hub={effectiveActionHub}
                 onPreviewAction={openPreview}
@@ -3371,7 +3587,7 @@ const styles = StyleSheet.create({
     paddingBottom: theme.spacing.xxxl,
   },
   contentWithBottomNav: {
-    paddingBottom: 92,
+    paddingBottom: theme.spacing.lg,
   },
   sectionShell: {
     gap: theme.spacing.sm,

@@ -18,6 +18,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.color.surface,
     paddingHorizontal: theme.spacing.lg,
     paddingVertical: theme.spacing.sm,
+    gap: theme.spacing.sm,
     ...theme.shadow.sm,
   },
 });

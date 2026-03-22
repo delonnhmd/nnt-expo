@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { Pressable, StyleProp, StyleSheet, Text, ViewStyle } from 'react-native';
 
 import { theme } from '@/design/theme';
 
@@ -7,10 +7,12 @@ export default function SecondaryButton({
   label,
   onPress,
   disabled,
+  style,
 }: {
   label: string;
   onPress?: () => void;
   disabled?: boolean;
+  style?: StyleProp<ViewStyle>;
 }) {
   const blocked = Boolean(disabled || !onPress);
 
@@ -20,6 +22,7 @@ export default function SecondaryButton({
       disabled={blocked}
       style={({ pressed }) => [
         styles.button,
+        style,
         blocked ? styles.disabled : null,
         pressed && !blocked ? styles.pressed : null,
       ]}
