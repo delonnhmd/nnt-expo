@@ -1,8 +1,13 @@
 {
+  "cli": {
+    "version": ">= 16.13.0"
+  },
   "build": {
     "development": {
+      "developmentClient": true,
       "distribution": "internal",
       "channel": "development",
+      "withoutCredentials": true,
       "android": {
         "buildType": "apk"
       }
@@ -15,11 +20,15 @@
       }
     },
     "production": {
-      "distribution": "internal",
+      "distribution": "store",
       "channel": "production",
+      "autoIncrement": true,
       "android": {
-        "buildType": "apk"
+        "buildType": "app-bundle"
       }
     }
+  },
+  "submit": {
+    "production": {}
   }
 }

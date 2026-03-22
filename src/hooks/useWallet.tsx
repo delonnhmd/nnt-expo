@@ -69,6 +69,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const ensureProvider = useCallback(async () => {
     if (wcProvider) return wcProvider;
     if (!WC_PROJECT_ID) throw new Error('Missing EXPO_PUBLIC_WC_PROJECT_ID');
+    if (!RPC_URL) throw new Error('Missing EXPO_PUBLIC_RPC_URL');
     wcProvider = await EthereumProvider.init({
       projectId: WC_PROJECT_ID,
       showQrModal: false,
@@ -134,7 +135,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       setChainId(undefined);
     });
     return wcProvider;
-  }, [redirectUrl]);
+  }, []);
 
   const connect = useCallback(async () => {
     const p = await ensureProvider();

@@ -1,17 +1,34 @@
 {
   "expo": {
     "name": "Gold Penny",
-    "slug": "pft-expo",
+    "description": "Gold Penny mobile gameplay client.",
+    "slug": "gold-penny-expo",
     "scheme": "goldpenny",
-    "version": "1.0.0",
+    "version": "1.0.1",
+    "orientation": "portrait",
+    "icon": "./src/assets/images/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./src/assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0f172a"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "platforms": [
       "android",
       "ios",
       "web"
     ],
     "android": {
-      "package": "com.goldpenny.pft",
-      "versionCode": 2,
+      "package": "com.pennyfloat.goldpenny",
+      "versionCode": 3,
+      "adaptiveIcon": {
+        "foregroundImage": "./src/assets/images/android-icon-foreground.png",
+        "backgroundImage": "./src/assets/images/android-icon-background.png",
+        "monochromeImage": "./src/assets/images/android-icon-monochrome.png"
+      },
       "intentFilters": [
         {
           "action": "VIEW",
@@ -28,8 +45,9 @@
       ]
     },
     "ios": {
-      "bundleIdentifier": "com.goldpenny.pft",
+      "bundleIdentifier": "com.pennyfloat.goldpenny",
       "buildNumber": "1.0.1",
+      "supportsTablet": false,
       "infoPlist": {
         "LSApplicationQueriesSchemes": [
           "metamask",
@@ -50,10 +68,16 @@
       }
     },
     "updates": {
-      "url": "https://u.expo.dev/8b821dd0-43c9-43cf-854d-2942239acf2c"
+      "url": "https://u.expo.dev/8b821dd0-43c9-43cf-854d-2942239acf2c",
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
     },
     "runtimeVersion": {
-      "policy": "sdkVersion"
+      "policy": "appVersion"
+    },
+    "web": {
+      "favicon": "./src/assets/images/favicon.png"
     },
     "extra": {
       "eas": {

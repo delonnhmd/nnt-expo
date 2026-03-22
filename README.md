@@ -1,50 +1,115 @@
-# Welcome to your Expo app 👋
+# Gold Penny Expo App
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Mobile client for the Gold Penny gameplay experience.
 
-## Get started
+Primary domains:
+- Main website: https://www.pennyfloat.com
+- Gold Penny app domain: https://goldpenny.pennyfloat.com
 
-1. Install dependencies
+## Environment
 
-   ```bash
-   npm install
-   ```
+Create a local `.env` file from `.env.example` before running the app.
 
-2. Start the app
+Runtime environment variables:
+- `EXPO_PUBLIC_BACKEND`: required for gameplay API requests
+- `EXPO_PUBLIC_RPC_URL`: required only for wallet connect / signing flows
+- `EXPO_PUBLIC_WC_PROJECT_ID`: required only for wallet connect / signing flows
+- `EXPO_PUBLIC_DEBUG`: optional, set to `1` to enable verbose client logging
 
-   ```bash
-   npx expo start
-   ```
+Behavior when env is missing:
+- missing `EXPO_PUBLIC_BACKEND`: gameplay API requests fail with a clear runtime error and Settings can still provide an override URL
+- missing WalletConnect env values: the app still boots, but wallet connect actions fail with a clear runtime error when invoked
 
-In the output, you'll find options to open the app in a
+## Development
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+Install dependencies:
 
 ```bash
-npm run reset-project
+yarn install
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Run the app:
 
-## Learn more
+```bash
+yarn start
+```
 
-To learn more about developing your project with Expo, look at the following resources:
+Useful scripts:
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+```bash
+yarn typecheck
+yarn lint
+yarn doctor
+yarn android
+yarn ios
+```
 
-## Join the community
+## Build Readiness
 
-Join our community of developers creating universal apps.
+Production identity:
+- App name: `Gold Penny`
+- Expo slug: `gold-penny-expo`
+- Deep link scheme: `goldpenny`
+- iOS bundle identifier: `com.pennyfloat.goldpenny`
+- Android package: `com.pennyfloat.goldpenny`
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+Asset paths configured in `app.json`:
+- icon: `./src/assets/images/icon.png`
+- splash: `./src/assets/images/splash-icon.png`
+- android adaptive icon assets under `./src/assets/images/`
+- web favicon: `./src/assets/images/favicon.png`
+
+## Release Strategy
+
+Build profiles:
+- `development`: internal development-client builds for local debugging and device iteration
+- `preview`: internal tester builds for QA / staging-style validation
+- `production`: store-distributed builds for App Store / Play release candidates and production release
+
+EAS channels:
+- `development`
+- `preview`
+- `production`
+
+Channel rules:
+- development builds receive only `development` channel OTA updates
+- preview builds receive only `preview` channel OTA updates
+- production builds receive only `production` channel OTA updates
+
+Runtime version strategy:
+- `runtimeVersion.policy = appVersion`
+- OTA updates are compatible only with binaries built from the same app version
+- native-breaking changes should ship with a version bump so older binaries do not receive incompatible updates
+
+Expo Updates behavior:
+- updates are enabled
+- update check occurs on load
+- cached bundle fallback timeout is `0` for immediate startup safety
+
+Useful release commands:
+
+```bash
+yarn config:public
+yarn build:dev:android
+yarn build:preview:android
+yarn build:preview:ios
+yarn build:prod:android
+yarn build:prod:ios
+yarn build:prod:all
+```
+
+Environment separation assumptions:
+- development profile can target local/dev backends through `.env` or Settings override
+- preview profile should use non-production backend values when available
+- production profile should use production backend and WalletConnect settings only
+- no secrets are stored in this repo; final environment values belong in EAS or local secure configuration
+
+## Manual Release Items
+
+These are intentionally not stored in the repo and still require Apple / Google / Expo portal work:
+- App Store Connect app record and certificates
+- Google Play app record and signing setup
+- Final production backend URL
+- Final WalletConnect project ID and production RPC endpoint
+- Final store artwork / screenshots / listing copy
+- Optional universal-link / associated-domain setup for hosted deep links
