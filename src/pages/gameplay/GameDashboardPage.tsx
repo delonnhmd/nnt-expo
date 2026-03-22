@@ -630,8 +630,11 @@ export default function GameDashboardPage({
   const scrollRef = useRef<ScrollView | null>(null);
   const sectionOffsetsRef = useRef<Record<string, number>>({});
   const [activeShellTab, setActiveShellTab] = useState<'home' | 'actions' | 'progress' | 'insights' | 'profile'>('home');
+  // action_hub defaults to expanded — it is the primary action surface and must be
+  // immediately visible without extra taps. business_operations and stock_market
+  // default to collapsed to keep the portrait loop compact.
   const [expandedPrimarySections, setExpandedPrimarySections] = useState<Record<MobilePrimarySectionKey, boolean>>({
-    action_hub: false,
+    action_hub: true,
     business_operations: false,
     stock_market: false,
   });

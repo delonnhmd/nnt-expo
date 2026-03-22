@@ -1,3 +1,30 @@
+// ─── PORTRAIT LAYOUT LOCK (Step 58) ───────────────────────────────────────────
+// Gold Penny is a one-hand portrait-first mobile game.
+// The permanent 3-layer screen hierarchy is:
+//
+//  LAYER 1 — Context (top, scroll, compact):
+//    daily_brief        — headline + economy summary + top warning/opportunity
+//
+//  LAYER 2 — Player State (below context, scroll, compact):
+//    player_stats       — cash, debt, net flow, key pressure indicators
+//
+//  LAYER 3 — Action Zone (bottom, always visible, thumb-friendly):
+//    ThumbReachActionDock — Work | End Day (primary row)
+//                         — Business | Recovery | Stocks | Jobs (secondary row)
+//
+// Primary scroll also includes contextual primary cards collapsed by default:
+//    business_operations  — shown when player has active business (collapsible)
+//    stock_market         — always available (collapsible)
+//    action_hub           — full action list (expanded by default)
+//    random_event         — shown when active event exists
+//
+// Everything else is SECONDARY (collapsible, below the scroll):
+//    economy_overview, business_insights, planning_commitment (includes
+//    strategic_recommendation), progression, world_memory
+//
+// Do not move canonical logic items here. Layout changes only.
+// ────────────────────────────────────────────────────────────────────────────────
+
 export type SecondaryGroupKey =
   | 'economy_overview'
   | 'business_insights'
@@ -13,9 +40,8 @@ export interface SecondaryGroupConfig {
 }
 
 export const PRIMARY_SECTION_KEYS = [
-  'player_stats',
   'daily_brief',
-  'strategic_recommendation',
+  'player_stats',
   'action_hub',
 ] as const;
 
@@ -43,6 +69,7 @@ export const SECONDARY_GROUP_CONFIGS: SecondaryGroupConfig[] = [
     key: 'planning_commitment',
     title: 'Planning + Commitment',
     sectionDependencies: [
+      'strategic_recommendation',
       'strategic_planning',
       'debt_growth',
       'recovery_vs_push',
@@ -72,9 +99,12 @@ export const UI_LAYOUT_CONFIG = {
     hideSecondaryDuringOnboarding: true,
     forceCollapseSecondary: true,
   },
+  // strategic_recommendation is always rendered inside planning_commitment secondary group.
+  // Keep player_state / risk_opportunity / quick_actions to guard against stale onboarding keys.
   hideByDefault: [
     'player_state',
     'risk_opportunity',
     'quick_actions',
+    'strategic_recommendation',
   ],
 };
