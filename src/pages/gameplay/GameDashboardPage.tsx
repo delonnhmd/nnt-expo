@@ -349,19 +349,19 @@ function toDashboardSignalItems(
   category: string,
   severity: DashboardSignalItem['severity'],
 ): DashboardSignalItem[] {
-  return (items || [])
-    .map((item, index) => {
-      const text = String(item || '').trim();
-      if (!text) return null;
-      return {
-        key: `${prefix}_${index}`,
-        title: text,
-        description: text,
-        category,
-        severity,
-      } satisfies DashboardSignalItem;
-    })
-    .filter((item): item is DashboardSignalItem => Boolean(item));
+  const normalized: DashboardSignalItem[] = [];
+  (items || []).forEach((item, index) => {
+    const text = String(item || '').trim();
+    if (!text) return;
+    normalized.push({
+      key: `${prefix}_${index}`,
+      title: text,
+      description: text,
+      category,
+      severity,
+    });
+  });
+  return normalized;
 }
 
 function buildBundleBrief(summary: EconomyPresentationSummaryResponse): string {
