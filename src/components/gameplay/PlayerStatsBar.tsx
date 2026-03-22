@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
+import { theme } from '@/design/theme';
 import { creditTone, formatMoney, healthTone, stressTone } from '@/lib/gameplayFormatters';
 import { DashboardStatSnapshot } from '@/types/gameplay';
 
@@ -39,34 +40,34 @@ export default function PlayerStatsBar({ stats }: { stats: DashboardStatSnapshot
 const styles = StyleSheet.create({
   container: {
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 12,
-    backgroundColor: '#ffffff',
-    padding: 10,
+    borderColor: theme.color.border,
+    borderRadius: theme.radius.lg,
+    backgroundColor: theme.color.surface,
+    padding: theme.spacing.sm,
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: theme.spacing.xs,
   },
   tile: {
-    minWidth: 100,
+    minWidth: 112,
     flex: 1,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 10,
-    backgroundColor: '#f8fafc',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    gap: 4,
+    borderColor: theme.color.border,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.color.surfaceAlt,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm,
+    gap: theme.spacing.xxs,
   },
   label: {
-    fontSize: 11,
-    color: '#64748b',
+    ...theme.typography.caption,
+    color: theme.color.textSecondary,
     textTransform: 'uppercase',
     fontWeight: '700',
   },
   value: {
-    fontSize: 14,
-    color: '#0f172a',
+    ...theme.typography.bodySm,
+    color: theme.color.textPrimary,
     fontWeight: '700',
   },
 });

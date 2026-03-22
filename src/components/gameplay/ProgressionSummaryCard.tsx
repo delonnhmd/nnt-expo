@@ -34,7 +34,7 @@ export default function ProgressionSummaryCard({
           ))}
         </View>
       ) : (
-        <Text style={styles.empty}>No recent completions yet. Today's goals can start your streak.</Text>
+        <Text style={styles.empty}>No recent completions yet. Today&apos;s goals can start your streak.</Text>
       )}
     </View>
   );

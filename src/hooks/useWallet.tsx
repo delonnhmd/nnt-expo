@@ -336,5 +336,3 @@ export function useWallet() {
  * Keep this mounted (usually once at the root screen) so deep links work.
  */
 export function WalletConnectUI() { return null; }
-
-export * from './wallet-context';

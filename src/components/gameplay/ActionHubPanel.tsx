@@ -36,7 +36,7 @@ function ActionSection({
           );
         })
       ) : (
-        <Text style={styles.empty}>No actions in this section.</Text>
+        <Text style={styles.empty}>No actions available right now.</Text>
       )}
     </View>
   );
@@ -62,12 +62,12 @@ export default function ActionHubPanel({
   return (
     <SurfaceCard style={styles.card}>
       <Text style={styles.heading}>Action Hub</Text>
-      <Text style={styles.subheading}>Choose what to do next and check tradeoffs before committing.</Text>
+      <Text style={styles.subheading}>Pick your next move, review the tradeoffs, and then commit.</Text>
       <SurfaceCard variant="muted" style={styles.timeBox}>
         <View style={styles.timeTopRow}>
           <Text style={styles.timeTitle}>Day Progress</Text>
           <Text style={styles.timeMeta}>
-            {remainingTimeUnits}/{totalTimeUnits} units left | {sessionStatus}
+            {remainingTimeUnits}/{totalTimeUnits} units left • {sessionStatus === 'active' ? 'Active' : 'Ended'}
           </Text>
         </View>
         <ProgressMeter progress={progressRatio} />
@@ -86,7 +86,7 @@ export default function ActionHubPanel({
 
       {hub.next_risk_warnings.length > 0 ? (
         <SurfaceCard variant="warning" style={styles.warningBox}>
-          <Text style={styles.warningTitle}>Next Risks</Text>
+          <Text style={styles.warningTitle}>Immediate Risks</Text>
           {hub.next_risk_warnings.slice(0, 3).map((item, index) => (
             <Text key={`warning_${index}`} style={styles.warningText}>
               - {item}

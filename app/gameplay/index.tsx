@@ -38,13 +38,13 @@ export default function GameplayIndexRoute() {
   return (
     <AppShell
       title="Gold Penny"
-      subtitle="Open your gameplay dashboard"
+      subtitle="Continue your gameplay session"
     >
       <PageContainer>
         <ContentStack style={styles.content}>
           <SectionCard
             title="Gameplay Dashboard"
-            summary="Enter a player id to jump directly into the daily simulation loop."
+            summary="Enter your player ID to open the live daily simulation."
           >
             <TextInput
               style={styles.input}
@@ -52,12 +52,12 @@ export default function GameplayIndexRoute() {
               autoCorrect={false}
               value={playerId}
               onChangeText={setPlayerId}
-              placeholder="player uuid"
+              placeholder="Player ID (for example: demo-player-1)"
               placeholderTextColor={theme.color.muted}
             />
-            <Text style={styles.hint}>Tip: the last player id is remembered on this device.</Text>
+            <Text style={styles.hint}>The last player ID is remembered on this device for faster access.</Text>
             <PrimaryButton
-              label="Open Gameplay"
+              label="Open Dashboard"
               onPress={openDashboard}
               disabled={!playerId.trim()}
             />
@@ -70,7 +70,7 @@ export default function GameplayIndexRoute() {
 
 const styles = StyleSheet.create({
   content: {
-    paddingTop: theme.spacing.xxxl,
+    paddingTop: theme.spacing.xl,
   },
   input: {
     borderWidth: 1,

@@ -1947,13 +1947,13 @@ export default function GameDashboardPage({
   return (
     <AppShell
       title="Gold Penny Gameplay"
-      subtitle={`Player ${playerId}`}
+      subtitle={`Player ID: ${playerId}`}
       headerRight={(
         <View style={styles.headerActions}>
-          <SecondaryButton label="Refresh" onPress={loadAll} />
+          <SecondaryButton label="Refresh Data" onPress={loadAll} />
           {isSectionVisible('notifications') ? (
             <SecondaryButton
-              label={`Notifications (${notificationCount})`}
+              label={`Alerts (${notificationCount})`}
               onPress={() => setNotificationsOpen(true)}
             />
           ) : null}
@@ -2030,7 +2030,9 @@ export default function GameDashboardPage({
               <Text style={styles.dayControlMeta}>
                 {dailySession.remainingTimeUnits}/{dailySession.totalTimeUnits} time units left
               </Text>
-              <Text style={styles.dayControlMeta}>Status: {dailySession.sessionStatus}</Text>
+              <Text style={styles.dayControlMeta}>
+                Status: {dailySession.sessionStatus === 'active' ? 'Active' : 'Ended'}
+              </Text>
             </View>
             <View style={styles.dayControlButtons}>
               <TouchableOpacity
