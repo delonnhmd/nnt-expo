@@ -1,206 +1,218 @@
 # INTERNAL_EXPO_DEPLOY_REPORT_STEP64_1
 
 Date: 2026-03-22  
-Scope: `goldpenny-backend/PFT/pft-expo`  
-Terminal rule followed: Git Bash command execution only (via `C:\Program Files\Git\bin\bash.exe`)
+Scope root: `/c/GoldPenny/goldpenny-backend/PFT/pft-expo`  
+Terminal discipline: Git Bash command execution only for project operations.
 
-## 1) Summary
+## 1) Outcome
 
-Internal Expo deployment prep is in a good state after validation and two fixes:
+Internal Expo deployment prep is complete for Step 64.1.  
+The app is build-ready for internal tester distribution through Expo/EAS, with config sanity checks, env audit, and validation gates completed.
 
-- EAS project linkage is now valid for the current account/project metadata.
-- TypeScript scope is now limited to mobile app code (`app` + `src`), so `yarn typecheck` passes.
+Readiness status:
+- Android internal deployment: ready (`development` or `preview` profiles).
+- iOS internal deployment: ready via `preview` profile once Apple credentials/provisioning are configured in Expo/Apple portals.
 
-Current deployment readiness:
-- Android internal build: ready (profile `development` or `preview`).
-- iOS internal build: ready via `preview` profile (credentials required in EAS).
+## 2) Files Reviewed
 
-## 2) Validation Results
+- `app.json`
+- `eas.json`
+- `package.json`
+- `tsconfig.json`
+- `.env.example`
+- `README.md`
+- `app/(tabs)/settings.tsx`
+- `src/constants/index.ts`
+- `app/_layout.tsx`
+- Asset references under `src/assets/images/*`
 
-### App config readiness
+## 3) Files Updated
+
+- `app.json`
+  - Confirmed active Expo slug/project metadata for current EAS project.
+  - Confirmed updates URL and EAS project ID alignment.
+  - Removed duplicate Android deep-link intent-filter entry.
+- `.env.example`
+  - Removed dead runtime env references not used in active app runtime.
+  - Kept active variables only: `EXPO_PUBLIC_BACKEND`, `EXPO_PUBLIC_DEBUG`.
+- `README.md`
+  - Aligned environment docs and deployment notes with active runtime behavior.
+  - Removed stale wallet/RPC env requirements from deployment guidance.
+- `app/(tabs)/settings.tsx`
+  - Updated fallback slug from `pft-expo` to `gold-penny-expo` for naming consistency.
+- `tsconfig.json` (already adjusted in this step sequence and validated)
+  - Scoped typecheck includes to active mobile app paths (`app/**`, `src/**`) and excluded `web-bridge`.
+
+## 4) Config And Build Audit Results
+
+### Expo app identity and runtime
 
 Verified in `app.json`:
-- App identity configured
-  - name: `Gold Penny`
-  - scheme: `goldpenny`
-  - android package: `com.pennyfloat.goldpenny`
-  - ios bundle ID: `com.pennyfloat.goldpenny`
-- Runtime/update configured
-  - `runtimeVersion.policy = appVersion`
-  - `updates.enabled = true`
-  - `updates.checkAutomatically = ON_LOAD`
-  - `updates.url` present
-- Icon/splash assets present and valid
-  - `src/assets/images/icon.png` (1024x1024)
-  - `src/assets/images/splash-icon.png` (1024x1024)
-  - adaptive icon files present
+- App name: `Gold Penny`
+- Slug: `gold-penny-expo`
+- Scheme: `goldpenny`
+- iOS bundle ID: `com.pennyfloat.goldpenny`
+- Android package: `com.pennyfloat.goldpenny`
+- Runtime policy: `runtimeVersion.policy = appVersion`
+- Updates: enabled, `checkAutomatically = ON_LOAD`, `fallbackToCacheTimeout = 0`
+- Updates URL and `extra.eas.projectId` point to:
+  - `cd780971-b503-487e-89dc-6984f42eba69`
 
-### EAS config/build profiles
+### EAS profiles
 
 Verified in `eas.json`:
-- `development` profile
-  - `distribution: internal`
+- `development`
   - `developmentClient: true`
-  - Android build type `apk`
-- `preview` profile
   - `distribution: internal`
-  - Android build type `apk`
-- `production` profile
+  - Android `buildType: apk`
+- `preview`
+  - `distribution: internal`
+  - Android `buildType: apk`
+- `production`
   - `distribution: store`
-  - Android build type `app-bundle`
+  - Android `buildType: app-bundle`
 
-### EAS auth/project/channel status
+### Asset references
 
-- `npx eas whoami` => authenticated as `nntpress`
-- `npx eas project:info` => linked project `@nntpress/nnt-expo`
-- `npx eas build:list --limit 1 --non-interactive` => successful
-- `npx eas channel:list` => `preview` and `production` channels exist
+Validated all configured assets exist:
+- `src/assets/images/icon.png`
+- `src/assets/images/splash-icon.png`
+- `src/assets/images/android-icon-foreground.png`
+- `src/assets/images/android-icon-background.png`
+- `src/assets/images/android-icon-monochrome.png`
+- `src/assets/images/favicon.png`
 
-Note:
-- `preview` currently points at branch `production` (not ideal for staged OTA separation).
+## 5) Environment Audit (Active Runtime)
 
-### Environment variable validation
+Active Expo public env usage in app code:
+- Required: `EXPO_PUBLIC_BACKEND`
+- Optional: `EXPO_PUBLIC_DEBUG`
 
-Local template (`.env.example`) includes:
-- `EXPO_PUBLIC_BACKEND` (required)
-- `EXPO_PUBLIC_RPC_URL` (optional wallet/signing)
-- `EXPO_PUBLIC_WC_PROJECT_ID` (optional wallet/signing)
-- `EXPO_PUBLIC_DEBUG` (optional)
-
-Code usage currently confirms:
-- actively used: `EXPO_PUBLIC_BACKEND`, `EXPO_PUBLIC_DEBUG`
-- optional wallet envs are documented for future/optional flows
+No active runtime usage found for:
+- `EXPO_PUBLIC_RPC_URL`
+- `EXPO_PUBLIC_WC_PROJECT_ID`
 
 EAS hosted env status:
-- `development`: no vars configured
-- `preview`: no vars configured
-- `production`: no vars configured
+- `development`: no variables configured
+- `preview`: no variables configured
+- `production`: no variables configured
 
-## 3) Quality Gate Results (Git Bash)
+Deployment implication:
+- Internal builds can be generated now, but testers need `EXPO_PUBLIC_BACKEND` configured (or manual override in Settings) for gameplay API requests.
 
-- `yarn typecheck` => pass
-- `yarn lint` => pass with warnings (no errors)
+## 6) Validation Results
 
-Lint warnings are non-blocking for build.
+Executed in Git Bash form:
+- `yarn install --frozen-lockfile` -> pass (`Already up-to-date`)
+- `yarn typecheck` -> pass
+- `yarn lint` -> pass with warnings only (0 errors)
+- `yarn config:public` -> pass (public Expo config resolved)
+- `yarn doctor` -> warning/fail (2 checks):
+  - duplicate native module resolution: `expo-constants` (`18.0.9` and transitive `18.0.13`)
+  - Expo SDK patch version drift across multiple Expo packages
+- `npx eas whoami` -> pass (`nntpress`)
+- `npx eas project:info` -> pass (`@nntpress/gold-penny-expo`, project ID matches app config)
+- `npx eas build:list --limit 1 --non-interactive` -> pass (no builds listed yet for this newly linked project)
 
-## 4) Changes Made During Prep
+Non-blocking lint warnings remain in existing source types; they do not block internal deployment.
 
-### `app.json`
+## 7) Build/Deploy Risks Found
 
-- Re-linked project metadata through EAS init flow.
-- Resulting current metadata:
-  - `slug: "nnt-expo"`
-  - `owner: "nntpress"`
-  - `extra.eas.projectId` populated and valid
+- EAS envs are empty for all profiles; internal testers will need a valid backend URL path before meaningful gameplay API testing.
+- EAS channels currently show no entries (`channel:list --non-interactive --json` returned empty page). Internal build generation is unaffected, but OTA channel workflow should be initialized before update publishing.
+- iOS internal distribution still depends on Apple signing/provisioning setup outside repo.
+- Expo dependency drift flagged by `yarn doctor`; internal builds may still work, but native-build stability is better after `npx expo install --check` alignment.
 
-### `tsconfig.json`
+## 8) Exact Git Bash Commands (No PowerShell Syntax)
 
-- Scoped includes to mobile code only:
-  - `app/**/*.ts(x)`
-  - `src/**/*.ts(x)`
-- Excluded `web-bridge` from Expo app typecheck scope.
-
-This removed cross-project TypeScript collisions and unblocked `yarn typecheck`.
-
-## 5) Exact Git Bash Commands
-
-Run from Git Bash:
+Run these from Git Bash:
 
 ```bash
 cd /c/GoldPenny/goldpenny-backend/PFT/pft-expo
+pwd
 ```
 
-### Install
+Install/verify dependencies:
 
 ```bash
 yarn install --frozen-lockfile
 ```
 
-### Login / EAS checks
+Expo/EAS auth and project checks:
 
 ```bash
 npx eas --version
 npx eas whoami || npx eas login
 npx eas project:info
-npx eas build:list --limit 1 --non-interactive
+npx eas build:list --limit 5 --non-interactive
 ```
 
-### Configure EAS env vars for internal testing
-
-Set at least `EXPO_PUBLIC_BACKEND` for `development` and `preview`:
+Set required internal env (minimum):
 
 ```bash
-npx eas env:create development --name EXPO_PUBLIC_BACKEND --value "https://<your-internal-api>" --visibility plaintext --scope project
-npx eas env:create preview --name EXPO_PUBLIC_BACKEND --value "https://<your-internal-api>" --visibility plaintext --scope project
+npx eas env:create development --name EXPO_PUBLIC_BACKEND --value "https://<internal-api>" --visibility plaintext --scope project
+npx eas env:create preview --name EXPO_PUBLIC_BACKEND --value "https://<internal-api>" --visibility plaintext --scope project
 ```
 
-Optional:
+Optional debug env:
 
 ```bash
 npx eas env:create development --name EXPO_PUBLIC_DEBUG --value "1" --visibility plaintext --scope project
 npx eas env:create preview --name EXPO_PUBLIC_DEBUG --value "0" --visibility plaintext --scope project
-npx eas env:create preview --name EXPO_PUBLIC_RPC_URL --value "https://<rpc-url>" --visibility sensitive --scope project
-npx eas env:create preview --name EXPO_PUBLIC_WC_PROJECT_ID --value "<walletconnect-project-id>" --visibility sensitive --scope project
 ```
 
-### Local quality checks
+Local validation:
 
 ```bash
 yarn typecheck
 yarn lint
+yarn config:public
+yarn doctor
 ```
 
-### Internal builds
+Optional dependency alignment (recommended before wider internal rollout):
 
-Development client (Android internal APK):
+```bash
+npx expo install --check
+```
+
+Internal build commands:
 
 ```bash
 npx eas build --profile development --platform android
-```
-
-Preview internal builds (recommended for QA/testers):
-
-```bash
 npx eas build --profile preview --platform android
 npx eas build --profile preview --platform ios
 ```
 
-### Run app locally (if needed)
+Optional local run commands:
 
 ```bash
 yarn start
-# optional
 yarn android
 yarn ios
 ```
 
-### OTA/update workflow (if needed)
-
-Align preview channel to preview branch:
+Optional OTA/update setup and publish:
 
 ```bash
-npx eas channel:edit preview --branch preview
-```
-
-Publish preview OTA:
-
-```bash
+npx eas channel:create development --non-interactive || true
+npx eas channel:create preview --non-interactive || true
+npx eas channel:create production --non-interactive || true
 npx eas update --branch preview --message "internal preview update"
 ```
 
-Publish production OTA:
+## 9) Manual Items Remaining
 
-```bash
-npx eas update --branch production --message "production update"
-```
+- Expo account/project access for all internal testers who need build install links.
+- Apple Developer setup for internal iOS distribution (certificates, provisioning profiles, devices/TestFlight path).
+- Google Play internal testing track/signing setup if Android distribution will also flow through Play testing tracks.
+- Final internal backend endpoint for preview environment.
+- Device install validation on target real phones (Android/iOS), including deep-link launch smoke test for `goldpenny://`.
 
-## 6) Final Readiness Verdict
+## 10) Success Criteria Check
 
-Status: Ready for internal Expo/EAS device deployment.
-
-Required before first tester rollout:
-- Set `EXPO_PUBLIC_BACKEND` in EAS env for `preview` (and optionally `development`).
-
-Recommended:
-- Keep preview channel mapped to preview branch for clean staged OTA behavior.
-
+- App ready for internal Expo/EAS deployment: **Yes**
+- Git Bash-compatible command set prepared: **Yes**
+- PowerShell command syntax used in prepared command list: **No**
+- Config/build sanity for internal device testing: **Yes**
+- Internal real-device rollout readiness: **Yes, pending external account/portal setup and env values**

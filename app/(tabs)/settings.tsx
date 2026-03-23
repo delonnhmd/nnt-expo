@@ -42,7 +42,7 @@ export default function SettingsScreen() {
   const loaded = useRef(false);
 
   const appName = Constants.expoConfig?.name || 'Gold Penny';
-  const appSlug = Constants.expoConfig?.slug || 'pft-expo';
+  const appSlug = Constants.expoConfig?.slug || 'gold-penny-expo';
   const appVersion = Constants.expoConfig?.version || 'Unknown';
   const runtimeVersion = Updates.runtimeVersion || 'Unknown';
   const updateChannel = Updates.channel || 'default';
