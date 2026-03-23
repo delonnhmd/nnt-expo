@@ -2,7 +2,55 @@
 **Gold Penny — Internal Launch Execution**
 Date: 2026-03-23
 Step: 71B (follows 71A Expo Readiness Audit)
-Status: EXECUTION PLAN READY
+Status: LOCAL VALIDATION COMPLETE — AWAITING DEVICE BUILDS
+
+---
+
+## Execution Log
+
+| Phase | Command | Result | Time |
+|---|---|---|---|
+| Dependency install | `yarn install --frozen-lockfile` | ✅ Already up-to-date (0.44s) | 2026-03-23 |
+| SDK health | `npx expo-doctor` | ✅ 17/17 checks passed | 2026-03-23 |
+| TypeScript | `npx tsc --noEmit` | ✅ PASSED (0 errors) | 2026-03-23 |
+| Lint | `yarn lint` | ⚠→✅ 1 error found + fixed (see Section 0) | 2026-03-23 |
+| Android build | `yarn build:dev:android` | ⏳ PENDING | — |
+| iOS build | `yarn build:preview:ios` | ⏳ PENDING | — |
+| OTA test | `yarn update:preview` | ⏳ PENDING | — |
+
+---
+
+## Section 0 — Blocker Found and Fixed During Validation
+
+### React Hook Rules Violation in GameplayLoopScaffold
+
+**File:** `src/features/gameplayLoop/GameplayLoopScaffold.tsx`  
+**Line:** 125 (before fix)  
+**Lint rule:** `react-hooks/rules-of-hooks`  
+**Severity:** Error (lint exit 1)  
+
+**Root cause:** `useMemo` was declared after an early `return` triggered by the `gateBlocked` check. React requires all hooks to be called unconditionally in the same order on every render. This would cause a React runtime invariant violation in production if the `gateBlocked` branch was ever triggered, potentially crashing the gate screen.
+
+**Fix applied:** Moved `const bottomNavItems = useMemo(...)` to before the `if (gateBlocked)` return. The `useMemo` depends only on `navigateTo` and `onboardingActive`, both of which are fully in scope before the early return. The early return itself was moved to just after the `useMemo` closes.
+
+**Diff summary:**
+```
+// Before (incorrect — hook called conditionally):
+  useEffect(...) // ensureRoute
+  if (gateBlocked) return <SoftLaunchGate .../>     ← early return
+  const bottomNavItems = useMemo(...)               ← hook AFTER early return ❌
+  return <AppShell ...>
+
+// After (correct — hook always called):
+  useEffect(...) // ensureRoute
+  const bottomNavItems = useMemo(...)               ← hook always executes ✅
+  if (gateBlocked) return <SoftLaunchGate .../>     ← early return safe here
+  return <AppShell ...>
+```
+
+**Post-fix validation:**
+- `yarn lint` → ✅ 0 errors, 10 warnings (all cosmetic — `Array<T>` style + unused imports)
+- `npx tsc --noEmit` → ✅ PASSED
 
 ---
 
@@ -27,38 +75,68 @@ Step 71B executes the internal launch: builds for real devices, installs, verifi
 
 | Item | Requirement | Status |
 |---|---|---|
-| EAS account | `nntpress` Expo account | Must be logged in |
-| Apple Developer Program | $99/yr — required for iOS sideload | Required before iOS build |
-| Google Play (optional) | Free — not needed for APK sideload | Not required |
-| Backend host | `EXPO_PUBLIC_BACKEND` secret set | Required before any launch |
+| EAS account | `nntpress` Expo account | ⚠️ Must confirm login before build |
+| Apple Developer Program | $99/yr — required for iOS sideload | ⚠️ Required before iOS build |
+| Google Play (optional) | Free — not needed for APK sideload | ✅ Not required for APK sideload |
+| Backend host | `EXPO_PUBLIC_BACKEND` EAS project secret | ⚠️ Required before any real API calls |
 
 ### 1.2 One-Time Pre-Build Steps (run once, not per device)
 
-These are performed in the `pft-expo` directory. They are not part of a CI pipeline — run them manually.
+All commands run from `c:\GoldPenny\goldpenny-backend\PFT\pft-expo`
 
 ```bash
-# 1. Log in to EAS CLI (skip if already authenticated)
+# Step 1 — Verify EAS login
+npx eas whoami
+# Expected output: nntpress
+# If not logged in:
 npx eas login
 
-# 2. Register iOS test device UDIDs (iPhone + iPad)
-#    Device must be plugged in OR you paste a UDID you copy from Xcode / Settings
+# Step 2 — Register iOS test device UDIDs  [MANUAL — YOU MUST SUPPLY DEVICE UDIDs]
+#
+#   Option A: device plugged into Mac via USB
 npx eas device:create
-#    Follow the prompts to add both devices.
-#    This registers UDIDs with your Apple Developer account so EAS can
-#    generate provisioning profiles that include them.
+#   EAS will prompt: "Enter UDID". You can find it in:
+#     - Xcode → Window → Devices and Simulators → (select device) → Identifier
+#     - Settings → General → VPN & Device Management → Trust
+#     - Apple Configurator 2 → device info panel
+#
+#   Option B: generate an OTA registration URL (no USB needed)
+npx eas device:create --type url
+#   EAS prints a URL. Open it in Safari on the device. Tap Install. Done.
+#   Repeat for iPhone, then iPad.
 
-# 3. Set the backend URL as an EAS project secret
-#    Replace https://your-api-host.com with the real deployed backend URL.
+# Step 3 — Set the backend URL as an EAS project secret  [MANUAL — SUPPLY YOUR URL]
+#   Replace https://your-api-host.com with the deployed backend URL
 npx eas secret:create \
   --scope project \
   --name EXPO_PUBLIC_BACKEND \
   --value https://your-api-host.com
 
-# 4. Confirm secrets are saved
+# Step 4 — Confirm both secrets/devices are saved
 npx eas secret:list
+npx eas device:list
 ```
 
-> **Note:** Steps 2–3 only need to be done once. Subsequent builds and OTA updates use the stored credentials and secrets automatically.
+### 1.3 What Is Configured vs What You Must Supply
+
+| Item | Pre-configured in repo | You must provide |
+|---|---|---|
+| EAS project ID `cd780971-...` | ✅ in `app.json` `extra.eas.projectId` | — |
+| EAS owner `nntpress` | ✅ in `app.json` `owner` | — |
+| iOS bundle ID `com.pennyfloat.goldpenny` | ✅ in `app.json` | — |
+| Android package `com.pennyfloat.goldpenny` | ✅ in `build.gradle` + `app.json` | — |
+| Android APK no-credential build | ✅ `eas.json` development profile | — |
+| iOS m-medium resource class | ✅ `eas.json` preview + production | — |
+| OTA update channel mapping | ✅ `eas.json` channel per profile | — |
+| Build scripts | ✅ all in `package.json` | — |
+| iPhone UDID | ❌ | You: `eas device:create` |
+| iPad UDID | ❌ | You: `eas device:create` |
+| Backend URL (`EXPO_PUBLIC_BACKEND`) | ❌ | You: `eas secret:create` |
+| EAS login session | ❌ | You: `eas login` if expired |
+
+> **Important:** Without `EXPO_PUBLIC_BACKEND` the app will still launch and be playable in mock data mode, but the soft launch gate will fail to reach the backend and will show the gate screen (unless `EXPO_PUBLIC_SOFT_LAUNCH_BYPASS=true` is set). For internal testing of the full flow, the secret must be set.
+
+> **Note:** Steps 2–3 only need to be done once. Subsequent builds and OTA updates reuse stored credentials automatically.
 
 ---
 
@@ -74,22 +152,28 @@ cd c:\GoldPenny\goldpenny-backend\PFT\pft-expo
 #### Phase A — Dependency & Validation (local, no cloud build credits)
 
 ```bash
-# A1. Ensure all packages are installed at locked versions
-yarn install
+# A1. Verify packages are installed at locked versions
+yarn install --frozen-lockfile
 
 # A2. Doctor — validate SDK + dependency health (must be 17/17)
-npx expo-doctor
+yarn doctor
+# equivalent: npx expo-doctor
 
 # A3. TypeScript check — must pass with 0 errors
-npx tsc --noEmit
+yarn typecheck
+# equivalent: npx tsc --noEmit
+
+# A4. Lint — must pass with 0 errors (warnings OK)
+yarn lint
 ```
 
-Expected output:
-- `yarn install` → "Done in X.XXs"
-- `expo-doctor` → "17/17 checks passed. No issues detected!"
-- `tsc` → *(silent, exit 0)*
+**Confirmed results (2026-03-23):**
+- `yarn install --frozen-lockfile` → ✅ "Already up-to-date. Done in 0.44s"
+- `yarn doctor` → ✅ "17/17 checks passed. No issues detected!"
+- `yarn typecheck` → ✅ PASSED (0 errors)
+- `yarn lint` → ✅ 0 errors after hook fix (Section 0); 10 cosmetic warnings remain
 
-If any check fails, resolve before proceeding to cloud builds.
+> All four checks are green. Safe to proceed to cloud builds.
 
 ---
 
@@ -99,11 +183,12 @@ The `development` profile emits a sideloadable APK with `withoutCredentials: tru
 
 ```bash
 # B1. Android development APK — no credentials, installable as APK
+# Use this for Android #1 (fastest, zero keystore)
 yarn build:dev:android
-# equivalent: eas build --profile development --platform android
+# equivalent: eas build --profile development --platform android --non-interactive
 ```
 
-or if you want a signed APK for pre-release testers:
+For Android #2 (or if you want a shareable link with auto-increment):
 
 ```bash
 # B2. Android preview APK — signed, internal distribution
@@ -111,39 +196,101 @@ yarn build:preview:android
 # equivalent: eas build --profile preview --platform android
 ```
 
-> **Recommendation:** Run `build:dev:android` first for Android #1. Use `build:preview:android` for Android #2 if you want autoIncrement applied and a shareable link.
+> **Recommendation for minimal build credit use:** Run `build:dev:android` for both Android phones. One build produces one APK that installs on any Android device — you do not need to submit two separate builds.
 
-**Where to get the APK:**  
-EAS will print a URL like `https://expo.dev/accounts/nntpress/projects/gold-penny-expo/builds/...`  
-Download the `.apk` from that URL or install via QR code shown in EAS dashboard.
+**Where to get the APK after the build completes:**
+EAS CLI prints:
+```
+✔ Build finished. Android build artifact:
+  https://expo.dev/accounts/nntpress/projects/gold-penny-expo/builds/<BUILD_ID>
+```
+Open that URL in a browser → click "Download build artifact" → get `.apk`.
 
-**Install on Android device:**
-1. Enable "Install from unknown sources" in Android Settings → Security.
-2. Open the downloaded `.apk` on the device or use:
-   ```bash
-   adb install path/to/gold-penny.apk
-   ```
-3. If using `expo-dev-client`, the app will show a dev launcher — enter the Expo server URL or connect to EAS Update channel.
+**Install on Android devices — step by step:**
+```
+1. On the device:
+   Settings → Security → "Install unknown apps" → enable for your browser or Files app.
+
+2. Transfer the APK (choose one):
+   Option A — Download from EAS QR code:
+     - Open EAS build URL in browser on the device
+     - Scan QR code shown in the EAS builds dashboard
+     - Tap INSTALL when prompted
+
+   Option B — ADB install (device plugged into computer):
+     adb install gold-penny-<build-id>.apk
+
+   Option C — Google Drive / email:
+     Upload APK, open on device, tap to install
+
+3. Tap INSTALL when the system installer dialog appears.
+   You may see "Unknown source" warning — tap Install Anyway.
+
+4. After install: open the app from the launcher.
+   The dev-client launcher will appear briefly, then connect to the
+   EAS Update channel automatically (no local server needed for internal testing).
+```
+
+**Likely blockers and diagnosis:**
+| Symptom | Cause | Fix |
+|---|---|---|
+| "App not installed" | APK signed with debug key conflicting with existing install | Uninstall previous version first |
+| "Parse error" | APK corrupted during download | Re-download |
+| Launcher stuck on "Looking for updates" | No EAS Update published to `development` channel yet | Run `yarn update:dev -- "initial"` or use `preview` profile instead |
+| Network error on first launch | `EXPO_PUBLIC_BACKEND` not set in this build | Set secret and rebuild, or test in mock mode |
 
 ---
 
 #### Phase C — iOS Build (requires Apple Developer Program + registered UDIDs)
 
+**Apple-side prerequisites (must be satisfied before running this command):**
+```
+1. Apple Developer Program membership active ($99/yr).
+2. iPhone and iPad UDIDs registered via: npx eas device:create
+   (EAS will automatically create/update provisioning profiles to include them)
+3. eas login confirms nntpress account.
+4. EXPO_PUBLIC_BACKEND secret set (npx eas secret:create ...)
+```
+
 ```bash
-# C1. iOS preview IPA — internal distribution, includes registered test devices
+# C1. iOS preview IPA — internal distribution
+# Covers registered iPhone + iPad with a single build
 yarn build:preview:ios
 # equivalent: eas build --profile preview --platform ios
 ```
 
-EAS will:
-1. Generate a provisioning profile covering the registered iPhone + iPad UDIDs.
-2. Build the app on an Apple Silicon Mac (m-medium resource class).
-3. Return a download link and/or Expo Go install link.
+What EAS does automatically:
+1. Creates/renews a Distribution Certificate for your Apple account (first time only)
+2. Generates an Ad Hoc Provisioning Profile covering your registered device UDIDs
+3. Builds on Apple Silicon (m-medium) → typically 10–20 min
+4. Returns an install URL + QR code for the `.ipa`
 
-**Install on iPhone / iPad:**  
-Option A (recommended): EAS will generate an install QR code in the build dashboard. Scan it from Safari on the iOS device to trigger OTA Expo install.  
-Option B: Download the `.ipa` and install via Apple Configurator 2.  
-Option C: If TestFlight distribution is desired later, that requires the `production` profile + App Store Connect setup (not needed now).
+**Install on iPhone / iPad — step by step:**
+```
+Option A (recommended — no Mac needed):
+  1. On each iOS device, open Safari (not Chrome — must be Safari).
+  2. Navigate to the EAS build URL or scan the QR code from the EAS dashboard.
+  3. EAS serves an itms-services:// manifest.
+  4. Tap "Install" when iOS prompts.
+  5. Trust the developer cert:
+     Settings → General → VPN & Device Management → [your Apple account] → Trust.
+  6. Open Gold Penny from the Home Screen.
+
+Option B (Apple Configurator 2):
+  1. Download the .ipa from the EAS build page.
+  2. Open Apple Configurator 2 on a Mac.
+  3. Connect device via USB.
+  4. Drag the .ipa onto the device in Configurator.
+```
+
+**iOS-specific blockers and diagnosis:**
+| Symptom | Cause | Fix |
+|---|---|---|
+| Build fails: "No matching profiles" | UDIDs not registered before build | Run `eas device:create`, then rebuild |
+| Build fails: "Certificate error" | Apple cert needs renewal or new key | EAS handles this automatically on next build attempt |
+| "Unable to Download App" on device | UDID not in provisioning profile | Confirm device was registered before this build; rebuild |
+| App installs but crashes immediately | Missing `EXPO_PUBLIC_BACKEND` secret at build time + softLaunch fetch crash | Secret must be set before build so it's embedded |
+| "Untrusted Developer" on first open | Normal iOS behavior for Ad Hoc builds | Trust the cert in Settings → General → VPN & Device Management |
 
 ---
 
@@ -268,34 +415,56 @@ This is a pure JS change — no native module, no new package, no schema change.
 ### OTA Test Steps
 
 ```bash
-# 1. Make the BUILD_TS change in src/constants/index.ts
-#    Change '2026-03-23T00:00:00Z' → '2026-03-23T12:00:00Z'
+# Step 1 — Make the visible marker change
+# File: src/constants/index.ts
+# Change line 5 from:
+#   export const BUILD_TS = '2026-03-23T00:00:00Z';
+# To:
+#   export const BUILD_TS = '2026-03-23T12:00:00Z';
+#
+# This is a one-character JS change. No native code. No new imports.
 
-# 2. Publish to the preview channel
-cd c:\GoldPenny\goldpenny-backend\PFT\pft-expo
+# Step 2 — Confirm it still typechecks (sanity check before upload)
+cd "C:\GoldPenny\goldpenny-backend\PFT\pft-expo"
+yarn typecheck
+
+# Step 3 — Publish to the preview channel
 yarn update:preview -- "test: OTA BUILD_TS marker 2026-03-23T12"
+# EAS output to expect:
+#   ✓ Published! Update group ID: <uuid>
+#   Channel:         preview
+#   Runtime version: 1.0.1
+#   Platform:        android + ios
 
-# 3. EAS CLI will output the update group ID and manifest URL, e.g.:
-#    ✓ Published!  Update group ID: xxxxxxx
-#    Channel: preview
-#    Runtime version: 1.0.1
+# Step 4 — On EACH installed device (Android + iPhone + iPad):
+#   a. Swipe the app out of the multitasking switcher (fully closed)
+#   b. Reopen the app from the launcher
+#   c. expo-updates fires checkForUpdateAsync on app load (per app.json checkAutomatically: ON_LOAD)
+#   d. The new JS bundle downloads silently
+#   e. Force-close the app a SECOND time
+#   f. Reopen — the new bundle is now active
 
-# 4. On each installed device:
-#    a. Close the app fully (swipe away from app switcher)
-#    b. Reopen the app
-#    c. The app checks expo-updates ON_LOAD (per app.json)
-#    d. The new JS bundle downloads in the background
-#    e. Close and reopen the app a second time to load the new bundle
+# Step 5 — Verify the update is active:
+#   Check any screen that surfaces BUILD_TS
+#   Expected: '2026-03-23T12:00:00Z' (not T00)
+#   If using a development build: Expo DevTools > Updates shows new manifest ID
 
-# 5. Verify the update was received:
-#    - In any screen that shows BUILD_TS, confirm it now reads 12:00:00Z
-#    - In Expo Dev Tools (if using development build), check update manifest
-#    - Use the Expo Updates debug panel if available in dev build
+# Step 6 — Revert BUILD_TS after OTA is confirmed:
+# Change '2026-03-23T12:00:00Z' → '2026-03-23T00:00:00Z'
+# The revert does NOT need to be published as another OTA —
+# it will be included naturally in the next full build.
+```
 
-# 6. Restore BUILD_TS after OTA is confirmed:
-#    Change '2026-03-23T12:00:00Z' back → '2026-03-23T00:00:00Z'
-#    This revert does NOT need to be pushed as an update — it will be included
-#    in the next full build naturally.
+**Why two app opens are needed:**  
+Under `checkAutomatically: ON_LOAD`, updates are fetched on the first open and applied on the *next* cold start. This is intentional — it avoids interrupting the user's current session. The two-close-and-reopen sequence is the expected verification flow.
+
+**OTA rollback if something breaks:**
+```bash
+# List recent updates on the preview channel
+npx eas update:list --branch preview
+
+# Roll back to a previous update group
+npx eas update:rollback --branch preview --group <previous-update-group-id>
 ```
 
 ### OTA Compatibility Rules
@@ -367,19 +536,21 @@ Use one entry per device per test session. Store in a shared doc or paste into a
 
 *This section is pre-populated with known state after Step 71A. Update each row as real device builds complete.*
 
-### 6.1 Pre-Build Validation Results (Step 71A confirmed)
+### 6.1 Pre-Build Validation Results (Step 71B execution — 2026-03-23)
 
-| Check | Result | Notes |
-|---|---|---|
-| `yarn install` | ✅ PASS | Lockfile saved, 45.50s |
-| `npx expo-doctor` | ✅ PASS | 17/17 checks |
-| `npx tsc --noEmit` | ✅ PASS | 0 errors |
-| Android package ID | ✅ FIXED | `com.pennyfloat.goldpenny` in build.gradle + Kotlin |
-| iOS buildNumber format | ✅ FIXED | `"3"` (integer string) |
-| OTA enabled | ✅ FIXED | AndroidManifest `"true"` |
-| Deep-link schemes | ✅ FIXED | `goldpenny`, `exp+gold-penny-expo` |
-| `expo-dev-client` in plugins | ✅ FIXED | Added to `app.json` |
-| `supportsTablet` | ✅ FIXED | `true` |
+| Check | Command | Result | Notes |
+|---|---|---|---|
+| Dependency install | `yarn install --frozen-lockfile` | ✅ PASS | Already up-to-date, 0.44s |
+| SDK health | `npx expo-doctor` | ✅ PASS | 17/17 checks passed |
+| TypeScript | `npx tsc --noEmit` | ✅ PASS | 0 errors |
+| Lint | `yarn lint` | ✅ PASS (after fix) | 0 errors, 10 cosmetic warnings |
+| Hook rule fix | `GameplayLoopScaffold.tsx` | ✅ FIXED | `useMemo` moved before early return |
+| Android package ID | `build.gradle` + Kotlin | ✅ FIXED (71A) | `com.pennyfloat.goldpenny` |
+| iOS buildNumber format | `app.json` | ✅ FIXED (71A) | `"3"` (integer string) |
+| OTA enabled | `AndroidManifest.xml` | ✅ FIXED (71A) | `"true"` |
+| Deep-link schemes | `AndroidManifest.xml` | ✅ FIXED (71A) | `goldpenny`, `exp+gold-penny-expo` |
+| `expo-dev-client` in plugins | `app.json` | ✅ FIXED (71A) | Added |
+| `supportsTablet` | `app.json` | ✅ FIXED (71A) | `true` |
 
 ### 6.2 Build Results (fill as builds complete)
 
@@ -432,20 +603,41 @@ Use one entry per device per test session. Store in a shared doc or paste into a
 ### Recommendation
 
 ```
-CURRENT STATE: PENDING DEVICE BUILDS
+CURRENT STATE: LOCAL VALIDATION COMPLETE — GO FOR DEVICE BUILDS
 
-Pre-build state: GO (all 71A blockers resolved, expo-doctor 17/17, tsc clean)
-Device verification: PENDING (builds not yet submitted)
+Pre-build validation: ✅ GO
+  - yarn install --frozen-lockfile : PASS
+  - npx expo-doctor                : 17/17
+  - npx tsc --noEmit               : PASS (0 errors)
+  - yarn lint                      : PASS (0 errors after hook fix)
+  - Hook blocker in GameplayLoopScaffold: FIXED
 
-Next action required:
-  1. Set EXPO_PUBLIC_BACKEND secret (npx eas secret:create ...)
-  2. Register iOS device UDIDs (npx eas device:create)
-  3. Run yarn build:dev:android → install on 2 Android phones
-  4. Run yarn build:preview:ios → install on iPhone + iPad
-  5. Fill in Section 6 verification matrix
-  6. Publish OTA test update and confirm delivery
-  7. Update this document with results
-  8. Issue final GO / NO-GO based on results
+Device verification: ⏳ PENDING (awaiting build submission)
+
+Required manual steps before builds:
+  1. npx eas whoami  →  confirm nntpress session
+  2. npx eas device:create  →  register iPhone UDID
+  3. npx eas device:create  →  register iPad UDID
+  4. npx eas secret:create --scope project --name EXPO_PUBLIC_BACKEND --value <url>
+  5. npx eas secret:list  →  confirm secret is stored
+
+Android build (zero prerequisites beyond eas login):
+  yarn build:dev:android
+
+iOS build (after steps 1–5 above):
+  yarn build:preview:ios
+
+OTA test (after both builds install on devices):
+  Edit src/constants/index.ts → BUILD_TS T00 → T12
+  yarn update:preview -- "test: OTA BUILD_TS marker"
+  Force-close + reopen twice on each device
+  Confirm BUILD_TS shows T12
+
+Move to Step 72 (soft launch) only after:
+  - At least 1 Android device passes full checklist
+  - At least iPhone passes full checklist
+  - OTA update received on at least 1 device
+  - No startup crashes or Day 1 gameplay blockers logged
 ```
 
 ---

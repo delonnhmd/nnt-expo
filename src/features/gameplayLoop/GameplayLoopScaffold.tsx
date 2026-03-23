@@ -111,17 +111,6 @@ export default function GameplayLoopScaffold({
     ensureRoute(activeNavKey as OnboardingRouteKey);
   }, [activeNavKey, ensureRoute]);
 
-  // ── Soft launch gate ────────────────────────────────────────────────────────
-  if (gateBlocked) {
-    return (
-      <SoftLaunchGate
-        onJoin={softLaunch.joinWithCode}
-        error={softLaunch.joinError}
-        isLoading={softLaunch.isLoading}
-      />
-    );
-  }
-
   const bottomNavItems = useMemo(
     () => ([
       { key: 'brief', label: 'Brief' },
@@ -140,6 +129,17 @@ export default function GameplayLoopScaffold({
       }))),
     [navigateTo, onboardingActive],
   );
+
+  // ── Soft launch gate ────────────────────────────────────────────────────────
+  if (gateBlocked) {
+    return (
+      <SoftLaunchGate
+        onJoin={softLaunch.joinWithCode}
+        error={softLaunch.joinError}
+        isLoading={softLaunch.isLoading}
+      />
+    );
+  }
 
   return (
     <AppShell
