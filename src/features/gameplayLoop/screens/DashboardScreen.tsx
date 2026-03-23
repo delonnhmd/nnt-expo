@@ -1,7 +1,8 @@
 import React from 'react';
-import { router } from 'expo-router';
 
+import { OnboardingHighlight } from '@/components/onboarding';
 import PlayerStatsBar from '@/components/gameplay/PlayerStatsBar';
+import { useOnboarding } from '@/features/onboarding';
 import { formatMoney } from '@/lib/gameplayFormatters';
 
 import { useGameplayLoop } from '../context';
@@ -21,6 +22,9 @@ function signedCurrency(value: number): string {
 
 export default function DashboardScreen() {
   const loop = useGameplayLoop();
+  const onboarding = useOnboarding();
+  const guidedDashboardActive = onboarding.isActive && onboarding.currentStep?.route === 'dashboard';
+  const simplified = onboarding.isSimplifiedMode;
   const stats = loop.dashboard?.stats;
   const netCashFlow = loop.economyState.netCashFlow ?? 0;
   const nextAction = loop.actionHub?.recommended_actions?.[0]?.title
@@ -39,30 +43,47 @@ export default function DashboardScreen() {
       title="Player Dashboard"
       subtitle="Financial health, pressure, and what to do next"
       activeNavKey="dashboard"
-      footer={(
+      footer={guidedDashboardActive ? null : (
         <GameplayStickyActionArea
           summary={`Next best action: ${nextAction}`}
           secondaryLabel="Open Market"
-          onSecondaryPress={() => router.replace(`/gameplay/loop/${loop.playerId}/market`)}
+          onSecondaryPress={() => {
+            onboarding.navigateTo('market');
+          }}
           primaryLabel={loop.dailySession.sessionStatus === 'active' ? 'Go To Work' : 'Open Summary'}
-          onPrimaryPress={() => router.replace(`/gameplay/loop/${loop.playerId}/${loop.dailySession.sessionStatus === 'active' ? 'work' : 'summary'}`)}
+          onPrimaryPress={() => {
+            onboarding.navigateTo(loop.dailySession.sessionStatus === 'active' ? 'work' : 'summary');
+          }}
         />
       )}
     >
       {stats ? (
-        <GameplaySummaryCard
-          eyebrow="Top-level health"
-          title="Finance + Survival Snapshot"
-          subtitle="This is your primary decision surface for today."
-        >
-          <PlayerStatsBar
-            stats={stats}
-            economy={loop.economyState}
-            currentGameDay={loop.dailyProgression.currentGameDay}
-            jobIncome={loop.jobIncome}
-            expenseDebt={loop.expenseDebt}
-          />
-        </GameplaySummaryCard>
+        <OnboardingHighlight target="dashboard-core-stats">
+          <GameplaySummaryCard
+            eyebrow="Top-level health"
+            title="Finance + Survival Snapshot"
+            subtitle="This is your primary decision surface for today."
+          >
+            {simplified ? (
+              <GameplayCompactMetricRows
+                items={[
+                  { label: 'Cash', value: formatMoney(stats.cash_xgp), tone: 'info' },
+                  { label: 'Stress', value: String(Math.round(stats.stress)), tone: stats.stress >= 65 ? 'warning' : 'neutral' },
+                  { label: 'Time left', value: `${loop.dailySession.remainingTimeUnits}/${loop.dailySession.totalTimeUnits} units`, tone: 'info' },
+                  { label: 'Most important next action', value: nextAction, tone: 'info' },
+                ]}
+              />
+            ) : (
+              <PlayerStatsBar
+                stats={stats}
+                economy={loop.economyState}
+                currentGameDay={loop.dailyProgression.currentGameDay}
+                jobIncome={loop.jobIncome}
+                expenseDebt={loop.expenseDebt}
+              />
+            )}
+          </GameplaySummaryCard>
+        </OnboardingHighlight>
       ) : (
         <GameplayWarningBanner
           title="Dashboard data unavailable"
@@ -71,51 +92,57 @@ export default function DashboardScreen() {
         />
       )}
 
-      <GameplaySummaryCard
-        eyebrow="Pressure and opportunity"
-        title="Today Decision Signals"
-        subtitle="Read these before choosing your next action."
-      >
-        <GameplayCompactMetricRows
-          items={[
-            {
-              label: 'Daily net movement',
-              value: signedCurrency(netCashFlow),
-              tone: netCashFlow >= 0 ? 'positive' : 'danger',
-            },
-            {
-              label: 'Debt pressure',
-              value: pressureLabel,
-              tone: loop.expenseDebt.debtWarning ? 'danger' : 'warning',
-            },
-            {
-              label: 'Actions taken',
-              value: String(loop.dailySession.actionsTakenToday.length),
-              tone: 'info',
-            },
-            {
-              label: 'Remaining time',
-              value: `${loop.dailySession.remainingTimeUnits}/${loop.dailySession.totalTimeUnits} units`,
-              tone: 'info',
-            },
-            {
-              label: 'Most important next action',
-              value: nextAction,
-              tone: 'info',
-            },
-          ]}
-        />
-      </GameplaySummaryCard>
+      {!simplified ? (
+        <GameplaySummaryCard
+          eyebrow="Pressure and opportunity"
+          title="Today Decision Signals"
+          subtitle="Read these before choosing your next action."
+        >
+          <GameplayCompactMetricRows
+            items={[
+              {
+                label: 'Daily net movement',
+                value: signedCurrency(netCashFlow),
+                tone: netCashFlow >= 0 ? 'positive' : 'danger',
+              },
+              {
+                label: 'Debt pressure',
+                value: pressureLabel,
+                tone: loop.expenseDebt.debtWarning ? 'danger' : 'warning',
+              },
+              {
+                label: 'Actions taken',
+                value: String(loop.dailySession.actionsTakenToday.length),
+                tone: 'info',
+              },
+              {
+                label: 'Remaining time',
+                value: `${loop.dailySession.remainingTimeUnits}/${loop.dailySession.totalTimeUnits} units`,
+                tone: 'info',
+              },
+              {
+                label: 'Most important next action',
+                value: nextAction,
+                tone: 'info',
+              },
+            ]}
+          />
+        </GameplaySummaryCard>
+      ) : null}
 
-      <GameplayOpportunityCallout
-        title="Opportunity Signal"
-        message={opportunityMessage}
-      />
-      <GameplayWarningBanner
-        title="Pressure Signal"
-        message={pressureMessage}
-        tone={loop.expenseDebt.debtWarning ? 'danger' : 'warning'}
-      />
+      {!simplified ? (
+        <GameplayOpportunityCallout
+          title="Opportunity Signal"
+          message={opportunityMessage}
+        />
+      ) : null}
+      {!simplified ? (
+        <GameplayWarningBanner
+          title="Pressure Signal"
+          message={pressureMessage}
+          tone={loop.expenseDebt.debtWarning ? 'danger' : 'warning'}
+        />
+      ) : null}
     </GameplayLoopScaffold>
   );
 }

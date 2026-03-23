@@ -2,6 +2,7 @@ import React from 'react';
 import { Redirect, Slot, useLocalSearchParams } from 'expo-router';
 
 import { GameplayLoopProvider } from '@/features/gameplayLoop/context';
+import { OnboardingProvider } from '@/features/onboarding';
 
 export default function GameplayLoopLayout() {
   const params = useLocalSearchParams<{ playerId?: string }>();
@@ -14,7 +15,9 @@ export default function GameplayLoopLayout() {
 
   return (
     <GameplayLoopProvider playerId={playerId}>
-      <Slot />
+      <OnboardingProvider playerId={playerId}>
+        <Slot />
+      </OnboardingProvider>
     </GameplayLoopProvider>
   );
 }

@@ -1,10 +1,11 @@
 import React from 'react';
-import { router } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
 import EndOfDaySummaryCard from '@/components/gameplay/EndOfDaySummaryCard';
+import { OnboardingHighlight } from '@/components/onboarding';
 import EmptyStateView from '@/components/ui/EmptyStateView';
 import { theme } from '@/design/theme';
+import { useOnboarding } from '@/features/onboarding';
 import { formatDelta, formatMoney } from '@/lib/gameplayFormatters';
 
 import { useGameplayLoop } from '../context';
@@ -21,6 +22,9 @@ import GameplayLoopScaffold from '../GameplayLoopScaffold';
 
 export default function SummaryScreen() {
   const loop = useGameplayLoop();
+  const onboarding = useOnboarding();
+  const guidedSummaryActive = onboarding.isActive && onboarding.currentStep?.route === 'summary';
+  const simplified = onboarding.isSimplifiedMode;
   const summary = loop.endOfDaySummary;
   const hasSummary = Boolean(summary);
   const netTone = toneFromSignedValue(summary?.net_change_xgp ?? 0);
@@ -42,8 +46,12 @@ export default function SummaryScreen() {
           summary={hasSummary
             ? `Tomorrow setup: ${summary?.guided_watch_tomorrow || summary?.tomorrow_warnings?.[0] || 'Start with one low-risk income action.'}`
             : `Session ${loop.dailySession.sessionStatus}. Run settlement to generate today's recap.`}
-          secondaryLabel={hasSummary ? 'Open Dashboard' : 'Go To Work'}
-          onSecondaryPress={() => router.replace(`/gameplay/loop/${loop.playerId}/${hasSummary ? 'dashboard' : 'work'}`)}
+          secondaryLabel={guidedSummaryActive ? undefined : hasSummary ? 'Open Dashboard' : 'Go To Work'}
+          onSecondaryPress={guidedSummaryActive
+            ? undefined
+            : () => {
+              onboarding.navigateTo(hasSummary ? 'dashboard' : 'work');
+            }}
           primaryLabel={hasSummary ? 'Start Next Day' : loop.endingDay ? 'Settling Day...' : 'Run End Of Day Settlement'}
           onPrimaryPress={hasSummary
             ? () => {
@@ -57,34 +65,36 @@ export default function SummaryScreen() {
         />
       )}
     >
-      <GameplaySummaryCard
-        eyebrow="Settlement controls"
-        title="Closeout Status"
-        subtitle="Run settlement after your actions are done for the day."
-      >
-        <View style={styles.chipRow}>
-          <GameplayTrendChip
-            label="Session"
-            value={loop.dailySession.sessionStatus === 'active' ? 'Active' : 'Ended'}
-            tone={loop.dailySession.sessionStatus === 'active' ? 'info' : 'warning'}
-          />
-          <GameplayTrendChip
-            label="Actions"
-            value={String(loop.dailySession.actionsTakenToday.length)}
-            tone="neutral"
-          />
-          <GameplayTrendChip
-            label="Time left"
-            value={`${loop.dailySession.remainingTimeUnits}/${loop.dailySession.totalTimeUnits}`}
-            tone={loop.dailySession.remainingTimeUnits <= 2 ? 'warning' : 'info'}
-          />
-          <GameplayTrendChip
-            label="Ending cash"
-            value={formatMoney(loop.dashboard?.stats.cash_xgp ?? 0)}
-            tone="neutral"
-          />
-        </View>
-      </GameplaySummaryCard>
+      <OnboardingHighlight target="summary-day-results">
+        <GameplaySummaryCard
+          eyebrow="Settlement controls"
+          title="Closeout Status"
+          subtitle="Run settlement after your actions are done for the day."
+        >
+          <View style={styles.chipRow}>
+            <GameplayTrendChip
+              label="Session"
+              value={loop.dailySession.sessionStatus === 'active' ? 'Active' : 'Ended'}
+              tone={loop.dailySession.sessionStatus === 'active' ? 'info' : 'warning'}
+            />
+            <GameplayTrendChip
+              label="Actions"
+              value={String(loop.dailySession.actionsTakenToday.length)}
+              tone="neutral"
+            />
+            <GameplayTrendChip
+              label="Time left"
+              value={`${loop.dailySession.remainingTimeUnits}/${loop.dailySession.totalTimeUnits}`}
+              tone={loop.dailySession.remainingTimeUnits <= 2 ? 'warning' : 'info'}
+            />
+            <GameplayTrendChip
+              label="Ending cash"
+              value={formatMoney(loop.dashboard?.stats.cash_xgp ?? 0)}
+              tone="neutral"
+            />
+          </View>
+        </GameplaySummaryCard>
+      </OnboardingHighlight>
 
       {summary ? (
         <>
@@ -104,17 +114,23 @@ export default function SummaryScreen() {
             />
           </GameplaySummaryCard>
 
-          <GameplayOpportunityCallout
-            title="Today Win"
-            message={winsLine}
-          />
-          <GameplayWarningBanner
-            title="Today Loss"
-            message={lossLine}
-            tone="warning"
-          />
+          {!simplified ? (
+            <GameplayOpportunityCallout
+              title="Today Win"
+              message={winsLine}
+            />
+          ) : null}
+          {!simplified ? (
+            <GameplayWarningBanner
+              title="Today Loss"
+              message={lossLine}
+              tone="warning"
+            />
+          ) : null}
 
-          <EndOfDaySummaryCard summary={summary} />
+          <OnboardingHighlight target="summary-day-results">
+            <EndOfDaySummaryCard summary={summary} />
+          </OnboardingHighlight>
         </>
       ) : (
         <EmptyStateView
@@ -133,4 +149,3 @@ const styles = StyleSheet.create({
     gap: theme.spacing.sm,
   },
 });
-

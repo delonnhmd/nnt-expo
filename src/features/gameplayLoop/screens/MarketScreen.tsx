@@ -1,12 +1,13 @@
 import React from 'react';
-import { router } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
 import MarketOverviewCard from '@/components/gameplay/MarketOverviewCard';
 import PriceTrendsCard from '@/components/gameplay/PriceTrendsCard';
 import StockMarketCard from '@/components/gameplay/StockMarketCard';
+import { OnboardingHighlight } from '@/components/onboarding';
 import EmptyStateView from '@/components/ui/EmptyStateView';
 import { theme } from '@/design/theme';
+import { useOnboarding } from '@/features/onboarding';
 
 import { useGameplayLoop } from '../context';
 import {
@@ -20,6 +21,9 @@ import GameplayLoopScaffold from '../GameplayLoopScaffold';
 
 export default function MarketScreen() {
   const loop = useGameplayLoop();
+  const onboarding = useOnboarding();
+  const guidedMarketActive = onboarding.isActive && onboarding.currentStep?.route === 'market';
+  const simplified = onboarding.isSimplifiedMode;
   const topOpportunity = loop.economySummary?.player_opportunities?.[0]
     || loop.dashboard?.top_opportunities?.[0]?.description
     || 'No direct market upside flagged.';
@@ -36,13 +40,17 @@ export default function MarketScreen() {
       title="Market"
       subtitle="Read basket signals, then evaluate optional stock exposure"
       activeNavKey="market"
-      footer={(
+      footer={guidedMarketActive ? null : (
         <GameplayStickyActionArea
           summary="Baskets shape daily costs and margins. Stocks are optional upside only."
           secondaryLabel="Open Business"
-          onSecondaryPress={() => router.replace(`/gameplay/loop/${loop.playerId}/business`)}
+          onSecondaryPress={() => {
+            onboarding.navigateTo('business');
+          }}
           primaryLabel="Back To Work"
-          onPrimaryPress={() => router.replace(`/gameplay/loop/${loop.playerId}/work`)}
+          onPrimaryPress={() => {
+            onboarding.navigateTo('work');
+          }}
         />
       )}
     >
@@ -59,25 +67,31 @@ export default function MarketScreen() {
         </View>
       </GameplaySummaryCard>
 
-      <GameplayOpportunityCallout
-        title="Opportunity Signal"
-        message={topOpportunity}
-      />
-      <GameplayWarningBanner
-        title="Risk Signal"
-        message={topWarning}
-        tone="warning"
-      />
+      {!simplified ? (
+        <GameplayOpportunityCallout
+          title="Opportunity Signal"
+          message={topOpportunity}
+        />
+      ) : null}
+      {!simplified ? (
+        <GameplayWarningBanner
+          title="Risk Signal"
+          message={topWarning}
+          tone="warning"
+        />
+      ) : null}
 
       {loop.economySummary ? (
-        <GameplaySummaryCard
-          eyebrow="Baskets"
-          title="Economy Drivers"
-          subtitle="These moves affect household costs and business margins."
-        >
-          <MarketOverviewCard overview={loop.economySummary.market_overview} />
-          <PriceTrendsCard trends={loop.economySummary.price_trends} />
-        </GameplaySummaryCard>
+        <OnboardingHighlight target="market-price-movement">
+          <GameplaySummaryCard
+            eyebrow="Baskets"
+            title="Economy Drivers"
+            subtitle="These moves affect household costs and business margins."
+          >
+            <MarketOverviewCard overview={loop.economySummary.market_overview} />
+            <PriceTrendsCard trends={loop.economySummary.price_trends} />
+          </GameplaySummaryCard>
+        </OnboardingHighlight>
       ) : (
         <EmptyStateView
           title="Economy snapshot unavailable"
@@ -85,7 +99,7 @@ export default function MarketScreen() {
         />
       )}
 
-      {loop.stockMarket ? (
+      {!simplified && loop.stockMarket ? (
         <GameplaySummaryCard
           eyebrow="Stocks"
           title="Optional Stock Lane"
@@ -119,4 +133,3 @@ const styles = StyleSheet.create({
     gap: theme.spacing.sm,
   },
 });
-

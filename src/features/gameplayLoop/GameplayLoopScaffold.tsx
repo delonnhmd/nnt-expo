@@ -1,7 +1,7 @@
-import React from 'react';
-import { router } from 'expo-router';
+import React, { useEffect, useMemo } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { OnboardingStepOverlay } from '@/components/onboarding';
 import AppShell from '@/components/layout/AppShell';
 import ContentStack from '@/components/layout/ContentStack';
 import PageContainer from '@/components/layout/PageContainer';
@@ -10,6 +10,8 @@ import LoadingSkeleton from '@/components/ui/LoadingSkeleton';
 import SecondaryButton from '@/components/ui/SecondaryButton';
 import SectionCard from '@/components/ui/SectionCard';
 import { theme } from '@/design/theme';
+import { useOnboarding } from '@/features/onboarding';
+import { OnboardingRouteKey } from '@/features/onboarding/context';
 import { formatMoney } from '@/lib/gameplayFormatters';
 
 import { useGameplayLoop } from './context';
@@ -65,8 +67,16 @@ export default function GameplayLoopScaffold({
   footer?: React.ReactNode;
 }) {
   const loop = useGameplayLoop();
-  const navRoot = `/gameplay/loop/${loop.playerId}`;
+  const onboarding = useOnboarding();
+  const {
+    currentStep: onboardingStep,
+    ensureRoute,
+    isActive: onboardingActive,
+    isSimplifiedMode,
+    navigateTo,
+  } = onboarding;
   const cash = loop.dashboard?.stats.cash_xgp ?? loop.economyState.cashOnHand ?? 0;
+  const stress = Math.round(loop.dashboard?.stats.stress ?? 0);
   const netFlow = loop.economyState.netCashFlow ?? 0;
   const pressure = labelFromPressure(loop.expenseDebt.debtPressure);
   const usedUnits = Math.max(0, loop.dailySession.totalTimeUnits - loop.dailySession.remainingTimeUnits);
@@ -84,6 +94,29 @@ export default function GameplayLoopScaffold({
     ? new Date(loop.lastSyncedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     : 'Pending';
 
+  useEffect(() => {
+    ensureRoute(activeNavKey as OnboardingRouteKey);
+  }, [activeNavKey, ensureRoute]);
+
+  const bottomNavItems = useMemo(
+    () => ([
+      { key: 'brief', label: 'Brief' },
+      { key: 'dashboard', label: 'Dashboard' },
+      { key: 'work', label: 'Work' },
+      { key: 'market', label: 'Market' },
+      { key: 'business', label: 'Business' },
+      { key: 'summary', label: 'Summary' },
+    ]
+      .filter((item) => !(onboardingActive && item.key === 'business'))
+      .map((item) => ({
+        ...item,
+        onPress: () => {
+          navigateTo(item.key as OnboardingRouteKey);
+        },
+      }))),
+    [navigateTo, onboardingActive],
+  );
+
   return (
     <AppShell
       title={title}
@@ -95,14 +128,7 @@ export default function GameplayLoopScaffold({
           disabled={loop.refreshing}
         />
       )}
-      bottomNavItems={[
-        { key: 'brief', label: 'Brief', onPress: () => router.replace(`${navRoot}/brief`) },
-        { key: 'dashboard', label: 'Dashboard', onPress: () => router.replace(`${navRoot}/dashboard`) },
-        { key: 'work', label: 'Work', onPress: () => router.replace(`${navRoot}/work`) },
-        { key: 'market', label: 'Market', onPress: () => router.replace(`${navRoot}/market`) },
-        { key: 'business', label: 'Business', onPress: () => router.replace(`${navRoot}/business`) },
-        { key: 'summary', label: 'Summary', onPress: () => router.replace(`${navRoot}/summary`) },
-      ]}
+      bottomNavItems={bottomNavItems}
       activeBottomNavKey={activeNavKey}
       footer={footer}
     >
@@ -122,47 +148,78 @@ export default function GameplayLoopScaffold({
           )}
         >
           <ContentStack gap={theme.spacing.md}>
-            <GameplaySummaryCard
-              eyebrow="5-second read"
-              title="Today At A Glance"
-              subtitle="Financial status, pressure, opportunity, movement, and next step."
-            >
-              <View style={styles.scanCardRow}>
-                <View style={styles.scanCard}>
-                  <Text style={styles.scanLabel}>Cash</Text>
-                  <Text style={styles.scanValue}>{formatMoney(cash)}</Text>
-                </View>
-                <View style={styles.scanCard}>
-                  <Text style={styles.scanLabel}>Daily Net</Text>
-                  <Text style={[
-                    styles.scanValue,
-                    { color: toneFromSignedValue(netFlow) === 'positive' ? '#166534' : toneFromSignedValue(netFlow) === 'danger' ? '#b91c1c' : theme.color.textPrimary },
-                  ]}
-                  >
-                    {`${netFlow > 0 ? '+' : ''}${formatMoney(netFlow)}`}
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.trendRow}>
-                <GameplayTrendChip label="Pressure" value={pressure} tone={pressureTone(loop.expenseDebt.debtPressure)} />
-                <GameplayTrendChip
-                  label="Day Movement"
-                  value={`${usedUnits}/${loop.dailySession.totalTimeUnits} units used`}
-                  tone="info"
-                />
-                <GameplayTrendChip label="Data" value={sourceLabel(loop.sourceMode)} tone={sourceTone} />
-              </View>
-              <GameplayCompactMetricRows
-                items={[
-                  { label: 'Most important next action', value: nextAction, tone: 'info' },
-                  { label: 'Top risk', value: topRisk, tone: 'warning' },
-                  { label: 'Top opportunity', value: topOpportunity, tone: 'positive' },
-                  { label: 'Last sync', value: syncedTimeLabel },
-                ]}
-              />
-            </GameplaySummaryCard>
+            {onboardingActive ? <OnboardingStepOverlay /> : null}
 
-            {loop.sourceMode !== 'live' ? (
+            {isSimplifiedMode ? (
+              <GameplaySummaryCard
+                eyebrow="Day 1 Essentials"
+                title="Focus Right Now"
+                subtitle={onboardingStep?.body || 'Take one guided step at a time.'}
+              >
+                <View style={styles.scanCardRow}>
+                  <View style={styles.scanCard}>
+                    <Text style={styles.scanLabel}>Cash</Text>
+                    <Text style={styles.scanValue}>{formatMoney(cash)}</Text>
+                  </View>
+                  <View style={styles.scanCard}>
+                    <Text style={styles.scanLabel}>Stress</Text>
+                    <Text style={styles.scanValue}>{String(stress)}</Text>
+                  </View>
+                  <View style={styles.scanCard}>
+                    <Text style={styles.scanLabel}>Time Left</Text>
+                    <Text style={styles.scanValue}>{`${loop.dailySession.remainingTimeUnits}/${loop.dailySession.totalTimeUnits}`}</Text>
+                  </View>
+                </View>
+                <GameplayCompactMetricRows
+                  items={[
+                    { label: 'Current step', value: onboardingStep?.title || 'Guided flow', tone: 'info' },
+                    { label: 'Next move', value: nextAction, tone: 'info' },
+                  ]}
+                />
+              </GameplaySummaryCard>
+            ) : (
+              <GameplaySummaryCard
+                eyebrow="5-second read"
+                title="Today At A Glance"
+                subtitle="Financial status, pressure, opportunity, movement, and next step."
+              >
+                <View style={styles.scanCardRow}>
+                  <View style={styles.scanCard}>
+                    <Text style={styles.scanLabel}>Cash</Text>
+                    <Text style={styles.scanValue}>{formatMoney(cash)}</Text>
+                  </View>
+                  <View style={styles.scanCard}>
+                    <Text style={styles.scanLabel}>Daily Net</Text>
+                    <Text style={[
+                      styles.scanValue,
+                      { color: toneFromSignedValue(netFlow) === 'positive' ? '#166534' : toneFromSignedValue(netFlow) === 'danger' ? '#b91c1c' : theme.color.textPrimary },
+                    ]}
+                    >
+                      {`${netFlow > 0 ? '+' : ''}${formatMoney(netFlow)}`}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.trendRow}>
+                  <GameplayTrendChip label="Pressure" value={pressure} tone={pressureTone(loop.expenseDebt.debtPressure)} />
+                  <GameplayTrendChip
+                    label="Day Movement"
+                    value={`${usedUnits}/${loop.dailySession.totalTimeUnits} units used`}
+                    tone="info"
+                  />
+                  <GameplayTrendChip label="Data" value={sourceLabel(loop.sourceMode)} tone={sourceTone} />
+                </View>
+                <GameplayCompactMetricRows
+                  items={[
+                    { label: 'Most important next action', value: nextAction, tone: 'info' },
+                    { label: 'Top risk', value: topRisk, tone: 'warning' },
+                    { label: 'Top opportunity', value: topOpportunity, tone: 'positive' },
+                    { label: 'Last sync', value: syncedTimeLabel },
+                  ]}
+                />
+              </GameplaySummaryCard>
+            )}
+
+            {!isSimplifiedMode && loop.sourceMode !== 'live' ? (
               <GameplayWarningBanner
                 title={sourceLabel(loop.sourceMode)}
                 message={sourceCopy(loop.sourceMode)}

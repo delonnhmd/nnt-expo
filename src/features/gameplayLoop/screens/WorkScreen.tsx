@@ -1,11 +1,12 @@
 import React from 'react';
-import { router } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
 import ActionHubPanel from '@/components/gameplay/ActionHubPanel';
 import ActionPreviewModal from '@/components/gameplay/ActionPreviewModal';
+import { OnboardingHighlight } from '@/components/onboarding';
 import EmptyStateView from '@/components/ui/EmptyStateView';
 import { theme } from '@/design/theme';
+import { useOnboarding } from '@/features/onboarding';
 
 import { useGameplayLoop } from '../context';
 import {
@@ -19,6 +20,9 @@ import GameplayLoopScaffold from '../GameplayLoopScaffold';
 
 export default function WorkScreen() {
   const loop = useGameplayLoop();
+  const onboarding = useOnboarding();
+  const guidedWorkActive = onboarding.isActive && onboarding.currentStep?.route === 'work';
+  const simplified = onboarding.isSimplifiedMode;
   const stats = loop.dashboard?.stats;
   const leadTradeoff = loop.actionHub?.top_tradeoffs?.[0] || null;
   const leadWarning = loop.actionHub?.next_risk_warnings?.[0] || null;
@@ -32,11 +36,13 @@ export default function WorkScreen() {
       title="Work / Job"
       subtitle="Convert time into income while managing stress and health"
       activeNavKey="work"
-      footer={(
+      footer={guidedWorkActive ? null : (
         <GameplayStickyActionArea
           summary={`Time left: ${loop.dailySession.remainingTimeUnits}/${loop.dailySession.totalTimeUnits} units. Next action: ${nextAction}`}
           secondaryLabel="Open Market"
-          onSecondaryPress={() => router.replace(`/gameplay/loop/${loop.playerId}/market`)}
+          onSecondaryPress={() => {
+            onboarding.navigateTo('market');
+          }}
           primaryLabel={loop.endingDay ? 'Settling Day...' : 'End Day'}
           onPrimaryPress={() => {
             void loop.endCurrentDay();
@@ -79,13 +85,13 @@ export default function WorkScreen() {
         </View>
       </GameplaySummaryCard>
 
-      {leadTradeoff ? (
+      {!simplified && leadTradeoff ? (
         <GameplayOpportunityCallout
           title="Best Setup Right Now"
           message={leadTradeoff}
         />
       ) : null}
-      {leadWarning ? (
+      {!simplified && leadWarning ? (
         <GameplayWarningBanner
           title="Watch Before Acting"
           message={leadWarning}
@@ -94,17 +100,19 @@ export default function WorkScreen() {
       ) : null}
 
       {loop.actionHub ? (
-        <ActionHubPanel
-          hub={loop.actionHub}
-          onPreviewAction={(action) => {
-            void loop.openActionPreview(action);
-          }}
-          getExecutionGuard={(action) => loop.dailySession.canExecuteAction(action)}
-          remainingTimeUnits={loop.dailySession.remainingTimeUnits}
-          totalTimeUnits={loop.dailySession.totalTimeUnits}
-          sessionStatus={loop.dailySession.sessionStatus}
-          progressRatio={loop.dailySession.progress}
-        />
+        <OnboardingHighlight target="work-first-action">
+          <ActionHubPanel
+            hub={loop.actionHub}
+            onPreviewAction={(action) => {
+              void loop.openActionPreview(action);
+            }}
+            getExecutionGuard={(action) => loop.dailySession.canExecuteAction(action)}
+            remainingTimeUnits={loop.dailySession.remainingTimeUnits}
+            totalTimeUnits={loop.dailySession.totalTimeUnits}
+            sessionStatus={loop.dailySession.sessionStatus}
+            progressRatio={loop.dailySession.progress}
+          />
+        </OnboardingHighlight>
       ) : (
         <EmptyStateView
           title="No actions loaded"
@@ -137,4 +145,3 @@ const styles = StyleSheet.create({
     gap: theme.spacing.sm,
   },
 });
-

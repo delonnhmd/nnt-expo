@@ -1,9 +1,10 @@
 import React from 'react';
-import { router } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
 import DailyBriefCard from '@/components/gameplay/DailyBriefCard';
+import { OnboardingHighlight } from '@/components/onboarding';
 import { theme } from '@/design/theme';
+import { useOnboarding } from '@/features/onboarding';
 import { formatMoney } from '@/lib/gameplayFormatters';
 
 import { useGameplayLoop } from '../context';
@@ -20,6 +21,9 @@ import GameplayLoopScaffold from '../GameplayLoopScaffold';
 
 export default function BriefScreen() {
   const loop = useGameplayLoop();
+  const onboarding = useOnboarding();
+  const guidedBriefActive = onboarding.isActive && onboarding.currentStep?.route === 'brief';
+  const simplified = onboarding.isSimplifiedMode;
   const topOpportunity = loop.dashboard?.top_opportunities?.[0];
   const topRisk = loop.dashboard?.top_risks?.[0];
   const netFlow = loop.economyState.netCashFlow ?? 0;
@@ -37,24 +41,30 @@ export default function BriefScreen() {
       title="Home / Daily Brief"
       subtitle="Read, orient, and decide your first move"
       activeNavKey="brief"
-      footer={(
+      footer={guidedBriefActive ? null : (
         <GameplayStickyActionArea
           summary={`Most important next action: ${nextAction}`}
           secondaryLabel="Jump To Work"
-          onSecondaryPress={() => router.replace(`/gameplay/loop/${loop.playerId}/work`)}
+          onSecondaryPress={() => {
+            onboarding.navigateTo('work');
+          }}
           primaryLabel="Continue To Dashboard"
-          onPrimaryPress={() => router.replace(`/gameplay/loop/${loop.playerId}/dashboard`)}
+          onPrimaryPress={() => {
+            onboarding.navigateTo('dashboard');
+          }}
         />
       )}
     >
       {loop.dashboard ? (
-        <DailyBriefCard
-          dashboard={loop.dashboard}
-          impactBullets={[
-            ...(loop.economySummary?.player_warnings || []).slice(0, 2),
-            ...(loop.economySummary?.player_opportunities || []).slice(0, 1),
-          ]}
-        />
+        <OnboardingHighlight target="brief-daily-economy">
+          <DailyBriefCard
+            dashboard={loop.dashboard}
+            impactBullets={[
+              ...(loop.economySummary?.player_warnings || []).slice(0, 2),
+              ...(loop.economySummary?.player_opportunities || []).slice(0, 1),
+            ]}
+          />
+        </OnboardingHighlight>
       ) : null}
 
       <GameplaySummaryCard
@@ -86,40 +96,42 @@ export default function BriefScreen() {
         </View>
       </GameplaySummaryCard>
 
-      <GameplaySummaryCard
-        eyebrow="Why today matters"
-        title={loop.dashboard?.headline || 'Protect downside, then grow carefully.'}
-        subtitle={loop.economySummary?.explainer.this_week_focus || 'Use one deliberate action before ending the day.'}
-      >
-        <GameplayCompactMetricRows
-          items={[
-            {
-              label: 'Risk pressure',
-              value: topRisk?.title || loop.economySummary?.player_warnings?.[0] || 'No major risk flagged.',
-              tone: 'warning',
-            },
-            {
-              label: 'Opportunity',
-              value: topOpportunity?.title || loop.economySummary?.player_opportunities?.[0] || 'No major upside flagged.',
-              tone: 'positive',
-            },
-            {
-              label: 'Next action',
-              value: nextAction,
-              tone: 'info',
-            },
-          ]}
-        />
-      </GameplaySummaryCard>
+      {!simplified ? (
+        <GameplaySummaryCard
+          eyebrow="Why today matters"
+          title={loop.dashboard?.headline || 'Protect downside, then grow carefully.'}
+          subtitle={loop.economySummary?.explainer.this_week_focus || 'Use one deliberate action before ending the day.'}
+        >
+          <GameplayCompactMetricRows
+            items={[
+              {
+                label: 'Risk pressure',
+                value: topRisk?.title || loop.economySummary?.player_warnings?.[0] || 'No major risk flagged.',
+                tone: 'warning',
+              },
+              {
+                label: 'Opportunity',
+                value: topOpportunity?.title || loop.economySummary?.player_opportunities?.[0] || 'No major upside flagged.',
+                tone: 'positive',
+              },
+              {
+                label: 'Next action',
+                value: nextAction,
+                tone: 'info',
+              },
+            ]}
+          />
+        </GameplaySummaryCard>
+      ) : null}
 
-      {topOpportunity ? (
+      {!simplified && topOpportunity ? (
         <GameplayOpportunityCallout
           title="Top Opportunity"
           message={topOpportunity.description}
         />
       ) : null}
 
-      {topRisk ? (
+      {!simplified && topRisk ? (
         <GameplayWarningBanner
           title="Top Risk"
           message={topRisk.description}
