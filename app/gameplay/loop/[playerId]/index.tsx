@@ -1,7 +1,6 @@
-import React from 'react';
 import { Redirect, useLocalSearchParams } from 'expo-router';
 
-export default function GameplayPlayerRoute() {
+export default function GameplayLoopIndexRoute() {
   const params = useLocalSearchParams<{ playerId?: string }>();
   const rawPlayerId = Array.isArray(params.playerId) ? params.playerId[0] : params.playerId;
   const playerId = String(rawPlayerId || '').trim();

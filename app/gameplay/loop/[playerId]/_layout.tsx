@@ -1,7 +1,9 @@
 import React from 'react';
-import { Redirect, useLocalSearchParams } from 'expo-router';
+import { Redirect, Slot, useLocalSearchParams } from 'expo-router';
 
-export default function GameplayPlayerRoute() {
+import { GameplayLoopProvider } from '@/features/gameplayLoop/context';
+
+export default function GameplayLoopLayout() {
   const params = useLocalSearchParams<{ playerId?: string }>();
   const rawPlayerId = Array.isArray(params.playerId) ? params.playerId[0] : params.playerId;
   const playerId = String(rawPlayerId || '').trim();
@@ -10,5 +12,9 @@ export default function GameplayPlayerRoute() {
     return <Redirect href="/gameplay" />;
   }
 
-  return <Redirect href={`/gameplay/loop/${playerId}/brief`} />;
+  return (
+    <GameplayLoopProvider playerId={playerId}>
+      <Slot />
+    </GameplayLoopProvider>
+  );
 }

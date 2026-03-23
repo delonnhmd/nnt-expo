@@ -37,7 +37,7 @@ export default function GameplayIndexRoute() {
     } catch {
       // Persisting last player is optional.
     }
-    router.push(`/gameplay/${trimmed}`);
+    router.push(`/gameplay/loop/${trimmed}/brief`);
   };
 
   return (
@@ -49,7 +49,7 @@ export default function GameplayIndexRoute() {
         <ContentStack style={styles.content}>
           <SectionCard
             title="Gameplay Dashboard"
-            summary="Enter your player ID to open your daily gameplay dashboard."
+            summary="Enter your player ID to open the mobile gameplay loop screens."
           >
             <TextInput
               style={styles.input}
@@ -62,7 +62,7 @@ export default function GameplayIndexRoute() {
             />
             <Text style={styles.hint}>The last player ID is stored on this device so you can return to gameplay more quickly.</Text>
             <PrimaryButton
-              label="Open Dashboard"
+              label="Open Gameplay Loop"
               onPress={openDashboard}
               disabled={!playerId.trim()}
             />
