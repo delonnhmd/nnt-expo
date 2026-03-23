@@ -26,6 +26,16 @@ import {
   PlaytestReport,
 } from '@/lib/playtestAnalytics';
 
+// ── Step 68: Day 1 balance presets (must stay in sync with balance_config.py) ──
+const BALANCE_PRESETS = {
+  easy:        { income_multiplier: 1.30, expense_pressure_multiplier: 0.80, stress_sensitivity: 0.75, health_decay_rate: 0.70, opportunity_spawn_rate: 1.60 },
+  normal:      { income_multiplier: 1.00, expense_pressure_multiplier: 1.00, stress_sensitivity: 1.00, health_decay_rate: 1.00, opportunity_spawn_rate: 1.00 },
+  hard:        { income_multiplier: 0.85, expense_pressure_multiplier: 1.25, stress_sensitivity: 1.35, health_decay_rate: 1.40, opportunity_spawn_rate: 0.65 },
+  stress_test: { income_multiplier: 0.60, expense_pressure_multiplier: 1.60, stress_sensitivity: 2.00, health_decay_rate: 2.00, opportunity_spawn_rate: 0.40 },
+} as const;
+type BalancePresetKey = keyof typeof BALANCE_PRESETS;
+const BALANCE_PRESET_STORAGE_KEY = 'goldpenny:dev:balance_preset' as const;
+
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.infoRow}>
@@ -49,6 +59,7 @@ export default function SettingsScreen() {
   const [clearingPlaytest, setClearingPlaytest] = useState(false);
   const [playtestPlayerId, setPlaytestPlayerId] = useState('');
   const [playtestGameDay, setPlaytestGameDay] = useState('1');
+  const [balancePreset, setBalancePreset] = useState<BalancePresetKey>('normal');
   const loaded = useRef(false);
 
   const appName = Constants.expoConfig?.name || 'Gold Penny';
@@ -92,6 +103,10 @@ export default function SettingsScreen() {
         if (rememberedPlayerId) setPlaytestPlayerId(rememberedPlayerId);
         setBackendUrl(url || '');
         setAdminToken(token || '');
+        const savedPreset = await AsyncStorage.getItem(BALANCE_PRESET_STORAGE_KEY);
+        if (savedPreset && savedPreset in BALANCE_PRESETS) {
+          setBalancePreset(savedPreset as BalancePresetKey);
+        }
       } catch (error) {
         recordWarning('settings', 'Failed to hydrate saved settings.', {
           action: 'load_settings',
@@ -255,6 +270,15 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleSelectBalancePreset = async (name: BalancePresetKey) => {
+    setBalancePreset(name);
+    try {
+      await AsyncStorage.setItem(BALANCE_PRESET_STORAGE_KEY, name);
+    } catch (e) {
+      recordWarning('settings', 'Failed to persist balance preset.', { action: 'select_balance_preset', error: e });
+    }
+  };
+
   const handleClearPlaytestData = async () => {
     const pid = playtestPlayerId.trim();
     if (!pid) return;
@@ -400,6 +424,31 @@ export default function SettingsScreen() {
                   );
                 })
               )}
+            </SectionCard>
+
+            <SectionCard
+              title="Balance Config (Dev)"
+              summary="Step 68: tune the Day 1 balance layer. Selected preset is applied by the backend on next work action. No app restart required."
+            >
+              <Text style={styles.inputLabel}>Active Preset</Text>
+              <View style={styles.buttonRow}>
+                {(Object.keys(BALANCE_PRESETS) as BalancePresetKey[]).map((name) => (
+                  <SecondaryButton
+                    key={name}
+                    label={name === balancePreset ? `● ${name}` : name}
+                    onPress={() => handleSelectBalancePreset(name)}
+                  />
+                ))}
+              </View>
+              <View style={styles.diagnosticCard}>
+                <Text style={styles.diagnosticLevel}>CONFIG: {balancePreset.toUpperCase()}</Text>
+                <InfoRow label="Income ×" value={String(BALANCE_PRESETS[balancePreset].income_multiplier)} />
+                <InfoRow label="Expense ×" value={String(BALANCE_PRESETS[balancePreset].expense_pressure_multiplier)} />
+                <InfoRow label="Stress ×" value={String(BALANCE_PRESETS[balancePreset].stress_sensitivity)} />
+                <InfoRow label="Health ×" value={String(BALANCE_PRESETS[balancePreset].health_decay_rate)} />
+                <InfoRow label="Opportunity ×" value={String(BALANCE_PRESETS[balancePreset].opportunity_spawn_rate)} />
+              </View>
+              <Text style={styles.note}>Preset is stored locally. Switch preset via POST /internal/balance/day1-preset to apply server-side.</Text>
             </SectionCard>
 
             <SectionCard
