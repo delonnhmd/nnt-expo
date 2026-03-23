@@ -8,6 +8,7 @@ import { OnboardingHighlight } from '@/components/onboarding';
 import EmptyStateView from '@/components/ui/EmptyStateView';
 import { theme } from '@/design/theme';
 import { useOnboarding } from '@/features/onboarding';
+import { useScreenTimer } from '@/hooks/useScreenTimer';
 
 import { useGameplayLoop } from '../context';
 import {
@@ -20,6 +21,7 @@ import {
 import GameplayLoopScaffold from '../GameplayLoopScaffold';
 
 export default function MarketScreen() {
+  useScreenTimer('market');
   const loop = useGameplayLoop();
   const onboarding = useOnboarding();
   const guidedMarketActive = onboarding.isActive && onboarding.currentStep?.route === 'market';

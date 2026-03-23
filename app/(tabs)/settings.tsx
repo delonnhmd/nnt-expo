@@ -20,6 +20,11 @@ import {
   recordInfo,
   recordWarning,
 } from '@/lib/logger';
+import {
+  buildPlaytestReport,
+  clearPlaytestData,
+  PlaytestReport,
+} from '@/lib/playtestAnalytics';
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
@@ -39,6 +44,11 @@ export default function SettingsScreen() {
   const [diagnostics, setDiagnostics] = useState<DiagnosticEntry[]>([]);
   const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
   const [clearingDiagnostics, setClearingDiagnostics] = useState(false);
+  const [playtestReport, setPlaytestReport] = useState<PlaytestReport | null>(null);
+  const [playtestLoading, setPlaytestLoading] = useState(false);
+  const [clearingPlaytest, setClearingPlaytest] = useState(false);
+  const [playtestPlayerId, setPlaytestPlayerId] = useState('');
+  const [playtestGameDay, setPlaytestGameDay] = useState('1');
   const loaded = useRef(false);
 
   const appName = Constants.expoConfig?.name || 'Gold Penny';
@@ -78,6 +88,8 @@ export default function SettingsScreen() {
           AsyncStorage.getItem(KEY_BACKEND_OVERRIDE),
           AsyncStorage.getItem(KEY_ADMIN_TOKEN),
         ]);
+        const rememberedPlayerId = await AsyncStorage.getItem('goldpenny:gameplay:lastPlayerId');
+        if (rememberedPlayerId) setPlaytestPlayerId(rememberedPlayerId);
         setBackendUrl(url || '');
         setAdminToken(token || '');
       } catch (error) {
@@ -225,6 +237,39 @@ export default function SettingsScreen() {
     }
   };
 
+  const loadPlaytestReport = async () => {
+    const pid = playtestPlayerId.trim();
+    if (!pid) {
+      Alert.alert('Player ID Required', 'Enter a player ID to load the playtest report.');
+      return;
+    }
+    const gameDay = Math.max(1, parseInt(playtestGameDay.trim(), 10) || 1);
+    setPlaytestLoading(true);
+    try {
+      const report = await buildPlaytestReport(pid, 'settings_session', gameDay);
+      setPlaytestReport(report);
+    } catch (error) {
+      Alert.alert('Report Error', error instanceof Error ? error.message : String(error));
+    } finally {
+      setPlaytestLoading(false);
+    }
+  };
+
+  const handleClearPlaytestData = async () => {
+    const pid = playtestPlayerId.trim();
+    if (!pid) return;
+    setClearingPlaytest(true);
+    try {
+      await clearPlaytestData(pid);
+      setPlaytestReport(null);
+      Alert.alert('Cleared', 'Playtest analytics data has been cleared for this player.');
+    } catch (error) {
+      Alert.alert('Clear Error', error instanceof Error ? error.message : String(error));
+    } finally {
+      setClearingPlaytest(false);
+    }
+  };
+
   return (
     <AppShell title="Settings" subtitle="Gold Penny app preferences">
       <PageContainer>
@@ -354,6 +399,115 @@ export default function SettingsScreen() {
                     </View>
                   );
                 })
+              )}
+            </SectionCard>
+
+            <SectionCard
+              title="Playtest Review"
+              summary="Internal dev tool. Load Day 1 funnel, screen time, balance telemetry, and friction signals for any player session stored on this device."
+            >
+              <Text style={styles.inputLabel}>Player ID</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter player ID"
+                placeholderTextColor={theme.color.muted}
+                value={playtestPlayerId}
+                onChangeText={setPlaytestPlayerId}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="off"
+              />
+              <Text style={styles.inputLabel}>Game Day</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="1"
+                placeholderTextColor={theme.color.muted}
+                value={playtestGameDay}
+                onChangeText={setPlaytestGameDay}
+                keyboardType="numeric"
+                autoCorrect={false}
+              />
+              <View style={styles.buttonRow}>
+                <SecondaryButton
+                  label={playtestLoading ? 'Loading...' : 'Load Report'}
+                  onPress={playtestLoading ? undefined : loadPlaytestReport}
+                  disabled={playtestLoading || clearingPlaytest}
+                />
+                <SecondaryButton
+                  label={clearingPlaytest ? 'Clearing...' : 'Clear Data'}
+                  onPress={clearingPlaytest ? undefined : handleClearPlaytestData}
+                  disabled={playtestLoading || clearingPlaytest}
+                />
+              </View>
+
+              {playtestReport ? (
+                <>
+                  <View style={styles.diagnosticCard}>
+                    <Text style={styles.diagnosticLevel}>FUNNEL ({playtestReport.funnelCompletionRate.completionLabel})</Text>
+                    <InfoRow label="Session Started" value={playtestReport.funnelCompletionRate.sessionStarted ? '✓' : '—'} />
+                    <InfoRow label="Brief Seen" value={playtestReport.funnelCompletionRate.briefSeen ? '✓' : '—'} />
+                    <InfoRow label="Dashboard Seen" value={playtestReport.funnelCompletionRate.dashboardSeen ? '✓' : '—'} />
+                    <InfoRow label="First Work Action" value={playtestReport.funnelCompletionRate.firstWorkAction ? '✓' : '—'} />
+                    <InfoRow label="Market Seen" value={playtestReport.funnelCompletionRate.marketSeen ? '✓' : '—'} />
+                    <InfoRow label="Summary Seen" value={playtestReport.funnelCompletionRate.summarySeen ? '✓' : '—'} />
+                    <InfoRow label="Day Completed" value={playtestReport.funnelCompletionRate.dayCompleted ? '✓' : '—'} />
+                    <InfoRow label="Total Events" value={String(playtestReport.totalEventCount)} />
+                    <InfoRow label="Sessions" value={String(playtestReport.sessionCount)} />
+                  </View>
+
+                  {playtestReport.balanceTelemetry ? (
+                    <View style={styles.diagnosticCard}>
+                      <Text style={styles.diagnosticLevel}>BALANCE OUTCOME</Text>
+                      <InfoRow label="Starting Cash" value={playtestReport.balanceTelemetry.startingCash != null ? String(playtestReport.balanceTelemetry.startingCash) : '—'} />
+                      <InfoRow label="Ending Cash" value={playtestReport.balanceTelemetry.endingCash != null ? String(playtestReport.balanceTelemetry.endingCash) : '—'} />
+                      <InfoRow label="Cash Delta" value={playtestReport.balanceTelemetry.cashDelta != null ? String(playtestReport.balanceTelemetry.cashDelta) : '—'} />
+                      <InfoRow label="Stress Delta" value={playtestReport.balanceTelemetry.stressDelta != null ? String(playtestReport.balanceTelemetry.stressDelta) : '—'} />
+                      <InfoRow label="Health Delta" value={playtestReport.balanceTelemetry.healthDelta != null ? String(playtestReport.balanceTelemetry.healthDelta) : '—'} />
+                      <InfoRow label="Expense Pressure" value={playtestReport.balanceTelemetry.expensePressure ?? '—'} />
+                      <InfoRow label="Income Earned" value={playtestReport.balanceTelemetry.incomeEarned != null ? String(playtestReport.balanceTelemetry.incomeEarned) : '—'} />
+                      <InfoRow label="Ended Positive" value={playtestReport.balanceTelemetry.endedPositive != null ? (playtestReport.balanceTelemetry.endedPositive ? 'Yes' : 'No') : '—'} />
+                    </View>
+                  ) : null}
+
+                  {playtestReport.frictionSignals ? (
+                    <View style={styles.diagnosticCard}>
+                      <Text style={styles.diagnosticLevel}>FRICTION SIGNALS</Text>
+                      <InfoRow label="Onboarding Skipped" value={playtestReport.frictionSignals.onboardingSkipped ? '⚠ Yes' : 'No'} />
+                      <InfoRow label="No Work Action" value={playtestReport.frictionSignals.noWorkActionTaken ? '⚠ Yes' : 'No'} />
+                      <InfoRow label="No Market Visit" value={playtestReport.frictionSignals.noMarketVisit ? '⚠ Yes' : 'No'} />
+                      <InfoRow label="No Business Visit" value={playtestReport.frictionSignals.noBusinessVisit ? '⚠ Yes' : 'No'} />
+                      <InfoRow label="Exited Before Summary" value={playtestReport.frictionSignals.exitedBeforeSummary ? '⚠ Yes' : 'No'} />
+                      <InfoRow label="Long Idle Count" value={String(playtestReport.frictionSignals.longIdleCount)} />
+                    </View>
+                  ) : null}
+
+                  {playtestReport.screenTimeSummary.length > 0 ? (
+                    <View style={styles.diagnosticCard}>
+                      <Text style={styles.diagnosticLevel}>SCREEN TIME</Text>
+                      {playtestReport.screenTimeSummary.map((entry) => (
+                        <InfoRow
+                          key={entry.screen}
+                          label={entry.screen}
+                          value={`${Math.round(entry.averageMs / 1000)}s avg (${entry.count}x)`}
+                        />
+                      ))}
+                    </View>
+                  ) : null}
+
+                  {playtestReport.recentEvents.length > 0 ? (
+                    <View style={styles.diagnosticCard}>
+                      <Text style={styles.diagnosticLevel}>RECENT EVENTS (last {playtestReport.recentEvents.length})</Text>
+                      {playtestReport.recentEvents.slice(0, 12).map((event) => (
+                        <View key={event.id} style={styles.diagnosticCard}>
+                          <Text style={styles.diagnosticMeta}>{event.eventName}</Text>
+                          <Text style={styles.diagnosticTime}>{new Date(event.timestamp).toLocaleString()} · Day {event.gameDay}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
+                </>
+              ) : (
+                <Text style={styles.note}>Enter a player ID and tap Load Report to inspect playtest data.</Text>
               )}
             </SectionCard>
           </ContentStack>

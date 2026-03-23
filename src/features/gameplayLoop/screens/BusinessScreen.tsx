@@ -8,6 +8,7 @@ import BusinessPlanCard from '@/components/gameplay/BusinessPlanCard';
 import EmptyStateView from '@/components/ui/EmptyStateView';
 import { theme } from '@/design/theme';
 import { formatMoney } from '@/lib/gameplayFormatters';
+import { useScreenTimer } from '@/hooks/useScreenTimer';
 
 import { useGameplayLoop } from '../context';
 import {
@@ -27,6 +28,7 @@ function canonicalActionKey(actionKey: string): string {
 }
 
 export default function BusinessScreen() {
+  useScreenTimer('business');
   const loop = useGameplayLoop();
   const activeBusiness = useMemo(
     () => {

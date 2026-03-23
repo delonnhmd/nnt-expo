@@ -23,6 +23,7 @@ import {
   GameplayWarningBanner,
   toneFromSignedValue,
 } from './components/GameplayUIParts';
+import { PlaytestObserver } from './components/PlaytestObserver';
 
 function sourceLabel(mode: 'live' | 'mixed' | 'mock'): string {
   if (mode === 'mock') return 'Mock Data Mode';
@@ -148,6 +149,7 @@ export default function GameplayLoopScaffold({
           )}
         >
           <ContentStack gap={theme.spacing.md}>
+            <PlaytestObserver />
             {onboardingActive ? <OnboardingStepOverlay /> : null}
 
             {isSimplifiedMode ? (

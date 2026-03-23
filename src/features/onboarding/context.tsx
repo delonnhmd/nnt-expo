@@ -16,6 +16,9 @@ import {
   readPersistedOnboardingState,
   writePersistedOnboardingState,
 } from '@/lib/onboardingPersistence';
+import {
+  emitPlaytestEvent,
+} from '@/lib/playtestAnalytics';
 
 export type OnboardingRouteKey =
   | 'brief'
@@ -190,6 +193,13 @@ export function OnboardingProvider({
           playerId,
           status,
         },
+      });
+      // Emit playtest event for skip vs complete distinction.
+      void emitPlaytestEvent({
+        eventName: status === 'skipped' ? 'onboarding_skipped' : 'onboarding_completed',
+        sessionId: 'onboarding',
+        playerId,
+        gameDay: 1,
       });
     } finally {
       transitionGuardRef.current = false;

@@ -7,6 +7,7 @@ import EmptyStateView from '@/components/ui/EmptyStateView';
 import { theme } from '@/design/theme';
 import { useOnboarding } from '@/features/onboarding';
 import { formatDelta, formatMoney } from '@/lib/gameplayFormatters';
+import { useScreenTimer } from '@/hooks/useScreenTimer';
 
 import { useGameplayLoop } from '../context';
 import {
@@ -21,6 +22,7 @@ import {
 import GameplayLoopScaffold from '../GameplayLoopScaffold';
 
 export default function SummaryScreen() {
+  useScreenTimer('summary');
   const loop = useGameplayLoop();
   const onboarding = useOnboarding();
   const guidedSummaryActive = onboarding.isActive && onboarding.currentStep?.route === 'summary';

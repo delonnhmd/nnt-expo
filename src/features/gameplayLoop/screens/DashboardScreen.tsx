@@ -4,6 +4,7 @@ import { OnboardingHighlight } from '@/components/onboarding';
 import PlayerStatsBar from '@/components/gameplay/PlayerStatsBar';
 import { useOnboarding } from '@/features/onboarding';
 import { formatMoney } from '@/lib/gameplayFormatters';
+import { useScreenTimer } from '@/hooks/useScreenTimer';
 
 import { useGameplayLoop } from '../context';
 import {
@@ -21,6 +22,7 @@ function signedCurrency(value: number): string {
 }
 
 export default function DashboardScreen() {
+  useScreenTimer('dashboard');
   const loop = useGameplayLoop();
   const onboarding = useOnboarding();
   const guidedDashboardActive = onboarding.isActive && onboarding.currentStep?.route === 'dashboard';

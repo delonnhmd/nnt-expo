@@ -6,6 +6,7 @@ import { OnboardingHighlight } from '@/components/onboarding';
 import { theme } from '@/design/theme';
 import { useOnboarding } from '@/features/onboarding';
 import { formatMoney } from '@/lib/gameplayFormatters';
+import { useScreenTimer } from '@/hooks/useScreenTimer';
 
 import { useGameplayLoop } from '../context';
 import {
@@ -20,6 +21,7 @@ import {
 import GameplayLoopScaffold from '../GameplayLoopScaffold';
 
 export default function BriefScreen() {
+  useScreenTimer('brief');
   const loop = useGameplayLoop();
   const onboarding = useOnboarding();
   const guidedBriefActive = onboarding.isActive && onboarding.currentStep?.route === 'brief';
