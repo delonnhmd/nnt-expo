@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { OnboardingStepOverlay } from '@/components/onboarding';
@@ -12,6 +12,7 @@ import SectionCard from '@/components/ui/SectionCard';
 import { theme } from '@/design/theme';
 import { useOnboarding } from '@/features/onboarding';
 import { OnboardingRouteKey } from '@/features/onboarding/context';
+import { FeedbackSheet, IssueReportSheet, SoftLaunchGate, useSoftLaunch } from '@/features/softLaunch';
 import { formatMoney } from '@/lib/gameplayFormatters';
 
 import { useGameplayLoop } from './context';
@@ -69,6 +70,17 @@ export default function GameplayLoopScaffold({
 }) {
   const loop = useGameplayLoop();
   const onboarding = useOnboarding();
+  const softLaunch = useSoftLaunch();
+  const [feedbackDay, setFeedbackDay] = useState<number | null>(null);
+  const [showIssueReport, setShowIssueReport] = useState(false);
+
+  // Dev bypass: EXPO_PUBLIC_SOFT_LAUNCH_BYPASS=true skips the gate entirely.
+  const bypassGate =
+    process.env.EXPO_PUBLIC_SOFT_LAUNCH_BYPASS === 'true' ||
+    process.env.EXPO_PUBLIC_SOFT_LAUNCH_BYPASS === '1';
+
+  const gateBlocked = !bypassGate && !softLaunch.isLoading && !softLaunch.isMember;
+
   const {
     currentStep: onboardingStep,
     ensureRoute,
@@ -98,6 +110,17 @@ export default function GameplayLoopScaffold({
   useEffect(() => {
     ensureRoute(activeNavKey as OnboardingRouteKey);
   }, [activeNavKey, ensureRoute]);
+
+  // ── Soft launch gate ────────────────────────────────────────────────────────
+  if (gateBlocked) {
+    return (
+      <SoftLaunchGate
+        onJoin={softLaunch.joinWithCode}
+        error={softLaunch.joinError}
+        isLoading={softLaunch.isLoading}
+      />
+    );
+  }
 
   const bottomNavItems = useMemo(
     () => ([
@@ -149,7 +172,7 @@ export default function GameplayLoopScaffold({
           )}
         >
           <ContentStack gap={theme.spacing.md}>
-            <PlaytestObserver />
+            <PlaytestObserver onRequestFeedback={(day) => setFeedbackDay(day)} />
             {onboardingActive ? <OnboardingStepOverlay /> : null}
 
             {isSimplifiedMode ? (
@@ -264,6 +287,21 @@ export default function GameplayLoopScaffold({
           </ContentStack>
         </ScrollView>
       </PageContainer>
+
+      {/* Soft launch feedback sheet — shown after Day 1/2 settlement */}
+      <FeedbackSheet
+        visible={feedbackDay !== null}
+        gameDay={feedbackDay ?? 1}
+        onSubmit={(payload) => softLaunch.submitFeedback(payload)}
+        onDismiss={() => setFeedbackDay(null)}
+      />
+
+      {/* Issue report sheet — shown on demand */}
+      <IssueReportSheet
+        visible={showIssueReport}
+        onSubmit={(payload) => softLaunch.submitIssue(payload)}
+        onDismiss={() => setShowIssueReport(false)}
+      />
     </AppShell>
   );
 }
