@@ -65,12 +65,16 @@
       "favicon": "./src/assets/images/favicon.png"
     },
     "extra": {
-      "router": {}
+      "router": {},
+      "eas": {
+        "projectId": "a920f140-9ab4-4ded-983f-8bac627d2dc9"
+      }
     },
     "plugins": [
       "expo-router",
       "expo-dev-client",
       "expo-web-browser"
     ],
+    "owner": "pennyfloat"
   }
 }
