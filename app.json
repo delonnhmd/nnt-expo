@@ -65,16 +65,12 @@
       "favicon": "./src/assets/images/favicon.png"
     },
     "extra": {
-      "router": {},
-      "eas": {
-        "projectId": "cd780971-b503-487e-89dc-6984f42eba69"
-      }
+      "router": {}
     },
     "plugins": [
       "expo-router",
       "expo-dev-client",
       "expo-web-browser"
     ],
-    "owner": "nntpress"
   }
 }
