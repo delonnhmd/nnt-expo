@@ -10,8 +10,17 @@ import LoadingSkeleton from '@/components/ui/LoadingSkeleton';
 import SecondaryButton from '@/components/ui/SecondaryButton';
 import SectionCard from '@/components/ui/SectionCard';
 import { theme } from '@/design/theme';
+import { formatMoney } from '@/lib/gameplayFormatters';
 
 import { useGameplayLoop } from './context';
+import {
+  GameplayCompactMetricRows,
+  GameplayOpportunityCallout,
+  GameplaySummaryCard,
+  GameplayTrendChip,
+  GameplayWarningBanner,
+  toneFromSignedValue,
+} from './components/GameplayUIParts';
 
 function sourceLabel(mode: 'live' | 'mixed' | 'mock'): string {
   if (mode === 'mock') return 'Mock Data Mode';
@@ -29,6 +38,19 @@ function sourceCopy(mode: 'live' | 'mixed' | 'mock'): string {
   return 'Connected to backend source of truth.';
 }
 
+function labelFromPressure(pressure: string | undefined): string {
+  const value = String(pressure || 'stable').trim();
+  if (!value) return 'Stable';
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function pressureTone(pressure: string | undefined): 'neutral' | 'warning' | 'danger' {
+  const normalized = String(pressure || '').toLowerCase();
+  if (normalized === 'critical' || normalized === 'high') return 'danger';
+  if (normalized === 'medium') return 'warning';
+  return 'neutral';
+}
+
 export default function GameplayLoopScaffold({
   title,
   subtitle,
@@ -44,6 +66,23 @@ export default function GameplayLoopScaffold({
 }) {
   const loop = useGameplayLoop();
   const navRoot = `/gameplay/loop/${loop.playerId}`;
+  const cash = loop.dashboard?.stats.cash_xgp ?? loop.economyState.cashOnHand ?? 0;
+  const netFlow = loop.economyState.netCashFlow ?? 0;
+  const pressure = labelFromPressure(loop.expenseDebt.debtPressure);
+  const usedUnits = Math.max(0, loop.dailySession.totalTimeUnits - loop.dailySession.remainingTimeUnits);
+  const topOpportunity = loop.dashboard?.top_opportunities?.[0]?.title
+    || loop.economySummary?.player_opportunities?.[0]
+    || 'No immediate upside signal.';
+  const topRisk = loop.dashboard?.top_risks?.[0]?.title
+    || loop.economySummary?.player_warnings?.[0]
+    || 'No immediate red flag.';
+  const nextAction = loop.actionHub?.recommended_actions?.[0]?.title
+    || loop.dashboard?.recommended_actions?.[0]?.title
+    || 'Open Work and preview a low-risk action.';
+  const sourceTone = loop.sourceMode === 'live' ? 'positive' : loop.sourceMode === 'mixed' ? 'warning' : 'info';
+  const syncedTimeLabel = loop.lastSyncedAt
+    ? new Date(loop.lastSyncedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : 'Pending';
 
   return (
     <AppShell
@@ -83,32 +122,64 @@ export default function GameplayLoopScaffold({
           )}
         >
           <ContentStack gap={theme.spacing.md}>
-            <View style={[
-              styles.sourceBanner,
-              loop.sourceMode === 'live'
-                ? styles.sourceLive
-                : loop.sourceMode === 'mixed'
-                  ? styles.sourceMixed
-                  : styles.sourceMock,
-            ]}>
-              <Text style={styles.sourceTitle}>{sourceLabel(loop.sourceMode)}</Text>
-              <Text style={styles.sourceText}>{sourceCopy(loop.sourceMode)}</Text>
-            </View>
+            <GameplaySummaryCard
+              eyebrow="5-second read"
+              title="Today At A Glance"
+              subtitle="Financial status, pressure, opportunity, movement, and next step."
+            >
+              <View style={styles.scanCardRow}>
+                <View style={styles.scanCard}>
+                  <Text style={styles.scanLabel}>Cash</Text>
+                  <Text style={styles.scanValue}>{formatMoney(cash)}</Text>
+                </View>
+                <View style={styles.scanCard}>
+                  <Text style={styles.scanLabel}>Daily Net</Text>
+                  <Text style={[
+                    styles.scanValue,
+                    { color: toneFromSignedValue(netFlow) === 'positive' ? '#166534' : toneFromSignedValue(netFlow) === 'danger' ? '#b91c1c' : theme.color.textPrimary },
+                  ]}
+                  >
+                    {`${netFlow > 0 ? '+' : ''}${formatMoney(netFlow)}`}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.trendRow}>
+                <GameplayTrendChip label="Pressure" value={pressure} tone={pressureTone(loop.expenseDebt.debtPressure)} />
+                <GameplayTrendChip
+                  label="Day Movement"
+                  value={`${usedUnits}/${loop.dailySession.totalTimeUnits} units used`}
+                  tone="info"
+                />
+                <GameplayTrendChip label="Data" value={sourceLabel(loop.sourceMode)} tone={sourceTone} />
+              </View>
+              <GameplayCompactMetricRows
+                items={[
+                  { label: 'Most important next action', value: nextAction, tone: 'info' },
+                  { label: 'Top risk', value: topRisk, tone: 'warning' },
+                  { label: 'Top opportunity', value: topOpportunity, tone: 'positive' },
+                  { label: 'Last sync', value: syncedTimeLabel },
+                ]}
+              />
+            </GameplaySummaryCard>
+
+            {loop.sourceMode !== 'live' ? (
+              <GameplayWarningBanner
+                title={sourceLabel(loop.sourceMode)}
+                message={sourceCopy(loop.sourceMode)}
+                tone={loop.sourceMode === 'mixed' ? 'warning' : 'info'}
+              />
+            ) : null}
 
             {loop.feedback ? (
-              <View style={[
-                styles.feedbackBanner,
-                loop.feedback.tone === 'success'
-                  ? styles.feedbackSuccess
-                  : loop.feedback.tone === 'error'
-                    ? styles.feedbackError
-                    : styles.feedbackInfo,
-              ]}>
-                <Text style={styles.feedbackLabel}>
-                  {loop.feedback.tone === 'success' ? 'Action Update' : loop.feedback.tone === 'error' ? 'Needs Attention' : 'Gameplay Note'}
-                </Text>
-                <Text style={styles.feedbackText}>{loop.feedback.message}</Text>
-              </View>
+              loop.feedback.tone === 'success' ? (
+                <GameplayOpportunityCallout title="Action Update" message={loop.feedback.message} />
+              ) : (
+                <GameplayWarningBanner
+                  title={loop.feedback.tone === 'error' ? 'Needs Attention' : 'Gameplay Note'}
+                  message={loop.feedback.message}
+                  tone={loop.feedback.tone === 'error' ? 'danger' : 'info'}
+                />
+              )
             ) : null}
 
             {loop.error && !loop.bundle ? (
@@ -146,65 +217,36 @@ const styles = StyleSheet.create({
     paddingTop: theme.spacing.md,
     paddingBottom: theme.spacing.xxxl,
   },
-  sourceBanner: {
+  scanCardRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.sm,
+  },
+  scanCard: {
+    flex: 1,
+    minWidth: 134,
     borderWidth: 1,
+    borderColor: theme.color.border,
     borderRadius: theme.radius.lg,
-    paddingHorizontal: theme.spacing.md,
+    backgroundColor: theme.color.surfaceAlt,
+    paddingHorizontal: theme.spacing.sm,
     paddingVertical: theme.spacing.sm,
     gap: theme.spacing.xxs,
   },
-  sourceLive: {
-    borderColor: '#bbf7d0',
-    backgroundColor: '#f0fdf4',
-  },
-  sourceMixed: {
-    borderColor: '#fde68a',
-    backgroundColor: '#fffbeb',
-  },
-  sourceMock: {
-    borderColor: '#bfdbfe',
-    backgroundColor: '#eff6ff',
-  },
-  sourceTitle: {
+  scanLabel: {
     ...theme.typography.caption,
     textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    fontWeight: '800',
-    color: '#1e3a8a',
-  },
-  sourceText: {
-    ...theme.typography.bodySm,
-    color: '#1e3a8a',
-  },
-  feedbackBanner: {
-    borderWidth: 1,
-    borderRadius: theme.radius.lg,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    gap: theme.spacing.xxs,
-  },
-  feedbackSuccess: {
-    borderColor: '#86efac',
-    backgroundColor: '#f0fdf4',
-  },
-  feedbackError: {
-    borderColor: '#fecaca',
-    backgroundColor: '#fef2f2',
-  },
-  feedbackInfo: {
-    borderColor: '#bfdbfe',
-    backgroundColor: '#eff6ff',
-  },
-  feedbackLabel: {
-    ...theme.typography.caption,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    fontWeight: '800',
     color: theme.color.textSecondary,
+    fontWeight: '800',
   },
-  feedbackText: {
-    ...theme.typography.bodySm,
+  scanValue: {
+    ...theme.typography.bodyMd,
     color: theme.color.textPrimary,
-    fontWeight: '600',
+    fontWeight: '800',
+  },
+  trendRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.sm,
   },
 });

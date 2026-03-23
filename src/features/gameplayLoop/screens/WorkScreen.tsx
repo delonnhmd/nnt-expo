@@ -1,35 +1,97 @@
 import React from 'react';
 import { router } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import ActionHubPanel from '@/components/gameplay/ActionHubPanel';
 import ActionPreviewModal from '@/components/gameplay/ActionPreviewModal';
 import EmptyStateView from '@/components/ui/EmptyStateView';
-import PrimaryButton from '@/components/ui/PrimaryButton';
-import SectionCard from '@/components/ui/SectionCard';
 import { theme } from '@/design/theme';
 
 import { useGameplayLoop } from '../context';
+import {
+  GameplayOpportunityCallout,
+  GameplayStatCard,
+  GameplayStickyActionArea,
+  GameplaySummaryCard,
+  GameplayWarningBanner,
+} from '../components/GameplayUIParts';
 import GameplayLoopScaffold from '../GameplayLoopScaffold';
 
 export default function WorkScreen() {
   const loop = useGameplayLoop();
+  const stats = loop.dashboard?.stats;
+  const leadTradeoff = loop.actionHub?.top_tradeoffs?.[0] || null;
+  const leadWarning = loop.actionHub?.next_risk_warnings?.[0] || null;
+  const endDayDisabled = !loop.dailyProgression.canAdvanceDay || loop.endingDay;
+  const nextAction = loop.actionHub?.recommended_actions?.[0]?.title
+    || loop.dashboard?.recommended_actions?.[0]?.title
+    || 'Preview one action and execute it if the tradeoff is acceptable.';
 
   return (
     <GameplayLoopScaffold
       title="Work / Job"
-      subtitle="Run actions that move today forward"
+      subtitle="Convert time into income while managing stress and health"
       activeNavKey="work"
+      footer={(
+        <GameplayStickyActionArea
+          summary={`Time left: ${loop.dailySession.remainingTimeUnits}/${loop.dailySession.totalTimeUnits} units. Next action: ${nextAction}`}
+          secondaryLabel="Open Market"
+          onSecondaryPress={() => router.replace(`/gameplay/loop/${loop.playerId}/market`)}
+          primaryLabel={loop.endingDay ? 'Settling Day...' : 'End Day'}
+          onPrimaryPress={() => {
+            void loop.endCurrentDay();
+          }}
+          primaryLoading={loop.endingDay}
+          primaryDisabled={endDayDisabled}
+        />
+      )}
     >
-      <SectionCard
-        title="Work Lane"
-        summary="Use preview before spending time units."
+      <GameplaySummaryCard
+        eyebrow="Action framing"
+        title="Work, Income, Stress, Health"
+        subtitle="Check this tradeoff before spending each time unit."
       >
-        <Text style={styles.summaryText}>{loop.jobIncome.incomeSummary}</Text>
-        <Text style={styles.summaryText}>
-          {loop.dailySession.remainingTimeUnits}/{loop.dailySession.totalTimeUnits} units left.
-        </Text>
-      </SectionCard>
+        <View style={styles.metricRow}>
+          <GameplayStatCard
+            label="Job Income"
+            value={loop.jobIncome.dailyIncomeLabel}
+            tone={loop.jobIncome.incomeAmount != null && loop.jobIncome.incomeAmount >= 0 ? 'positive' : 'warning'}
+            note={loop.jobIncome.currentJob || 'No active job lane'}
+          />
+          <GameplayStatCard
+            label="Stress"
+            value={`${Math.round(stats?.stress ?? 0)}`}
+            tone={(stats?.stress ?? 0) >= 65 ? 'danger' : 'warning'}
+            note="Higher stress makes recovery and mistakes more likely."
+          />
+          <GameplayStatCard
+            label="Health"
+            value={`${Math.round(stats?.health ?? 100)}`}
+            tone={(stats?.health ?? 100) >= 65 ? 'positive' : 'warning'}
+            note="Health buffers bad streaks and pressure spikes."
+          />
+          <GameplayStatCard
+            label="Time Left"
+            value={`${loop.dailySession.remainingTimeUnits}/${loop.dailySession.totalTimeUnits}`}
+            tone={loop.dailySession.remainingTimeUnits <= 2 ? 'warning' : 'info'}
+            note="Every action consumes units."
+          />
+        </View>
+      </GameplaySummaryCard>
+
+      {leadTradeoff ? (
+        <GameplayOpportunityCallout
+          title="Best Setup Right Now"
+          message={leadTradeoff}
+        />
+      ) : null}
+      {leadWarning ? (
+        <GameplayWarningBanner
+          title="Watch Before Acting"
+          message={leadWarning}
+          tone="warning"
+        />
+      ) : null}
 
       {loop.actionHub ? (
         <ActionHubPanel
@@ -50,21 +112,6 @@ export default function WorkScreen() {
         />
       )}
 
-      <View style={styles.actionRow}>
-        <PrimaryButton
-          label="Open Market"
-          onPress={() => router.replace(`/gameplay/loop/${loop.playerId}/market`)}
-        />
-        <PrimaryButton
-          label={loop.endingDay ? 'Settling Day...' : 'End Day'}
-          onPress={() => {
-            void loop.endCurrentDay();
-          }}
-          loading={loop.endingDay}
-          disabled={!loop.dailyProgression.canAdvanceDay || loop.endingDay}
-        />
-      </View>
-
       <ActionPreviewModal
         visible={Boolean(loop.selectedPreviewAction)}
         action={loop.selectedPreviewAction}
@@ -84,13 +131,10 @@ export default function WorkScreen() {
 }
 
 const styles = StyleSheet.create({
-  summaryText: {
-    ...theme.typography.bodySm,
-    color: theme.color.textSecondary,
-  },
-  actionRow: {
+  metricRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: theme.spacing.sm,
   },
 });
+

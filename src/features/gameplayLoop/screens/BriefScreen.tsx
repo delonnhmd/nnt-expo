@@ -1,33 +1,51 @@
 import React from 'react';
 import { router } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import DailyBriefCard from '@/components/gameplay/DailyBriefCard';
-import InlineStat from '@/components/ui/InlineStat';
-import PrimaryButton from '@/components/ui/PrimaryButton';
-import SectionCard from '@/components/ui/SectionCard';
-import StatusChip from '@/components/ui/StatusChip';
 import { theme } from '@/design/theme';
+import { formatMoney } from '@/lib/gameplayFormatters';
 
 import { useGameplayLoop } from '../context';
+import {
+  GameplayCompactMetricRows,
+  GameplayOpportunityCallout,
+  GameplayStickyActionArea,
+  GameplaySummaryCard,
+  GameplayTrendChip,
+  GameplayWarningBanner,
+  toneFromSignedValue,
+} from '../components/GameplayUIParts';
 import GameplayLoopScaffold from '../GameplayLoopScaffold';
-
-function toneForSeverity(severity: string | undefined): 'neutral' | 'warning' | 'danger' | 'success' | 'info' {
-  const normalized = String(severity || '').toLowerCase();
-  if (normalized === 'critical' || normalized === 'high') return 'danger';
-  if (normalized === 'medium') return 'warning';
-  if (normalized === 'low') return 'info';
-  return 'neutral';
-}
 
 export default function BriefScreen() {
   const loop = useGameplayLoop();
+  const topOpportunity = loop.dashboard?.top_opportunities?.[0];
+  const topRisk = loop.dashboard?.top_risks?.[0];
+  const netFlow = loop.economyState.netCashFlow ?? 0;
+  const nextAction = loop.actionHub?.recommended_actions?.[0]?.title
+    || loop.dashboard?.recommended_actions?.[0]?.title
+    || 'Review Work lane and run one low-risk action.';
+  const timeTone = loop.dailySession.remainingTimeUnits <= 2
+    ? 'warning'
+    : loop.dailySession.remainingTimeUnits <= 0
+      ? 'danger'
+      : 'info';
 
   return (
     <GameplayLoopScaffold
       title="Home / Daily Brief"
-      subtitle="Read today in under 2 minutes"
+      subtitle="Read, orient, and decide your first move"
       activeNavKey="brief"
+      footer={(
+        <GameplayStickyActionArea
+          summary={`Most important next action: ${nextAction}`}
+          secondaryLabel="Jump To Work"
+          onSecondaryPress={() => router.replace(`/gameplay/loop/${loop.playerId}/work`)}
+          primaryLabel="Continue To Dashboard"
+          onPrimaryPress={() => router.replace(`/gameplay/loop/${loop.playerId}/dashboard`)}
+        />
+      )}
     >
       {loop.dashboard ? (
         <DailyBriefCard
@@ -39,79 +57,83 @@ export default function BriefScreen() {
         />
       ) : null}
 
-      <SectionCard
-        title="Today At A Glance"
-        summary="Core loop signal check before taking action."
+      <GameplaySummaryCard
+        eyebrow="Macro chips"
+        title="Economy Snapshot"
+        subtitle="Fast context before committing time units."
       >
-        <InlineStat
-          label="Current Day"
-          value={`Day ${loop.dailyProgression.currentGameDay}`}
-        />
-        <InlineStat
-          label="Time Available"
-          value={`${loop.dailySession.remainingTimeUnits}/${loop.dailySession.totalTimeUnits} units`}
-        />
-        <InlineStat
-          label="Session"
-          value={loop.dailySession.sessionStatus === 'active' ? 'Action window open' : 'Day already settled'}
-          tone={loop.dailySession.sessionStatus === 'active' ? 'positive' : 'warning'}
-        />
-      </SectionCard>
-
-      <SectionCard
-        title="Opportunity And Risk Indicators"
-        summary="Top items from the backend snapshot."
-      >
-        <View style={styles.list}>
-          {(loop.dashboard?.top_opportunities || []).slice(0, 2).map((item) => (
-            <View key={item.key} style={styles.signalRow}>
-              <StatusChip label="Opportunity" status={toneForSeverity(item.severity)} />
-              <View style={styles.signalCopy}>
-                <Text style={styles.signalTitle}>{item.title}</Text>
-                <Text style={styles.signalBody}>{item.description}</Text>
-              </View>
-            </View>
-          ))}
-          {(loop.dashboard?.top_risks || []).slice(0, 2).map((item) => (
-            <View key={item.key} style={styles.signalRow}>
-              <StatusChip label="Risk" status={toneForSeverity(item.severity)} />
-              <View style={styles.signalCopy}>
-                <Text style={styles.signalTitle}>{item.title}</Text>
-                <Text style={styles.signalBody}>{item.description}</Text>
-              </View>
-            </View>
-          ))}
+        <View style={styles.chipRow}>
+          <GameplayTrendChip
+            label="Day"
+            value={`Day ${loop.dailyProgression.currentGameDay}`}
+            tone="info"
+          />
+          <GameplayTrendChip
+            label="Time left"
+            value={`${loop.dailySession.remainingTimeUnits}/${loop.dailySession.totalTimeUnits} units`}
+            tone={timeTone}
+          />
+          <GameplayTrendChip
+            label="Net flow"
+            value={`${netFlow > 0 ? '+' : ''}${formatMoney(netFlow)}`}
+            tone={toneFromSignedValue(netFlow)}
+          />
+          <GameplayTrendChip
+            label="Market mood"
+            value={loop.economySummary?.market_overview.current_market_mood || 'Unknown'}
+            tone="neutral"
+          />
         </View>
-      </SectionCard>
+      </GameplaySummaryCard>
 
-      <PrimaryButton
-        label="Go To Work / Job"
-        onPress={() => router.replace(`/gameplay/loop/${loop.playerId}/work`)}
-      />
+      <GameplaySummaryCard
+        eyebrow="Why today matters"
+        title={loop.dashboard?.headline || 'Protect downside, then grow carefully.'}
+        subtitle={loop.economySummary?.explainer.this_week_focus || 'Use one deliberate action before ending the day.'}
+      >
+        <GameplayCompactMetricRows
+          items={[
+            {
+              label: 'Risk pressure',
+              value: topRisk?.title || loop.economySummary?.player_warnings?.[0] || 'No major risk flagged.',
+              tone: 'warning',
+            },
+            {
+              label: 'Opportunity',
+              value: topOpportunity?.title || loop.economySummary?.player_opportunities?.[0] || 'No major upside flagged.',
+              tone: 'positive',
+            },
+            {
+              label: 'Next action',
+              value: nextAction,
+              tone: 'info',
+            },
+          ]}
+        />
+      </GameplaySummaryCard>
+
+      {topOpportunity ? (
+        <GameplayOpportunityCallout
+          title="Top Opportunity"
+          message={topOpportunity.description}
+        />
+      ) : null}
+
+      {topRisk ? (
+        <GameplayWarningBanner
+          title="Top Risk"
+          message={topRisk.description}
+          tone="warning"
+        />
+      ) : null}
     </GameplayLoopScaffold>
   );
 }
 
 const styles = StyleSheet.create({
-  list: {
-    gap: theme.spacing.sm,
-  },
-  signalRow: {
+  chipRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    flexWrap: 'wrap',
     gap: theme.spacing.sm,
-  },
-  signalCopy: {
-    flex: 1,
-    gap: theme.spacing.xxs,
-  },
-  signalTitle: {
-    ...theme.typography.bodySm,
-    color: theme.color.textPrimary,
-    fontWeight: '700',
-  },
-  signalBody: {
-    ...theme.typography.bodySm,
-    color: theme.color.textSecondary,
   },
 });

@@ -4,83 +4,122 @@ import { StyleSheet, View } from 'react-native';
 
 import EndOfDaySummaryCard from '@/components/gameplay/EndOfDaySummaryCard';
 import EmptyStateView from '@/components/ui/EmptyStateView';
-import InlineStat from '@/components/ui/InlineStat';
-import PrimaryButton from '@/components/ui/PrimaryButton';
-import SectionCard from '@/components/ui/SectionCard';
-import SecondaryButton from '@/components/ui/SecondaryButton';
 import { theme } from '@/design/theme';
-import { formatMoney } from '@/lib/gameplayFormatters';
+import { formatDelta, formatMoney } from '@/lib/gameplayFormatters';
 
 import { useGameplayLoop } from '../context';
+import {
+  GameplayCompactMetricRows,
+  GameplayOpportunityCallout,
+  GameplayStickyActionArea,
+  GameplaySummaryCard,
+  GameplayTrendChip,
+  GameplayWarningBanner,
+  toneFromSignedValue,
+} from '../components/GameplayUIParts';
 import GameplayLoopScaffold from '../GameplayLoopScaffold';
 
 export default function SummaryScreen() {
   const loop = useGameplayLoop();
+  const summary = loop.endOfDaySummary;
+  const hasSummary = Boolean(summary);
+  const netTone = toneFromSignedValue(summary?.net_change_xgp ?? 0);
+  const payoffTitle = summary
+    ? summary.net_change_xgp >= 0
+      ? 'Nice finish today. Protect momentum tomorrow.'
+      : 'Tough day. Tomorrow can still recover this.'
+    : 'Settle the day to unlock today\'s payoff screen.';
+  const winsLine = summary?.biggest_gain || 'No biggest gain recorded yet.';
+  const lossLine = summary?.biggest_loss || 'No biggest loss recorded yet.';
 
   return (
     <GameplayLoopScaffold
       title="End Of Day Summary"
-      subtitle="Settle today and start tomorrow"
+      subtitle="Close today, read changes, and set up tomorrow"
       activeNavKey="summary"
-    >
-      <SectionCard
-        title="Settlement Controls"
-        summary="Daily progression and settlement actions."
-      >
-        <InlineStat
-          label="Session Status"
-          value={loop.dailySession.sessionStatus === 'active' ? 'Active' : 'Ended'}
-          tone={loop.dailySession.sessionStatus === 'active' ? 'info' : 'warning'}
-        />
-        <InlineStat
-          label="Actions Taken"
-          value={String(loop.dailySession.actionsTakenToday.length)}
-        />
-        <InlineStat
-          label="Remaining Time"
-          value={`${loop.dailySession.remainingTimeUnits}/${loop.dailySession.totalTimeUnits} units`}
-        />
-        <View style={styles.buttonRow}>
-          <PrimaryButton
-            label={loop.endingDay ? 'Settling Day...' : 'Run End Of Day Settlement'}
-            onPress={() => {
+      footer={(
+        <GameplayStickyActionArea
+          summary={hasSummary
+            ? `Tomorrow setup: ${summary?.guided_watch_tomorrow || summary?.tomorrow_warnings?.[0] || 'Start with one low-risk income action.'}`
+            : `Session ${loop.dailySession.sessionStatus}. Run settlement to generate today's recap.`}
+          secondaryLabel={hasSummary ? 'Open Dashboard' : 'Go To Work'}
+          onSecondaryPress={() => router.replace(`/gameplay/loop/${loop.playerId}/${hasSummary ? 'dashboard' : 'work'}`)}
+          primaryLabel={hasSummary ? 'Start Next Day' : loop.endingDay ? 'Settling Day...' : 'Run End Of Day Settlement'}
+          onPrimaryPress={hasSummary
+            ? () => {
+              void loop.startNextDay();
+            }
+            : () => {
               void loop.endCurrentDay();
             }}
-            loading={loop.endingDay}
-            disabled={!loop.dailyProgression.canAdvanceDay || loop.endingDay}
-            style={styles.flexButton}
+          primaryLoading={!hasSummary && loop.endingDay}
+          primaryDisabled={!hasSummary && (!loop.dailyProgression.canAdvanceDay || loop.endingDay)}
+        />
+      )}
+    >
+      <GameplaySummaryCard
+        eyebrow="Settlement controls"
+        title="Closeout Status"
+        subtitle="Run settlement after your actions are done for the day."
+      >
+        <View style={styles.chipRow}>
+          <GameplayTrendChip
+            label="Session"
+            value={loop.dailySession.sessionStatus === 'active' ? 'Active' : 'Ended'}
+            tone={loop.dailySession.sessionStatus === 'active' ? 'info' : 'warning'}
           />
-          <SecondaryButton
-            label="Go To Work"
-            onPress={() => router.replace(`/gameplay/loop/${loop.playerId}/work`)}
-            style={styles.flexButton}
+          <GameplayTrendChip
+            label="Actions"
+            value={String(loop.dailySession.actionsTakenToday.length)}
+            tone="neutral"
+          />
+          <GameplayTrendChip
+            label="Time left"
+            value={`${loop.dailySession.remainingTimeUnits}/${loop.dailySession.totalTimeUnits}`}
+            tone={loop.dailySession.remainingTimeUnits <= 2 ? 'warning' : 'info'}
+          />
+          <GameplayTrendChip
+            label="Ending cash"
+            value={formatMoney(loop.dashboard?.stats.cash_xgp ?? 0)}
+            tone="neutral"
           />
         </View>
-      </SectionCard>
+      </GameplaySummaryCard>
 
-      {loop.endOfDaySummary ? (
+      {summary ? (
         <>
-          <EndOfDaySummaryCard summary={loop.endOfDaySummary} />
-          <SectionCard
-            title="Tomorrow"
-            summary="When ready, roll into the next day loop."
+          <GameplaySummaryCard
+            eyebrow="Emotional payoff"
+            title={payoffTitle}
+            subtitle="What changed today and what tomorrow needs."
           >
-            <InlineStat
-              label="Ending Cash"
-              value={formatMoney(loop.dashboard?.stats.cash_xgp ?? 0)}
+            <GameplayCompactMetricRows
+              items={[
+                { label: 'Net', value: formatMoney(summary.net_change_xgp), tone: netTone },
+                { label: 'Earned', value: formatMoney(summary.total_earned_xgp), tone: 'positive' },
+                { label: 'Spent', value: formatMoney(summary.total_spent_xgp), tone: 'danger' },
+                { label: 'Stress delta', value: formatDelta(summary.stress_delta), tone: summary.stress_delta > 0 ? 'danger' : 'positive' },
+                { label: 'Health delta', value: formatDelta(summary.health_delta), tone: summary.health_delta >= 0 ? 'positive' : 'warning' },
+              ]}
             />
-            <PrimaryButton
-              label="Start Next Day"
-              onPress={() => {
-                void loop.startNextDay();
-              }}
-            />
-          </SectionCard>
+          </GameplaySummaryCard>
+
+          <GameplayOpportunityCallout
+            title="Today Win"
+            message={winsLine}
+          />
+          <GameplayWarningBanner
+            title="Today Loss"
+            message={lossLine}
+            tone="warning"
+          />
+
+          <EndOfDaySummaryCard summary={summary} />
         </>
       ) : (
         <EmptyStateView
           title="No settled summary yet"
-          subtitle="Run end-of-day settlement to generate today’s recap."
+          subtitle="Run end-of-day settlement to generate today's recap."
         />
       )}
     </GameplayLoopScaffold>
@@ -88,13 +127,10 @@ export default function SummaryScreen() {
 }
 
 const styles = StyleSheet.create({
-  buttonRow: {
+  chipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: theme.spacing.sm,
   },
-  flexButton: {
-    flex: 1,
-    minWidth: 160,
-  },
 });
+
