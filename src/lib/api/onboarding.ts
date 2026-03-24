@@ -47,8 +47,9 @@ export interface PlayablePlayerSummary {
 }
 
 export interface CreatePlayablePlayerRequest {
+  player_id?: string;
   display_name: string;
-  gender?: 'male' | 'female';
+  gender: 'male' | 'female';
   region?: 'suburban' | 'downtown';
   starter_job_code?: string;
 }
@@ -73,9 +74,11 @@ export async function getPlayablePlayerSummary(playerId: string): Promise<Playab
 export async function createPlayablePlayer(
   request: CreatePlayablePlayerRequest,
 ): Promise<PlayablePlayerSummary> {
+  const normalizedPlayerId = toString(request.player_id || request.display_name).trim();
   const body = {
-    display_name: toString(request.display_name).trim(),
-    gender: request.gender || 'male',
+    player_id: normalizedPlayerId,
+    display_name: normalizedPlayerId,
+    gender: request.gender,
     region: request.region || 'suburban',
     starter_job_code: request.starter_job_code || 'retail_worker',
   };

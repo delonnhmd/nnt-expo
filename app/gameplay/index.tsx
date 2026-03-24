@@ -1,7 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, Text, TextInput } from 'react-native';
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 
 import AppShell from '@/components/layout/AppShell';
 import ContentStack from '@/components/layout/ContentStack';
@@ -15,6 +21,7 @@ import { recordInfo, recordWarning } from '@/lib/logger';
 
 const PLAYER_ID_STORAGE_KEY = 'goldpenny:gameplay:lastPlayerId';
 const LEGACY_PLAYER_ID_STORAGE_KEY = 'gameplay:lastPlayerId';
+const GENDER_STORAGE_KEY = 'goldpenny:gameplay:lastGender';
 const DEFAULT_PLAYER_ID = 'player1';
 const DEV_AUTO_CREATE_PLAYER =
   __DEV__
@@ -47,6 +54,7 @@ function isOnboardingBootstrapFailure(error: unknown): boolean {
 
 export default function GameplayIndexRoute() {
   const [playerId, setPlayerId] = useState(DEFAULT_PLAYER_ID);
+  const [gender, setGender] = useState<'male' | 'female' | null>(null);
   const [opening, setOpening] = useState(false);
   const [entryError, setEntryError] = useState<string | null>(null);
   const [entryInfo, setEntryInfo] = useState<string | null>(null);
@@ -62,6 +70,13 @@ export default function GameplayIndexRoute() {
         } else {
           setPlayerId(DEFAULT_PLAYER_ID);
         }
+
+        const rememberedGender = await AsyncStorage.getItem(GENDER_STORAGE_KEY);
+        if (rememberedGender === 'male' || rememberedGender === 'female') {
+          setGender(rememberedGender);
+        } else {
+          setGender(null);
+        }
       } catch {
         // Ignore storage read issues and allow manual entry.
       }
@@ -75,8 +90,15 @@ export default function GameplayIndexRoute() {
     setEntryError(null);
     setEntryInfo(null);
 
-    const trimmed = requestedPlayerId;
-    if (!trimmed) return;
+    if (!requestedPlayerId) {
+      setEntryError('Enter a player ID before opening gameplay.');
+      return;
+    }
+
+    if (!gender) {
+      setEntryError('Select gender before opening gameplay.');
+      return;
+    }
 
     setOpening(true);
 
@@ -103,8 +125,9 @@ export default function GameplayIndexRoute() {
           });
         } else if (DEV_AUTO_CREATE_PLAYER) {
           const created = await createPlayablePlayer({
+            player_id: requestedPlayerId,
             display_name: requestedPlayerId,
-            gender: 'male',
+            gender,
             region: 'suburban',
             starter_job_code: 'retail_worker',
           });
@@ -140,8 +163,9 @@ export default function GameplayIndexRoute() {
 
       try {
         await AsyncStorage.setItem(PLAYER_ID_STORAGE_KEY, resolvedPlayerId);
+        await AsyncStorage.setItem(GENDER_STORAGE_KEY, gender);
       } catch {
-        // Persisting last player is optional.
+        // Persisting last player and gender is optional.
       }
       router.push(`/gameplay/loop/${resolvedPlayerId}/brief`);
     } catch (error) {
@@ -151,6 +175,7 @@ export default function GameplayIndexRoute() {
         setEntryError(null);
         try {
           await AsyncStorage.setItem(PLAYER_ID_STORAGE_KEY, DEV_FALLBACK_PLAYER_ID);
+          await AsyncStorage.setItem(GENDER_STORAGE_KEY, gender);
         } catch {
           // Ignore storage issues for fallback route.
         }
@@ -206,13 +231,54 @@ export default function GameplayIndexRoute() {
               placeholderTextColor={theme.color.muted}
               editable={!opening}
             />
+            <View style={styles.genderSection}>
+              <Text style={styles.genderLabel}>Select Gender</Text>
+              <View style={styles.genderRow}>
+                <Pressable
+                  accessibilityRole="button"
+                  style={[
+                    styles.genderOption,
+                    gender === 'male' ? styles.genderOptionActive : null,
+                  ]}
+                  onPress={() => setGender('male')}
+                  disabled={opening}
+                >
+                  <Text
+                    style={[
+                      styles.genderOptionText,
+                      gender === 'male' ? styles.genderOptionTextActive : null,
+                    ]}
+                  >
+                    Male
+                  </Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  style={[
+                    styles.genderOption,
+                    gender === 'female' ? styles.genderOptionActive : null,
+                  ]}
+                  onPress={() => setGender('female')}
+                  disabled={opening}
+                >
+                  <Text
+                    style={[
+                      styles.genderOptionText,
+                      gender === 'female' ? styles.genderOptionTextActive : null,
+                    ]}
+                  >
+                    Female
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
             <Text style={styles.hint}>The last player ID is stored on this device so you can return to gameplay more quickly.</Text>
             {entryInfo ? <Text style={styles.infoText}>{entryInfo}</Text> : null}
             {entryError ? <Text style={styles.errorText}>{entryError}</Text> : null}
             <PrimaryButton
               label={opening ? 'Opening Gameplay Loop...' : 'Open Gameplay Loop'}
               onPress={openDashboard}
-              disabled={!playerId.trim() || opening}
+              disabled={opening}
               loading={opening}
             />
             {entryError ? (
@@ -221,7 +287,7 @@ export default function GameplayIndexRoute() {
                 onPress={() => {
                   void openDashboard();
                 }}
-                disabled={opening || !playerId.trim()}
+                disabled={opening}
               />
             ) : null}
           </SectionCard>
@@ -249,6 +315,40 @@ const styles = StyleSheet.create({
   hint: {
     color: theme.color.textSecondary,
     ...theme.typography.bodySm,
+  },
+  genderSection: {
+    gap: theme.spacing.xs,
+  },
+  genderLabel: {
+    color: theme.color.textPrimary,
+    ...theme.typography.bodySm,
+    fontWeight: '700',
+  },
+  genderRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  genderOption: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: theme.color.border,
+    borderRadius: theme.radius.md,
+    minHeight: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.color.surfaceAlt,
+  },
+  genderOptionActive: {
+    borderColor: theme.color.accent,
+    backgroundColor: '#dbeafe',
+  },
+  genderOptionText: {
+    color: theme.color.textSecondary,
+    ...theme.typography.bodySm,
+    fontWeight: '700',
+  },
+  genderOptionTextActive: {
+    color: theme.color.accent,
   },
   infoText: {
     color: '#1e3a8a',
