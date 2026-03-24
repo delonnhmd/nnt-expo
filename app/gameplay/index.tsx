@@ -7,6 +7,7 @@ import AppShell from '@/components/layout/AppShell';
 import ContentStack from '@/components/layout/ContentStack';
 import PageContainer from '@/components/layout/PageContainer';
 import PrimaryButton from '@/components/ui/PrimaryButton';
+import SecondaryButton from '@/components/ui/SecondaryButton';
 import SectionCard from '@/components/ui/SectionCard';
 import { theme } from '@/design/theme';
 import { createPlayablePlayer, getPlayablePlayerSummary } from '@/lib/api/onboarding';
@@ -19,6 +20,7 @@ const DEV_AUTO_CREATE_PLAYER =
   __DEV__
   || process.env.EXPO_PUBLIC_DEV_AUTO_CREATE_PLAYER === 'true'
   || process.env.EXPO_PUBLIC_DEV_AUTO_CREATE_PLAYER === '1';
+const DEV_FALLBACK_PLAYER_ID = String(process.env.EXPO_PUBLIC_DEV_FALLBACK_PLAYER_ID || '').trim();
 
 function normalizeErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) return error.message;
@@ -31,6 +33,15 @@ function isPlayerMissingError(error: unknown): boolean {
     message.includes('player not found')
     || message.includes('profile not found')
     || message.includes('user not found')
+  );
+}
+
+function isOnboardingBootstrapFailure(error: unknown): boolean {
+  const message = normalizeErrorMessage(error).toLowerCase();
+  return (
+    message.includes('/onboarding/new-player')
+    || message.includes('onboarding setup failed')
+    || message.includes('unexpected onboarding service error')
   );
 }
 
@@ -81,7 +92,7 @@ export default function GameplayIndexRoute() {
       } catch (validationError) {
         if (!isPlayerMissingError(validationError)) {
           const message = normalizeErrorMessage(validationError);
-          setEntryInfo('Backend validation skipped. Opening loop with fallback data if needed.');
+          setEntryInfo('Player validation is temporarily unavailable. Opening gameplay with fallback-safe mode.');
           recordWarning('gameplayEntry', 'Player validation failed with non-not-found error; allowing loop entry.', {
             action: 'validate_player_non_blocking',
             context: {
@@ -101,7 +112,11 @@ export default function GameplayIndexRoute() {
             throw new Error('Backend did not return a player_id for created dev player.');
           }
           resolvedPlayerId = created.player_id;
-          setEntryInfo(`Created a new dev player for "${requestedPlayerId}" and mapped to ${resolvedPlayerId}.`);
+          setEntryInfo(
+            created.load_ready === false
+              ? `Created player "${requestedPlayerId}" with minimal starter setup (${resolvedPlayerId}).`
+              : `Created a new dev player for "${requestedPlayerId}" and mapped to ${resolvedPlayerId}.`,
+          );
           setPlayerId(resolvedPlayerId);
           recordInfo('gameplayEntry', 'Auto-created dev player from missing player id.', {
             action: 'auto_create_player',
@@ -131,7 +146,31 @@ export default function GameplayIndexRoute() {
       router.push(`/gameplay/loop/${resolvedPlayerId}/brief`);
     } catch (error) {
       const message = normalizeErrorMessage(error);
-      setEntryError(message);
+      if (isOnboardingBootstrapFailure(error) && DEV_FALLBACK_PLAYER_ID) {
+        setEntryInfo(`Player creation failed. Routing to fallback player ${DEV_FALLBACK_PLAYER_ID}.`);
+        setEntryError(null);
+        try {
+          await AsyncStorage.setItem(PLAYER_ID_STORAGE_KEY, DEV_FALLBACK_PLAYER_ID);
+        } catch {
+          // Ignore storage issues for fallback route.
+        }
+        recordWarning('gameplayEntry', 'Used fallback dev player after onboarding bootstrap failure.', {
+          action: 'fallback_player_route',
+          context: {
+            requestedPlayerId,
+            fallbackPlayerId: DEV_FALLBACK_PLAYER_ID,
+            message,
+          },
+          error,
+        });
+        router.push(`/gameplay/loop/${DEV_FALLBACK_PLAYER_ID}/brief`);
+        return;
+      }
+
+      const friendlyMessage = isOnboardingBootstrapFailure(error)
+        ? 'Could not create a new player right now. Check backend logs, then tap Retry.'
+        : message;
+      setEntryError(friendlyMessage);
       recordWarning('gameplayEntry', 'Failed to open gameplay loop.', {
         action: 'open_loop',
         context: {
@@ -176,6 +215,15 @@ export default function GameplayIndexRoute() {
               disabled={!playerId.trim() || opening}
               loading={opening}
             />
+            {entryError ? (
+              <SecondaryButton
+                label="Retry"
+                onPress={() => {
+                  void openDashboard();
+                }}
+                disabled={opening || !playerId.trim()}
+              />
+            ) : null}
           </SectionCard>
         </ContentStack>
       </PageContainer>
