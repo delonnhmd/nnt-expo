@@ -39,6 +39,56 @@ function toStringList(value: unknown): string[] {
   return value.map((entry) => toString(entry)).filter(Boolean);
 }
 
+export interface PlayablePlayerSummary {
+  player_id: string;
+  display_name: string | null;
+  region: string | null;
+  load_ready: boolean | null;
+}
+
+export interface CreatePlayablePlayerRequest {
+  display_name: string;
+  gender?: 'male' | 'female';
+  region?: 'suburban' | 'downtown';
+  starter_job_code?: string;
+}
+
+function normalizePlayablePlayerSummary(raw: unknown): PlayablePlayerSummary {
+  const obj = toRecord(raw);
+  return {
+    player_id: toString(obj.player_id),
+    display_name: obj.display_name == null ? null : toString(obj.display_name),
+    region: obj.region == null ? null : toString(obj.region),
+    load_ready: obj.load_ready == null ? null : toBoolean(obj.load_ready, false),
+  };
+}
+
+export async function getPlayablePlayerSummary(playerId: string): Promise<PlayablePlayerSummary> {
+  const raw = await fetchApiWithFallback<unknown>([
+    `/onboarding/player/${playerId}`,
+  ]);
+  return normalizePlayablePlayerSummary(raw);
+}
+
+export async function createPlayablePlayer(
+  request: CreatePlayablePlayerRequest,
+): Promise<PlayablePlayerSummary> {
+  const body = {
+    display_name: toString(request.display_name).trim(),
+    gender: request.gender || 'male',
+    region: request.region || 'suburban',
+    starter_job_code: request.starter_job_code || 'retail_worker',
+  };
+  const raw = await fetchApiWithFallback<unknown>(
+    ['/onboarding/new-player'],
+    {
+      method: 'POST',
+      body: JSON.stringify(body),
+    },
+  );
+  return normalizePlayablePlayerSummary(raw);
+}
+
 
 function normalizeState(raw: unknown): OnboardingStateResponse {
   const obj = toRecord(raw);

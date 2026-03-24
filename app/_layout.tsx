@@ -2,7 +2,7 @@
 import 'react-native-get-random-values';
 import 'react-native-url-polyfill/auto';
 import React, { useEffect } from 'react';
-import { Slot, Stack } from 'expo-router';
+import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import DiagnosticsErrorBoundary from '@/components/ui/DiagnosticsErrorBoundary';
 import { BACKEND } from '@/constants';
@@ -29,9 +29,7 @@ export default function Layout() {
 
   return (
     <DiagnosticsErrorBoundary>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Slot />
-      </Stack>
+      <Stack screenOptions={{ headerShown: false }} />
       <StatusBar style="auto" />
     </DiagnosticsErrorBoundary>
   );

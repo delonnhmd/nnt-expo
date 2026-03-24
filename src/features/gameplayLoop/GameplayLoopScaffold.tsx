@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { usePathname } from 'expo-router';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { OnboardingStepOverlay } from '@/components/onboarding';
@@ -14,6 +15,7 @@ import { useOnboarding } from '@/features/onboarding';
 import { OnboardingRouteKey } from '@/features/onboarding/context';
 import { FeedbackSheet, IssueReportSheet, SoftLaunchGate, useSoftLaunch } from '@/features/softLaunch';
 import { formatMoney } from '@/lib/gameplayFormatters';
+import { recordInfo, recordWarning } from '@/lib/logger';
 
 import { useGameplayLoop } from './context';
 import {
@@ -55,6 +57,11 @@ function pressureTone(pressure: string | undefined): 'neutral' | 'warning' | 'da
   return 'neutral';
 }
 
+const INTERACTION_DIAGNOSTICS_ENABLED =
+  __DEV__
+  || process.env.EXPO_PUBLIC_INTERACTION_DIAGNOSTICS === 'true'
+  || process.env.EXPO_PUBLIC_INTERACTION_DIAGNOSTICS === '1';
+
 export default function GameplayLoopScaffold({
   title,
   subtitle,
@@ -71,6 +78,7 @@ export default function GameplayLoopScaffold({
   const loop = useGameplayLoop();
   const onboarding = useOnboarding();
   const softLaunch = useSoftLaunch();
+  const pathname = usePathname();
   const [feedbackDay, setFeedbackDay] = useState<number | null>(null);
   const [showIssueReport, setShowIssueReport] = useState(false);
 
@@ -84,6 +92,7 @@ export default function GameplayLoopScaffold({
   const {
     currentStep: onboardingStep,
     ensureRoute,
+    expectedRoute,
     isActive: onboardingActive,
     isSimplifiedMode,
     navigateTo,
@@ -111,6 +120,45 @@ export default function GameplayLoopScaffold({
     ensureRoute(activeNavKey as OnboardingRouteKey);
   }, [activeNavKey, ensureRoute]);
 
+  useEffect(() => {
+    if (!INTERACTION_DIAGNOSTICS_ENABLED) return;
+    recordInfo('gameplayLoop', 'Gameplay loop route changed.', {
+      action: 'route_change',
+      context: {
+        playerId: loop.playerId,
+        pathname,
+        activeNavKey,
+      },
+    });
+  }, [activeNavKey, loop.playerId, pathname]);
+
+  useEffect(() => {
+    if (!INTERACTION_DIAGNOSTICS_ENABLED) return;
+    recordInfo('gameplayLoop', 'Onboarding overlay state changed.', {
+      action: 'onboarding_overlay',
+      context: {
+        playerId: loop.playerId,
+        onboardingActive,
+        stepKey: onboardingStep?.key || null,
+        expectedRoute: expectedRoute || null,
+      },
+    });
+  }, [expectedRoute, onboardingActive, onboardingStep?.key, loop.playerId]);
+
+  useEffect(() => {
+    if (!INTERACTION_DIAGNOSTICS_ENABLED) return;
+    recordInfo('gameplayLoop', 'Soft launch gate state changed.', {
+      action: 'soft_launch_gate',
+      context: {
+        playerId: loop.playerId,
+        gateBlocked,
+        bypassGate,
+        isMember: softLaunch.isMember,
+        isLoading: softLaunch.isLoading,
+      },
+    });
+  }, [bypassGate, gateBlocked, loop.playerId, softLaunch.isLoading, softLaunch.isMember]);
+
   const bottomNavItems = useMemo(
     () => ([
       { key: 'brief', label: 'Brief' },
@@ -124,10 +172,34 @@ export default function GameplayLoopScaffold({
       .map((item) => ({
         ...item,
         onPress: () => {
-          navigateTo(item.key as OnboardingRouteKey);
+          if (INTERACTION_DIAGNOSTICS_ENABLED) {
+            recordInfo('gameplayLoop', 'Bottom nav pressed.', {
+              action: 'tab_press',
+              context: {
+                playerId: loop.playerId,
+                fromRoute: activeNavKey,
+                targetRoute: item.key,
+                onboardingActive,
+                expectedRoute: expectedRoute || null,
+              },
+            });
+          }
+          const allowed = navigateTo(item.key as OnboardingRouteKey);
+          if (!allowed && INTERACTION_DIAGNOSTICS_ENABLED) {
+            recordWarning('gameplayLoop', 'Bottom nav press blocked by onboarding route guard.', {
+              action: 'tab_press_blocked',
+              context: {
+                playerId: loop.playerId,
+                fromRoute: activeNavKey,
+                targetRoute: item.key,
+                expectedRoute: expectedRoute || null,
+                onboardingStepKey: onboardingStep?.key || null,
+              },
+            });
+          }
         },
       }))),
-    [navigateTo, onboardingActive],
+    [activeNavKey, expectedRoute, navigateTo, onboardingActive, onboardingStep?.key, loop.playerId],
   );
 
   // ── Soft launch gate ────────────────────────────────────────────────────────

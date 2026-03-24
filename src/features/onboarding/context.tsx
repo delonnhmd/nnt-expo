@@ -10,7 +10,7 @@ import React, {
 import { router } from 'expo-router';
 
 import { useGameplayLoop } from '@/features/gameplayLoop/context';
-import { recordInfo } from '@/lib/logger';
+import { recordInfo, recordWarning } from '@/lib/logger';
 import {
   PersistedOnboardingStatus,
   readPersistedOnboardingState,
@@ -87,6 +87,14 @@ const ONBOARDING_STEPS: OnboardingStepDefinition[] = [
     requirement: 'settled_summary',
   },
 ];
+
+const ONBOARDING_ROUTE_LOCK_ENABLED =
+  process.env.EXPO_PUBLIC_ONBOARDING_ROUTE_LOCK === 'true'
+  || process.env.EXPO_PUBLIC_ONBOARDING_ROUTE_LOCK === '1';
+const ONBOARDING_NAV_DIAGNOSTICS_ENABLED =
+  __DEV__
+  || process.env.EXPO_PUBLIC_INTERACTION_DIAGNOSTICS === 'true'
+  || process.env.EXPO_PUBLIC_INTERACTION_DIAGNOSTICS === '1';
 
 interface OnboardingContextValue {
   isHydrated: boolean;
@@ -317,12 +325,24 @@ export function OnboardingProvider({
 
   const canNavigateTo = useCallback((route: OnboardingRouteKey) => {
     if (!isActive || !expectedRoute) return true;
+    if (!ONBOARDING_ROUTE_LOCK_ENABLED) return true;
     return route === expectedRoute;
   }, [expectedRoute, isActive]);
 
   const navigateTo = useCallback((route: OnboardingRouteKey) => {
     if (canNavigateTo(route)) {
       setBlockedNavigationMessage(null);
+      if (ONBOARDING_NAV_DIAGNOSTICS_ENABLED) {
+        recordInfo('onboarding', 'Navigation route accepted.', {
+          action: 'navigate_to',
+          context: {
+            playerId,
+            route,
+            expectedRoute,
+            routeLockEnabled: ONBOARDING_ROUTE_LOCK_ENABLED,
+          },
+        });
+      }
       router.replace(stepRoutePath(playerId, route));
       return true;
     }
@@ -330,11 +350,34 @@ export function OnboardingProvider({
     const nextStepTitle = currentStep?.title || 'the guided step';
     const message = `Finish "${nextStepTitle}" before opening ${navLabel(route)}.`;
     setBlockedNavigationMessage(message);
+    if (ONBOARDING_NAV_DIAGNOSTICS_ENABLED) {
+      recordWarning('onboarding', 'Navigation route blocked by guided onboarding lock.', {
+        action: 'navigate_to_blocked',
+        context: {
+          playerId,
+          route,
+          expectedRoute,
+          currentStepTitle: currentStep?.title || null,
+          routeLockEnabled: ONBOARDING_ROUTE_LOCK_ENABLED,
+        },
+      });
+    }
     return false;
-  }, [canNavigateTo, currentStep?.title, playerId]);
+  }, [canNavigateTo, currentStep?.title, expectedRoute, playerId]);
 
   const ensureRoute = useCallback((currentRoute: OnboardingRouteKey) => {
+    if (!ONBOARDING_ROUTE_LOCK_ENABLED) return;
     if (!isActive || !expectedRoute || currentRoute === expectedRoute) return;
+    if (ONBOARDING_NAV_DIAGNOSTICS_ENABLED) {
+      recordWarning('onboarding', 'Route mismatch corrected by onboarding lock.', {
+        action: 'ensure_route',
+        context: {
+          playerId,
+          currentRoute,
+          expectedRoute,
+        },
+      });
+    }
     router.replace(stepRoutePath(playerId, expectedRoute));
   }, [expectedRoute, isActive, playerId]);
 

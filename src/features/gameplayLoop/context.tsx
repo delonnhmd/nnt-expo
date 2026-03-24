@@ -23,7 +23,7 @@ import {
   executeAction as executeGameplayAction,
 } from '@/lib/api/gameplay';
 import { createGameplayCanonicalState } from '@/lib/gameplayRuntimeState';
-import { recordWarning } from '@/lib/logger';
+import { recordInfo, recordWarning } from '@/lib/logger';
 import {
   ActionPreviewResponse,
   DailyActionItem,
@@ -102,6 +102,11 @@ interface GameplayLoopContextValue {
 
 const GameplayLoopContext = createContext<GameplayLoopContextValue | null>(null);
 
+const INTERACTION_DIAGNOSTICS_ENABLED =
+  __DEV__
+  || process.env.EXPO_PUBLIC_INTERACTION_DIAGNOSTICS === 'true'
+  || process.env.EXPO_PUBLIC_INTERACTION_DIAGNOSTICS === '1';
+
 function normalizeError(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);
@@ -163,6 +168,21 @@ export function GameplayLoopProvider({
   useEffect(() => {
     hasBundleRef.current = Boolean(bundle);
   }, [bundle]);
+
+  useEffect(() => {
+    if (!INTERACTION_DIAGNOSTICS_ENABLED) return;
+    recordInfo('gameplayLoop', 'Loading state changed.', {
+      action: 'loading_state',
+      context: {
+        playerId,
+        loading,
+        refreshing,
+        hasBundle: Boolean(bundle),
+        sourceMode: bundle?.source.mode || null,
+        hasError: Boolean(error),
+      },
+    });
+  }, [bundle, error, loading, playerId, refreshing]);
 
   const refresh = useCallback(async (options?: RefreshOptions) => {
     const silent = Boolean(options?.silent);
