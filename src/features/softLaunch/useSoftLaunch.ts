@@ -10,6 +10,9 @@ import { FeedbackPayload, IssuePayload, SoftLaunchStatus } from './types';
 
 const CACHE_KEY = '@goldpenny/soft_launch_status';
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const SOFT_LAUNCH_REQUIRED =
+  process.env.EXPO_PUBLIC_SOFT_LAUNCH_REQUIRED === 'true'
+  || process.env.EXPO_PUBLIC_SOFT_LAUNCH_REQUIRED === '1';
 
 interface CachedStatus {
   status: SoftLaunchStatus;
@@ -34,6 +37,17 @@ export function useSoftLaunch(): UseSoftLaunchReturn {
   const loadedRef = useRef(false);
 
   const loadStatus = useCallback(async (forceRefresh = false) => {
+    if (!SOFT_LAUNCH_REQUIRED) {
+      setStatus({
+        is_member: true,
+        cohort_tag: 'open_access',
+        joined_at: new Date().toISOString(),
+      });
+      setJoinError(null);
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     try {
       if (!forceRefresh) {
@@ -67,6 +81,11 @@ export function useSoftLaunch(): UseSoftLaunchReturn {
 
   const joinWithCode = useCallback(
     async (code: string): Promise<boolean> => {
+      if (!SOFT_LAUNCH_REQUIRED) {
+        setJoinError(null);
+        return true;
+      }
+
       setJoinError(null);
       try {
         const result = await joinSoftLaunch(code);
@@ -89,6 +108,10 @@ export function useSoftLaunch(): UseSoftLaunchReturn {
   );
 
   const handleSubmitFeedback = useCallback(async (payload: FeedbackPayload): Promise<boolean> => {
+    if (!SOFT_LAUNCH_REQUIRED) {
+      return true;
+    }
+
     try {
       await submitFeedback(payload);
       return true;
@@ -98,6 +121,10 @@ export function useSoftLaunch(): UseSoftLaunchReturn {
   }, []);
 
   const handleSubmitIssue = useCallback(async (payload: IssuePayload): Promise<boolean> => {
+    if (!SOFT_LAUNCH_REQUIRED) {
+      return true;
+    }
+
     try {
       await submitIssue(payload);
       return true;

@@ -12,9 +12,10 @@ import { theme } from '@/design/theme';
 
 const PLAYER_ID_STORAGE_KEY = 'goldpenny:gameplay:lastPlayerId';
 const LEGACY_PLAYER_ID_STORAGE_KEY = 'gameplay:lastPlayerId';
+const DEFAULT_PLAYER_ID = 'player1';
 
 export default function GameplayIndexRoute() {
-  const [playerId, setPlayerId] = useState('');
+  const [playerId, setPlayerId] = useState(DEFAULT_PLAYER_ID);
 
   useEffect(() => {
     (async () => {
@@ -22,7 +23,11 @@ export default function GameplayIndexRoute() {
         const remembered =
           (await AsyncStorage.getItem(PLAYER_ID_STORAGE_KEY)) ||
           (await AsyncStorage.getItem(LEGACY_PLAYER_ID_STORAGE_KEY));
-        if (remembered) setPlayerId(remembered);
+        if (remembered) {
+          setPlayerId(remembered);
+        } else {
+          setPlayerId(DEFAULT_PLAYER_ID);
+        }
       } catch {
         // Ignore storage read issues and allow manual entry.
       }
@@ -57,7 +62,7 @@ export default function GameplayIndexRoute() {
               autoCorrect={false}
               value={playerId}
               onChangeText={setPlayerId}
-              placeholder="Player ID (for example: demo-player-1)"
+              placeholder={`Player ID (default: ${DEFAULT_PLAYER_ID})`}
               placeholderTextColor={theme.color.muted}
             />
             <Text style={styles.hint}>The last player ID is stored on this device so you can return to gameplay more quickly.</Text>
