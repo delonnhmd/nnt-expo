@@ -118,6 +118,7 @@ export interface ActionPreviewResponse {
 
 export interface EndOfDaySummaryResponse {
   player_id: string;
+  day_number?: number;
   as_of_date: string;
   total_earned_xgp: number;
   total_spent_xgp: number;
@@ -137,6 +138,29 @@ export interface EndOfDaySummaryResponse {
   distress_state: string;
   tomorrow_warnings: string[];
   debug_meta?: Record<string, unknown>;
+}
+
+export interface TransactionHistoryItem {
+  id: string;
+  player_id: string;
+  day: number | null;
+  type: string;
+  category: string;
+  symbol: string | null;
+  quantity: number | null;
+  unit_price: number | null;
+  gross_amount: number;
+  fee_amount: number;
+  net_cash_delta: number;
+  resulting_cash_balance: number;
+  metadata_json: Record<string, unknown>;
+  created_at: string | null;
+}
+
+export interface TransactionHistoryResponse {
+  player_id: string;
+  count: number;
+  transactions: TransactionHistoryItem[];
 }
 
 export interface WeeklyIncomeMixItem {

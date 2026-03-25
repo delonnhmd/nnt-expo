@@ -13,12 +13,7 @@ import { updateFrictionSignal } from '@/lib/playtestAnalytics';
 
 import { useGameplayLoop } from '../context';
 
-interface PlaytestObserverProps {
-  /** Called after Day 1 or Day 2 settlement to prompt the feedback sheet. */
-  onRequestFeedback?: (gameDay: number) => void;
-}
-
-export function PlaytestObserver({ onRequestFeedback }: PlaytestObserverProps = {}) {
+export function PlaytestObserver() {
   const loop = useGameplayLoop();
   const onboarding = useOnboarding();
   const {
@@ -85,16 +80,16 @@ export function PlaytestObserver({ onRequestFeedback }: PlaytestObserverProps = 
     });
 
     // Trigger soft launch feedback prompt after Day 1 or Day 2 settlement.
-    if ((gameDay === 1 || gameDay === 2) && onRequestFeedback) {
-      onRequestFeedback(gameDay);
+    if (gameDay === 1 || gameDay === 2) {
+      loop.requestFeedbackPrompt(gameDay);
     }
   }, [
     loop.endOfDaySummary,
     loop.dailyProgression.currentGameDay,
     loop.dashboard?.stats,
     loop.expenseDebt.debtPressure,
+    loop.requestFeedbackPrompt,
     trackDayCompleted,
-    onRequestFeedback,
   ]);
 
   // ─── Work action taken ──────────────────────────────────────────────────────

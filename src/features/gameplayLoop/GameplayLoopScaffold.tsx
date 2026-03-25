@@ -79,7 +79,6 @@ export default function GameplayLoopScaffold({
   const onboarding = useOnboarding();
   const softLaunch = useSoftLaunch();
   const pathname = usePathname();
-  const [feedbackDay, setFeedbackDay] = useState<number | null>(null);
   const [showIssueReport, setShowIssueReport] = useState(false);
   const [measuredContentHeight, setMeasuredContentHeight] = useState<number | null>(null);
 
@@ -132,6 +131,53 @@ export default function GameplayLoopScaffold({
       },
     });
   }, [activeNavKey, loop.playerId, pathname]);
+
+  useEffect(() => {
+    const targetDay = loop.summaryAutoOpenDay;
+    if (!targetDay) return;
+
+    if (activeNavKey === 'summary') {
+      loop.consumeSummaryAutoOpen();
+      return;
+    }
+
+    if (onboardingActive && expectedRoute && expectedRoute !== 'summary') {
+      if (INTERACTION_DIAGNOSTICS_ENABLED) {
+        recordWarning('gameplayLoop', 'Auto summary navigation blocked by onboarding route guard.', {
+          action: 'summary_auto_nav_blocked',
+          context: {
+            playerId: loop.playerId,
+            targetDay,
+            activeNavKey,
+            expectedRoute,
+          },
+        });
+      }
+      return;
+    }
+
+    const allowed = navigateTo('summary');
+    if (INTERACTION_DIAGNOSTICS_ENABLED) {
+      recordInfo('gameplayLoop', 'Auto summary navigation evaluated.', {
+        action: 'summary_auto_nav',
+        context: {
+          playerId: loop.playerId,
+          targetDay,
+          allowed,
+          fromRoute: activeNavKey,
+        },
+      });
+    }
+    if (allowed) {
+      loop.consumeSummaryAutoOpen();
+    }
+  }, [
+    activeNavKey,
+    expectedRoute,
+    loop,
+    navigateTo,
+    onboardingActive,
+  ]);
 
   useEffect(() => {
     if (!INTERACTION_DIAGNOSTICS_ENABLED) return;
@@ -293,7 +339,7 @@ export default function GameplayLoopScaffold({
           )}
         >
           <ContentStack gap={theme.spacing.md} onLayout={handleContentLayout}>
-            <PlaytestObserver onRequestFeedback={(day) => setFeedbackDay(day)} />
+            <PlaytestObserver />
             {onboardingActive ? <OnboardingStepOverlay /> : null}
 
             {isSimplifiedMode ? (
@@ -411,10 +457,10 @@ export default function GameplayLoopScaffold({
 
       {/* Soft launch feedback sheet — shown after Day 1/2 settlement */}
       <FeedbackSheet
-        visible={feedbackDay !== null}
-        gameDay={feedbackDay ?? 1}
+        visible={loop.feedbackPromptDay !== null}
+        gameDay={loop.feedbackPromptDay ?? 1}
         onSubmit={(payload) => softLaunch.submitFeedback(payload)}
-        onDismiss={() => setFeedbackDay(null)}
+        onDismiss={loop.dismissFeedbackPrompt}
       />
 
       {/* Issue report sheet — shown on demand */}

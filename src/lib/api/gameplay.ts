@@ -27,6 +27,8 @@ import {
   PlayerDashboardResponse,
   PlayerNotificationItem,
   PlayerNotificationResponse,
+  TransactionHistoryItem,
+  TransactionHistoryResponse,
   TrendDirection,
   WeeklyPlayerSummaryResponse,
 } from '@/types/gameplay';
@@ -267,9 +269,12 @@ function normalizeEndOfDaySummary(raw: Record<string, unknown>, playerId: string
   const earned = normalizeMoneyValue(raw.total_earned_xgp ?? raw.income_xgp, { allowNegative: false, fallback: 0 });
   const spent = normalizeMoneyValue(raw.total_spent_xgp ?? raw.expenses_xgp, { allowNegative: false, fallback: 0 });
   const net = safeNetCashFlowCalculation(earned, spent, raw.net_change_xgp);
+  const dayNumber = normalizeCurrentDay(raw.day_number ?? raw.guided_day_number ?? raw.day, 0);
+  const debugMeta = (raw.debug_meta as Record<string, unknown>) || {};
 
   return {
     player_id: toString(raw.player_id, playerId),
+    day_number: dayNumber > 0 ? dayNumber : undefined,
     as_of_date: toString(raw.as_of_date || raw.settled_day || raw.day_number, ''),
     total_earned_xgp: earned,
     total_spent_xgp: spent,
@@ -290,7 +295,38 @@ function normalizeEndOfDaySummary(raw: Record<string, unknown>, playerId: string
     tomorrow_warnings: Array.isArray(raw.tomorrow_warnings)
       ? raw.tomorrow_warnings.map((entry) => toString(entry))
       : [],
-    debug_meta: (raw.debug_meta as Record<string, unknown>) || {},
+    debug_meta: {
+      ...debugMeta,
+      latest_completed_day: toNumber(debugMeta.latest_completed_day, dayNumber),
+      summary_seen_day: toNumber(debugMeta.summary_seen_day, 0),
+      summary_seen_for_day: Boolean(debugMeta.summary_seen_for_day),
+      should_auto_show_summary: Boolean(debugMeta.should_auto_show_summary),
+      summary_gate_reason: toString(debugMeta.summary_gate_reason, ''),
+    },
+  };
+}
+
+function normalizeTransactionHistoryItem(raw: unknown, playerId: string, index: number): TransactionHistoryItem {
+  const row = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const metadata = row.metadata_json && typeof row.metadata_json === 'object'
+    ? (row.metadata_json as Record<string, unknown>)
+    : {};
+
+  return {
+    id: toString(row.id, `tx_${index}`),
+    player_id: toString(row.player_id, playerId),
+    day: row.day == null ? null : normalizeCurrentDay(row.day, 0),
+    type: toString(row.type, 'unknown'),
+    category: toString(row.category, 'general'),
+    symbol: row.symbol == null ? null : toString(row.symbol, '').toUpperCase() || null,
+    quantity: row.quantity == null ? null : normalizeFiniteNumber(row.quantity, { fallback: 0 }),
+    unit_price: row.unit_price == null ? null : normalizeMoneyValue(row.unit_price, { allowNegative: false, fallback: 0 }),
+    gross_amount: normalizeMoneyValue(row.gross_amount, { allowNegative: true, fallback: 0 }),
+    fee_amount: normalizeMoneyValue(row.fee_amount, { allowNegative: false, fallback: 0 }),
+    net_cash_delta: normalizeMoneyValue(row.net_cash_delta, { allowNegative: true, fallback: 0 }),
+    resulting_cash_balance: normalizeMoneyValue(row.resulting_cash_balance, { allowNegative: true, fallback: 0 }),
+    metadata_json: metadata,
+    created_at: row.created_at == null ? null : toString(row.created_at),
   };
 }
 
@@ -473,6 +509,30 @@ export async function getEndOfDaySummary(playerId: string): Promise<EndOfDaySumm
   logCanonicalRoute('end_of_day_summary', playerId, path);
   const raw = await fetchApi<Record<string, unknown>>(path);
   return normalizeEndOfDaySummary(raw, playerId);
+}
+
+export async function acknowledgeEndOfDaySummary(playerId: string, dayNumber?: number): Promise<Record<string, unknown>> {
+  const path = `/gameplay/player/${playerId}/end-of-day-summary/ack`;
+  logCanonicalRoute('end_of_day_summary_ack', playerId, path);
+  return fetchApi<Record<string, unknown>>(path, {
+    method: 'POST',
+    body: JSON.stringify({ day_number: dayNumber ?? null }),
+  });
+}
+
+export async function getTransactionHistory(playerId: string, limit = 50): Promise<TransactionHistoryResponse> {
+  const safeLimit = Math.max(1, Math.min(Math.round(Number(limit) || 50), 200));
+  const path = `/gameplay/player/${playerId}/transactions?limit=${safeLimit}`;
+  logCanonicalRoute('transaction_history', playerId, path);
+  const raw = await fetchApi<Record<string, unknown>>(path);
+  const transactions = Array.isArray(raw.transactions)
+    ? raw.transactions.map((entry, index) => normalizeTransactionHistoryItem(entry, playerId, index))
+    : [];
+  return {
+    player_id: toString(raw.player_id, playerId),
+    count: toNumber(raw.count, transactions.length),
+    transactions,
+  };
 }
 
 export async function getWeeklySummary(playerId: string): Promise<WeeklyPlayerSummaryResponse> {

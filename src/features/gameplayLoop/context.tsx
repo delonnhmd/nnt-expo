@@ -15,12 +15,13 @@ import { useExpenseDebt } from '@/hooks/useExpenseDebt';
 import { useJobIncome } from '@/hooks/useJobIncome';
 import {
   buyStock,
-  getStockMarketSnapshot,
   sellStock,
 } from '@/lib/api/stocks';
 import {
+  acknowledgeEndOfDaySummary,
   endDay as settleDay,
   executeAction as executeGameplayAction,
+  getTransactionHistory,
 } from '@/lib/api/gameplay';
 import { createGameplayCanonicalState } from '@/lib/gameplayRuntimeState';
 import { recordInfo, recordWarning } from '@/lib/logger';
@@ -28,6 +29,7 @@ import {
   ActionPreviewResponse,
   DailyActionItem,
   EndOfDaySummaryResponse,
+  TransactionHistoryItem,
 } from '@/types/gameplay';
 
 import {
@@ -70,6 +72,13 @@ interface GameplayLoopContextValue {
   sourceMode: GameplayLoopDataMode;
   sourceNotes: string[];
   lastSyncedAt: string | null;
+  transactionHistory: TransactionHistoryItem[];
+  feedbackPromptDay: number | null;
+  requestFeedbackPrompt: (gameDay: number) => void;
+  dismissFeedbackPrompt: () => void;
+  summaryAutoOpenDay: number | null;
+  consumeSummaryAutoOpen: () => void;
+  acknowledgeSummarySeen: (dayNumber?: number | null) => Promise<void>;
   feedback: FeedbackState | null;
   setFeedback: (next: FeedbackState | null) => void;
   refresh: (options?: RefreshOptions) => Promise<void>;
@@ -145,6 +154,9 @@ export function GameplayLoopProvider({
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
+  const [feedbackPromptDay, setFeedbackPromptDay] = useState<number | null>(null);
+  const [summaryAutoOpenDay, setSummaryAutoOpenDay] = useState<number | null>(null);
+  const [transactionHistory, setTransactionHistory] = useState<TransactionHistoryItem[]>([]);
 
   const [selectedPreviewAction, setSelectedPreviewAction] = useState<DailyActionItem | null>(null);
   const [actionPreview, setActionPreview] = useState<ActionPreviewResponse | null>(null);
@@ -156,6 +168,8 @@ export function GameplayLoopProvider({
   const [endingDay, setEndingDay] = useState(false);
   const [pendingTrade, setPendingTrade] = useState<PendingTradeState | null>(null);
   const hasBundleRef = useRef(false);
+  const promptedFeedbackDaysRef = useRef<Set<number>>(new Set());
+  const autoOpenedSummaryDaysRef = useRef<Set<number>>(new Set());
 
   const dailySession = useDailySession(playerId);
   const dailyProgression = useDailyProgression(
@@ -206,10 +220,60 @@ export function GameplayLoopProvider({
     setError(null);
 
     try {
-      const nextBundle = await loadGameplayLoopBundle(playerId, {
-        includeEndOfDaySummary,
-      });
+      const [nextBundle, txHistory] = await Promise.all([
+        loadGameplayLoopBundle(playerId, {
+          includeEndOfDaySummary,
+        }),
+        getTransactionHistory(playerId, 80).catch((txError) => {
+          recordWarning('gameplayLoop', 'Failed to load transaction history.', {
+            action: 'transaction_history_load',
+            context: { playerId },
+            error: txError,
+          });
+          return null;
+        }),
+      ]);
       setBundle(nextBundle);
+      if (txHistory) {
+        setTransactionHistory(txHistory.transactions);
+      }
+
+      const summary = nextBundle.endOfDaySummary;
+      const debug = summary?.debug_meta || {};
+      const latestDay = Number(
+        summary?.day_number
+        ?? debug.latest_completed_day
+        ?? 0,
+      );
+      const shouldAutoShow = Boolean(debug.should_auto_show_summary) && latestDay > 0;
+      const alreadyOpened = autoOpenedSummaryDaysRef.current.has(latestDay);
+      if (shouldAutoShow && !alreadyOpened) {
+        autoOpenedSummaryDaysRef.current.add(latestDay);
+        setSummaryAutoOpenDay(latestDay);
+        if (INTERACTION_DIAGNOSTICS_ENABLED) {
+          recordInfo('gameplayLoop', 'Auto summary trigger armed.', {
+            action: 'summary_auto_show',
+            context: {
+              playerId,
+              latestCompletedDay: latestDay,
+              summarySeenDay: Number(debug.summary_seen_day ?? 0),
+              reason: String(debug.summary_gate_reason || 'show_unseen_latest_settlement'),
+            },
+          });
+        }
+      } else if (INTERACTION_DIAGNOSTICS_ENABLED && latestDay > 0) {
+        recordInfo('gameplayLoop', 'Auto summary trigger suppressed.', {
+          action: 'summary_auto_suppressed',
+          context: {
+            playerId,
+            latestCompletedDay: latestDay,
+            alreadyOpened,
+            shouldAutoShow,
+            summarySeenDay: Number(debug.summary_seen_day ?? 0),
+            reason: String(debug.summary_gate_reason || 'suppressed'),
+          },
+        });
+      }
     } catch (loadError) {
       const message = normalizeError(loadError);
       setError(message);
@@ -223,6 +287,85 @@ export function GameplayLoopProvider({
       setRefreshing(false);
     }
   }, [dailySession.sessionStatus, playerId]);
+
+  const consumeSummaryAutoOpen = useCallback(() => {
+    setSummaryAutoOpenDay(null);
+  }, []);
+
+  const acknowledgeSummarySeen = useCallback(async (dayNumber?: number | null) => {
+    const currentSummary = bundle?.endOfDaySummary;
+    const debug = currentSummary?.debug_meta || {};
+    const targetDay = Number(
+      dayNumber
+      ?? currentSummary?.day_number
+      ?? debug.latest_completed_day
+      ?? 0,
+    );
+    if (!targetDay || targetDay <= 0) return;
+
+    try {
+      await acknowledgeEndOfDaySummary(playerId, targetDay);
+      autoOpenedSummaryDaysRef.current.add(targetDay);
+      setSummaryAutoOpenDay((current) => (current === targetDay ? null : current));
+      setBundle((current) => {
+        if (!current?.endOfDaySummary) return current;
+        const existingDebug = current.endOfDaySummary.debug_meta || {};
+        return {
+          ...current,
+          endOfDaySummary: {
+            ...current.endOfDaySummary,
+            debug_meta: {
+              ...existingDebug,
+              summary_seen_day: targetDay,
+              summary_seen_for_day: true,
+              should_auto_show_summary: false,
+              summary_gate_reason: 'acknowledged_by_player',
+            },
+          },
+        };
+      });
+      if (INTERACTION_DIAGNOSTICS_ENABLED) {
+        recordInfo('gameplayLoop', 'Summary acknowledged by player.', {
+          action: 'summary_ack',
+          context: {
+            playerId,
+            targetDay,
+          },
+        });
+      }
+    } catch (ackError) {
+      recordWarning('gameplayLoop', 'Failed to acknowledge summary.', {
+        action: 'summary_ack',
+        context: {
+          playerId,
+          targetDay,
+        },
+        error: ackError,
+      });
+    }
+  }, [bundle?.endOfDaySummary, playerId]);
+
+  const requestFeedbackPrompt = useCallback((gameDay: number) => {
+    const normalizedDay = Math.max(1, Math.round(Number(gameDay) || 0));
+    if (promptedFeedbackDaysRef.current.has(normalizedDay)) {
+      return;
+    }
+    promptedFeedbackDaysRef.current.add(normalizedDay);
+    setFeedbackPromptDay(normalizedDay);
+    if (INTERACTION_DIAGNOSTICS_ENABLED) {
+      recordInfo('gameplayLoop', 'Feedback prompt armed for settlement day.', {
+        action: 'feedback_prompt_arm',
+        context: {
+          playerId,
+          gameDay: normalizedDay,
+        },
+      });
+    }
+  }, [playerId]);
+
+  const dismissFeedbackPrompt = useCallback(() => {
+    setFeedbackPromptDay(null);
+  }, []);
 
   useEffect(() => {
     void refresh({ includeEndOfDaySummary: false });
@@ -445,6 +588,7 @@ export function GameplayLoopProvider({
     const nextDay = await dailyProgression.markDayStarted();
     dailySession.resetSession({ nextDay });
     setBundle((current) => (current ? { ...current, endOfDaySummary: null } : current));
+    setSummaryAutoOpenDay(null);
     setFeedback({
       tone: 'info',
       message: `Day ${nextDay} started. New brief and markets loaded.`,
@@ -465,12 +609,10 @@ export function GameplayLoopProvider({
         tone: 'success',
         message: `${side === 'buy' ? 'Bought' : 'Sold'} ${result.shares} share${result.shares === 1 ? '' : 's'} of ${result.stock_id}.`,
       });
-      const refreshedMarket = await getStockMarketSnapshot(playerId).catch(() => null);
-      if (refreshedMarket) {
-        setBundle((current) => (current ? { ...current, stockMarket: refreshedMarket } : current));
-      } else {
-        await refresh({ silent: true });
-      }
+      await refresh({
+        silent: true,
+        includeEndOfDaySummary: dailySession.sessionStatus === 'ended',
+      });
     } catch (tradeError) {
       setFeedback({
         tone: 'error',
@@ -479,7 +621,7 @@ export function GameplayLoopProvider({
     } finally {
       setPendingTrade(null);
     }
-  }, [playerId, refresh]);
+  }, [dailySession.sessionStatus, playerId, refresh]);
 
   const buyOneStock = useCallback(async (stockId: string) => {
     await performTrade(stockId, 'buy', 1);
@@ -525,6 +667,13 @@ export function GameplayLoopProvider({
     sourceMode: bundle?.source.mode || 'live',
     sourceNotes: bundle?.source.notes || [],
     lastSyncedAt: bundle?.fetchedAt || null,
+    transactionHistory,
+    feedbackPromptDay,
+    requestFeedbackPrompt,
+    dismissFeedbackPrompt,
+    summaryAutoOpenDay,
+    consumeSummaryAutoOpen,
+    acknowledgeSummarySeen,
     feedback,
     setFeedback,
     refresh,
@@ -559,6 +708,13 @@ export function GameplayLoopProvider({
     loading,
     refreshing,
     error,
+    transactionHistory,
+    feedbackPromptDay,
+    requestFeedbackPrompt,
+    dismissFeedbackPrompt,
+    summaryAutoOpenDay,
+    consumeSummaryAutoOpen,
+    acknowledgeSummarySeen,
     feedback,
     refresh,
     dailySession,
