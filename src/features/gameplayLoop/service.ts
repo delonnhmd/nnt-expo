@@ -8,7 +8,7 @@ import {
 import { getEconomyPresentationSummary } from '@/lib/api/economyPresentation';
 import { getStockMarketSnapshot } from '@/lib/api/stocks';
 import { getBusinessPlan } from '@/lib/api/strategicPlanning';
-import { recordWarning } from '@/lib/logger';
+import { recordInfo, recordWarning } from '@/lib/logger';
 import { ActionPreviewRequest, ActionPreviewResponse, EndOfDaySummaryResponse } from '@/types/gameplay';
 
 import {
@@ -18,7 +18,6 @@ import {
   createMockBusinesses,
   createMockDashboard,
   createMockEconomySummary,
-  createMockEndOfDaySummary,
   createMockStockMarket,
 } from './mockData';
 import { GameplayLoopBundle, GameplayLoopDataMode } from './types';
@@ -69,6 +68,36 @@ async function resolveSection<T>(
   }
 }
 
+async function resolveOptionalSection<T>(
+  playerId: string,
+  section: string,
+  loader: () => Promise<T>,
+): Promise<ResolvedSection<T | null>> {
+  try {
+    const value = await loader();
+    return {
+      value,
+      usedMock: false,
+      note: null,
+    };
+  } catch (error) {
+    const reason = normalizeError(error);
+    recordInfo('gameplayLoop', `Optional section unavailable: ${section}.`, {
+      action: 'resolve_optional_section',
+      context: {
+        playerId,
+        section,
+        reason,
+      },
+    });
+    return {
+      value: null,
+      usedMock: false,
+      note: `${section}: ${reason}`,
+    };
+  }
+}
+
 function deriveSourceMode(mockCount: number, totalCount: number): GameplayLoopDataMode {
   if (mockCount <= 0) return 'live';
   if (mockCount >= totalCount) return 'mock';
@@ -110,11 +139,10 @@ export async function loadGameplayLoopBundle(
         () => createMockBusinessPlan(playerId),
       ),
       includeEndOfDaySummary
-        ? resolveSection(
+        ? resolveOptionalSection(
           playerId,
           'end_of_day_summary',
           () => getEndOfDaySummary(playerId),
-          () => createMockEndOfDaySummary(playerId),
         )
         : Promise.resolve<ResolvedSection<EndOfDaySummaryResponse | null>>({
           value: null,
@@ -123,9 +151,21 @@ export async function loadGameplayLoopBundle(
         }),
     ]);
 
-  const sections = [dashboard, actionHub, economySummary, stockMarket, businesses, businessPlan, endOfDaySummary];
-  const mockCount = sections.filter((entry) => entry.usedMock).length;
-  const notes = sections.map((entry) => entry.note).filter((entry): entry is string => Boolean(entry));
+  const sourceSections = [dashboard, actionHub, economySummary, stockMarket, businesses, businessPlan];
+  const mockCount = sourceSections.filter((entry) => entry.usedMock).length;
+  const notes = [...sourceSections, endOfDaySummary]
+    .map((entry) => entry.note)
+    .filter((entry): entry is string => Boolean(entry));
+
+  recordInfo('gameplayLoop', 'End-of-day summary gate evaluated.', {
+    action: 'summary_gate',
+    context: {
+      playerId,
+      includeEndOfDaySummary,
+      summaryExists: Boolean(endOfDaySummary.value),
+      summaryNote: endOfDaySummary.note,
+    },
+  });
 
   return {
     playerId,
@@ -137,7 +177,7 @@ export async function loadGameplayLoopBundle(
     businessPlan: businessPlan.value,
     endOfDaySummary: endOfDaySummary.value,
     source: {
-      mode: deriveSourceMode(mockCount, sections.length),
+      mode: deriveSourceMode(mockCount, sourceSections.length),
       notes,
     },
     fetchedAt: new Date().toISOString(),
@@ -162,7 +202,7 @@ export async function loadActionPreviewWithFallback(
 
 export async function loadEndOfDaySummaryWithFallback(
   playerId: string,
-): Promise<{ summary: EndOfDaySummaryResponse; usedMock: boolean; note: string | null }> {
+): Promise<{ summary: EndOfDaySummaryResponse | null; usedMock: boolean; note: string | null }> {
   try {
     const summary = await getEndOfDaySummary(playerId);
     return {
@@ -171,10 +211,18 @@ export async function loadEndOfDaySummaryWithFallback(
       note: null,
     };
   } catch (error) {
+    const reason = normalizeError(error);
+    recordInfo('gameplayLoop', 'End-of-day summary unavailable after settlement.', {
+      action: 'summary_missing_after_settlement',
+      context: {
+        playerId,
+        reason,
+      },
+    });
     return {
-      summary: createMockEndOfDaySummary(playerId),
-      usedMock: true,
-      note: `end_of_day_summary: ${normalizeError(error)}`,
+      summary: null,
+      usedMock: false,
+      note: `end_of_day_summary: ${reason}`,
     };
   }
 }

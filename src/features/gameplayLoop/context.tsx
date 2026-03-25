@@ -187,6 +187,17 @@ export function GameplayLoopProvider({
   const refresh = useCallback(async (options?: RefreshOptions) => {
     const silent = Boolean(options?.silent);
     const includeEndOfDaySummary = options?.includeEndOfDaySummary ?? dailySession.sessionStatus === 'ended';
+    if (INTERACTION_DIAGNOSTICS_ENABLED) {
+      recordInfo('gameplayLoop', 'Refreshing gameplay bundle.', {
+        action: 'refresh_bundle_start',
+        context: {
+          playerId,
+          silent,
+          includeEndOfDaySummary,
+          sessionStatus: dailySession.sessionStatus,
+        },
+      });
+    }
 
     if (!silent && !hasBundleRef.current) {
       setLoading(true);
@@ -248,6 +259,25 @@ export function GameplayLoopProvider({
   const economyState = useEconomyState(canonicalState);
   const jobIncome = useJobIncome(canonicalState);
   const expenseDebt = useExpenseDebt(canonicalState);
+  const newPlayerFirstSession = Boolean(
+    bundle?.dashboard?.debug_meta?.new_player_first_session
+    ?? bundle?.actionHub?.debug_meta?.new_player_first_session
+    ?? false,
+  );
+  const hasSettledSummaryPayload = Boolean(bundle?.endOfDaySummary);
+
+  useEffect(() => {
+    if (!INTERACTION_DIAGNOSTICS_ENABLED || !bundle) return;
+    recordInfo('gameplayLoop', 'First-session gate evaluated.', {
+      action: 'first_session_gate',
+      context: {
+        playerId,
+        newPlayerFirstSession,
+        hasSettledSummaryPayload,
+        sessionStatus: dailySession.sessionStatus,
+      },
+    });
+  }, [bundle, dailySession.sessionStatus, hasSettledSummaryPayload, newPlayerFirstSession, playerId]);
 
   const allActions = useMemo(() => {
     if (!bundle) return [];
@@ -370,13 +400,29 @@ export function GameplayLoopProvider({
       const result = await settleDay(playerId);
       dailySession.endDay();
       await dailyProgression.markDayAdvanced(result.settled_day);
-      const { summary } = await loadEndOfDaySummaryWithFallback(playerId);
+      const { summary, note } = await loadEndOfDaySummaryWithFallback(playerId);
 
       setBundle((current) => (current ? { ...current, endOfDaySummary: summary } : current));
-      setFeedback({
-        tone: 'success',
-        message: result.summary_headline || result.summary || result.message || 'Day settled.',
-      });
+      if (summary) {
+        setFeedback({
+          tone: 'success',
+          message: result.summary_headline || result.summary || result.message || 'Day settled.',
+        });
+      } else {
+        setFeedback({
+          tone: 'info',
+          message: `${result.summary_headline || result.summary || result.message || 'Day settled.'} Summary data is not ready yet.`,
+        });
+        if (note && INTERACTION_DIAGNOSTICS_ENABLED) {
+          recordWarning('gameplayLoop', 'Summary payload missing after settlement.', {
+            action: 'summary_missing_after_settlement',
+            context: {
+              playerId,
+              note,
+            },
+          });
+        }
+      }
 
       await refresh({
         silent: true,

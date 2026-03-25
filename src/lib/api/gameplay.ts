@@ -1,4 +1,4 @@
-import { fetchApiWithFallback } from '@/lib/apiClient';
+import { fetchApi, fetchApiWithFallback } from '@/lib/apiClient';
 import {
   clampDeltaRange,
   normalizeCreditScore,
@@ -11,6 +11,7 @@ import {
   normalizeTimeCostUnits,
   safeNetCashFlowCalculation,
 } from '@/lib/economySafety';
+import { recordInfo, recordWarning } from '@/lib/logger';
 import {
   ActionImpact,
   ActionExecutionResponse,
@@ -30,6 +31,23 @@ import {
   WeeklyPlayerSummaryResponse,
 } from '@/types/gameplay';
 
+
+const GAMEPLAY_ROUTE_DIAGNOSTICS_ENABLED =
+  __DEV__
+  || process.env.EXPO_PUBLIC_INTERACTION_DIAGNOSTICS === 'true'
+  || process.env.EXPO_PUBLIC_INTERACTION_DIAGNOSTICS === '1';
+
+function logCanonicalRoute(resource: string, playerId: string, path: string): void {
+  if (!GAMEPLAY_ROUTE_DIAGNOSTICS_ENABLED) return;
+  recordInfo('gameplayApi', 'Using canonical gameplay route.', {
+    action: 'canonical_route',
+    context: {
+      resource,
+      playerId,
+      path,
+    },
+  });
+}
 
 function toNumber(value: unknown, fallback = 0): number {
   return normalizeFiniteNumber(value, { fallback });
@@ -399,27 +417,27 @@ function normalizeEndDay(raw: Record<string, unknown>, playerId: string): EndDay
 }
 
 export async function getPlayerDashboard(playerId: string): Promise<PlayerDashboardResponse> {
-  const raw = await fetchApiWithFallback<Record<string, unknown>>([
-    `/gameplay/player/${playerId}/dashboard`,
-    `/gameplay/${playerId}/dashboard`,
-    `/player/${playerId}/dashboard`,
-    `/dashboard/player/${playerId}`,
-    `/briefs/player/${playerId}/latest`,
-    `/day/summary/${playerId}`,
-  ]);
+  const path = `/gameplay/player/${playerId}/dashboard`;
+  logCanonicalRoute('dashboard', playerId, path);
+  const raw = await fetchApi<Record<string, unknown>>(path);
   return normalizeDashboard(raw, playerId);
 }
 
 export async function getPlayerActions(playerId: string): Promise<DailyActionHubResponse> {
+  const path = `/gameplay/player/${playerId}/actions`;
   try {
-    const raw = await fetchApiWithFallback<Record<string, unknown>>([
-      `/gameplay/player/${playerId}/actions`,
-      `/gameplay/player/${playerId}/action-hub`,
-      `/gameplay/${playerId}/actions`,
-      `/player/${playerId}/actions`,
-    ]);
+    logCanonicalRoute('actions', playerId, path);
+    const raw = await fetchApi<Record<string, unknown>>(path);
     return normalizeActionHub(raw, playerId);
-  } catch {
+  } catch (error) {
+    recordWarning('gameplayApi', 'Canonical action-hub request failed; using brief-derived fallback.', {
+      action: 'actions_fallback',
+      context: {
+        playerId,
+        path,
+      },
+      error,
+    });
     const brief = await fetchApiWithFallback<Record<string, unknown>>([`/briefs/player/${playerId}/latest`]);
     const hints = Array.isArray(brief.action_hints_json) ? brief.action_hints_json : [];
     return {
@@ -440,27 +458,20 @@ export async function previewPlayerAction(
   payload: ActionPreviewRequest,
   init?: RequestInit,
 ): Promise<ActionPreviewResponse> {
-  const raw = await fetchApiWithFallback<Record<string, unknown>>(
-    [
-      `/gameplay/player/${playerId}/actions/preview`,
-      `/gameplay/player/${playerId}/action-preview`,
-      `/player/${playerId}/actions/preview`,
-    ],
-    {
-      ...(init || {}),
-      method: 'POST',
-      body: JSON.stringify(payload),
-    },
-  );
+  const path = `/gameplay/player/${playerId}/actions/preview`;
+  logCanonicalRoute('action_preview', playerId, path);
+  const raw = await fetchApi<Record<string, unknown>>(path, {
+    ...(init || {}),
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
   return normalizePreview(raw, playerId, payload.action_key);
 }
 
 export async function getEndOfDaySummary(playerId: string): Promise<EndOfDaySummaryResponse> {
-  const raw = await fetchApiWithFallback<Record<string, unknown>>([
-    `/gameplay/player/${playerId}/end-of-day-summary`,
-    `/player/${playerId}/end-of-day-summary`,
-    `/day/summary/${playerId}`,
-  ]);
+  const path = `/gameplay/player/${playerId}/end-of-day-summary`;
+  logCanonicalRoute('end_of_day_summary', playerId, path);
+  const raw = await fetchApi<Record<string, unknown>>(path);
   return normalizeEndOfDaySummary(raw, playerId);
 }
 
@@ -483,19 +494,14 @@ export async function executeAction(
     action_key: canonical,
     parameters: params,
   };
+  const canonicalExecutePath = `/gameplay/player/${playerId}/actions/execute`;
 
   try {
-    const unified = await fetchApiWithFallback<Record<string, unknown>>(
-      [
-        `/gameplay/player/${playerId}/actions/execute`,
-        `/gameplay/player/${playerId}/execute-action`,
-        `/player/${playerId}/actions/execute`,
-      ],
-      {
-        method: 'POST',
-        body: JSON.stringify(unifiedPayload),
-      },
-    );
+    logCanonicalRoute('action_execute', playerId, canonicalExecutePath);
+    const unified = await fetchApi<Record<string, unknown>>(canonicalExecutePath, {
+      method: 'POST',
+      body: JSON.stringify(unifiedPayload),
+    });
 
     return executionResponseBase(
       playerId,
@@ -703,15 +709,10 @@ export async function executeAction(
 }
 
 export async function endDay(playerId: string): Promise<EndDayResponse> {
+  const canonicalEndDayPath = `/gameplay/player/${playerId}/end-day`;
   try {
-    const unified = await fetchApiWithFallback<Record<string, unknown>>(
-      [
-        `/gameplay/player/${playerId}/end-day`,
-        `/gameplay/${playerId}/end-day`,
-        `/player/${playerId}/end-day`,
-      ],
-      { method: 'POST', body: '{}' },
-    );
+    logCanonicalRoute('end_day', playerId, canonicalEndDayPath);
+    const unified = await fetchApi<Record<string, unknown>>(canonicalEndDayPath, { method: 'POST', body: '{}' });
     return normalizeEndDay(unified, playerId);
   } catch {
     // Fallback to legacy day progression endpoints below.

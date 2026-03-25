@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import EndOfDaySummaryCard from '@/components/gameplay/EndOfDaySummaryCard';
@@ -7,6 +7,7 @@ import EmptyStateView from '@/components/ui/EmptyStateView';
 import { theme } from '@/design/theme';
 import { useOnboarding } from '@/features/onboarding';
 import { formatDelta, formatMoney } from '@/lib/gameplayFormatters';
+import { recordInfo } from '@/lib/logger';
 import { useScreenTimer } from '@/hooks/useScreenTimer';
 
 import { useGameplayLoop } from '../context';
@@ -21,6 +22,11 @@ import {
 } from '../components/GameplayUIParts';
 import GameplayLoopScaffold from '../GameplayLoopScaffold';
 
+const INTERACTION_DIAGNOSTICS_ENABLED =
+  __DEV__
+  || process.env.EXPO_PUBLIC_INTERACTION_DIAGNOSTICS === 'true'
+  || process.env.EXPO_PUBLIC_INTERACTION_DIAGNOSTICS === '1';
+
 export default function SummaryScreen() {
   useScreenTimer('summary');
   const loop = useGameplayLoop();
@@ -29,6 +35,7 @@ export default function SummaryScreen() {
   const simplified = onboarding.isSimplifiedMode;
   const summary = loop.endOfDaySummary;
   const hasSummary = Boolean(summary);
+  const summaryMissingAfterSettlement = !hasSummary && loop.dailySession.sessionStatus === 'ended';
   const netTone = toneFromSignedValue(summary?.net_change_xgp ?? 0);
   const payoffTitle = summary
     ? summary.net_change_xgp >= 0
@@ -37,6 +44,23 @@ export default function SummaryScreen() {
     : 'Settle the day to unlock today\'s payoff screen.';
   const winsLine = summary?.biggest_gain || 'No biggest gain recorded yet.';
   const lossLine = summary?.biggest_loss || 'No biggest loss recorded yet.';
+
+  useEffect(() => {
+    if (!INTERACTION_DIAGNOSTICS_ENABLED) return;
+    recordInfo('gameplayLoop', 'Summary screen gate evaluated.', {
+      action: 'summary_screen_gate',
+      context: {
+        playerId: loop.playerId,
+        hasSummary,
+        sessionStatus: loop.dailySession.sessionStatus,
+        reason: hasSummary
+          ? 'settlement_summary_present'
+          : loop.dailySession.sessionStatus === 'ended'
+            ? 'session_ended_but_summary_missing'
+            : 'session_not_ended_yet',
+      },
+    });
+  }, [hasSummary, loop.dailySession.sessionStatus, loop.playerId]);
 
   return (
     <GameplayLoopScaffold
@@ -47,23 +71,25 @@ export default function SummaryScreen() {
         <GameplayStickyActionArea
           summary={hasSummary
             ? `Tomorrow setup: ${summary?.guided_watch_tomorrow || summary?.tomorrow_warnings?.[0] || 'Start with one low-risk income action.'}`
-            : `Session ${loop.dailySession.sessionStatus}. Run settlement to generate today's recap.`}
-          secondaryLabel={guidedSummaryActive ? undefined : hasSummary ? 'Open Dashboard' : 'Go To Work'}
+            : summaryMissingAfterSettlement
+              ? 'Settlement completed but summary payload is unavailable. You can continue to the next day.'
+              : `Session ${loop.dailySession.sessionStatus}. Run settlement to generate today's recap.`}
+          secondaryLabel={guidedSummaryActive ? undefined : hasSummary || summaryMissingAfterSettlement ? 'Open Dashboard' : 'Go To Work'}
           onSecondaryPress={guidedSummaryActive
             ? undefined
             : () => {
-              onboarding.navigateTo(hasSummary ? 'dashboard' : 'work');
+              onboarding.navigateTo(hasSummary || summaryMissingAfterSettlement ? 'dashboard' : 'work');
             }}
-          primaryLabel={hasSummary ? 'Start Next Day' : loop.endingDay ? 'Settling Day...' : 'Run End Of Day Settlement'}
-          onPrimaryPress={hasSummary
+          primaryLabel={hasSummary || summaryMissingAfterSettlement ? 'Start Next Day' : loop.endingDay ? 'Settling Day...' : 'Run End Of Day Settlement'}
+          onPrimaryPress={hasSummary || summaryMissingAfterSettlement
             ? () => {
               void loop.startNextDay();
             }
             : () => {
               void loop.endCurrentDay();
             }}
-          primaryLoading={!hasSummary && loop.endingDay}
-          primaryDisabled={!hasSummary && (!loop.dailyProgression.canAdvanceDay || loop.endingDay)}
+          primaryLoading={!hasSummary && !summaryMissingAfterSettlement && loop.endingDay}
+          primaryDisabled={!hasSummary && !summaryMissingAfterSettlement && (!loop.dailyProgression.canAdvanceDay || loop.endingDay)}
         />
       )}
     >
@@ -134,6 +160,11 @@ export default function SummaryScreen() {
             <EndOfDaySummaryCard summary={summary} />
           </OnboardingHighlight>
         </>
+      ) : summaryMissingAfterSettlement ? (
+        <EmptyStateView
+          title="Summary temporarily unavailable"
+          subtitle="Settlement completed. You can continue to the next day, then refresh later for full recap data."
+        />
       ) : (
         <EmptyStateView
           title="No settled summary yet"
