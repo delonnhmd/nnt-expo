@@ -39,10 +39,12 @@ export default function PageContainer({
 
 const styles = StyleSheet.create({
   outer: {
+    flex: 1,
     width: '100%',
     alignItems: 'center',
   },
   inner: {
+    flex: 1,
     width: '100%',
   },
 });

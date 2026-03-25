@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { usePathname } from 'expo-router';
-import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { LayoutChangeEvent, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { OnboardingStepOverlay } from '@/components/onboarding';
 import AppShell from '@/components/layout/AppShell';
@@ -81,6 +81,7 @@ export default function GameplayLoopScaffold({
   const pathname = usePathname();
   const [feedbackDay, setFeedbackDay] = useState<number | null>(null);
   const [showIssueReport, setShowIssueReport] = useState(false);
+  const [measuredContentHeight, setMeasuredContentHeight] = useState<number | null>(null);
 
   // Dev bypass: EXPO_PUBLIC_SOFT_LAUNCH_BYPASS=true skips the gate entirely.
   const bypassGate =
@@ -131,6 +132,54 @@ export default function GameplayLoopScaffold({
       },
     });
   }, [activeNavKey, loop.playerId, pathname]);
+
+  useEffect(() => {
+    if (!INTERACTION_DIAGNOSTICS_ENABLED) return;
+    recordInfo('gameplayLoop', 'Gameplay screen content diagnostics.', {
+      action: 'screen_content_mount',
+      context: {
+        playerId: loop.playerId,
+        screen: activeNavKey,
+        hasBundle: Boolean(loop.bundle),
+        hasDashboard: Boolean(loop.dashboard),
+        hasActionHub: Boolean(loop.actionHub),
+        hasEconomySummary: Boolean(loop.economySummary),
+        hasStockMarket: Boolean(loop.stockMarket),
+        hasBusinesses: Boolean(loop.businesses),
+        hasEndOfDaySummary: Boolean(loop.endOfDaySummary),
+        animationWrapperMode: 'native_safe_plain',
+        fallbackPlainContainer: true,
+        measuredContentHeight,
+      },
+    });
+  }, [
+    activeNavKey,
+    loop.actionHub,
+    loop.bundle,
+    loop.businesses,
+    loop.dashboard,
+    loop.economySummary,
+    loop.endOfDaySummary,
+    loop.playerId,
+    loop.stockMarket,
+    measuredContentHeight,
+  ]);
+
+  const handleContentLayout = (event: LayoutChangeEvent) => {
+    const nextHeight = Math.round(event.nativeEvent.layout.height || 0);
+    if (!nextHeight) return;
+    if (nextHeight === measuredContentHeight) return;
+    setMeasuredContentHeight(nextHeight);
+    if (!INTERACTION_DIAGNOSTICS_ENABLED) return;
+    recordInfo('gameplayLoop', 'Gameplay content layout measured.', {
+      action: 'content_layout',
+      context: {
+        playerId: loop.playerId,
+        screen: activeNavKey,
+        measuredContentHeight: nextHeight,
+      },
+    });
+  };
 
   useEffect(() => {
     if (!INTERACTION_DIAGNOSTICS_ENABLED) return;
@@ -243,7 +292,7 @@ export default function GameplayLoopScaffold({
             />
           )}
         >
-          <ContentStack gap={theme.spacing.md}>
+          <ContentStack gap={theme.spacing.md} onLayout={handleContentLayout}>
             <PlaytestObserver onRequestFeedback={(day) => setFeedbackDay(day)} />
             {onboardingActive ? <OnboardingStepOverlay /> : null}
 

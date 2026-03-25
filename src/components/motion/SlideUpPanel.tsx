@@ -12,6 +12,7 @@ import {
 import { motion, useReducedMotion } from '@/design/motion';
 import { theme } from '@/design/theme';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { recordInfo } from '@/lib/logger';
 
 type PanelMode = 'sheet' | 'center';
 
@@ -34,6 +35,10 @@ export default function SlideUpPanel({
 
   const opacity = useRef(new Animated.Value(0)).current;
   const translate = useRef(new Animated.Value(24)).current;
+  const diagnosticsEnabled =
+    __DEV__
+    || process.env.EXPO_PUBLIC_INTERACTION_DIAGNOSTICS === 'true'
+    || process.env.EXPO_PUBLIC_INTERACTION_DIAGNOSTICS === '1';
 
   useEffect(() => {
     if (!visible) {
@@ -66,25 +71,46 @@ export default function SlideUpPanel({
 
   const panelContainerStyle = useMemo(
     () => [
-      styles.panel,
       resolvedMode === 'sheet' ? styles.sheetPanel : styles.centerPanel,
       contentStyle,
+    ],
+    [contentStyle, resolvedMode],
+  );
+
+  const panelAnimatedStyle = useMemo(
+    () => [
+      styles.panelAnimated,
       {
         opacity,
         transform: [{ translateY: translate }],
       },
     ],
-    [contentStyle, opacity, resolvedMode, translate],
+    [opacity, translate],
   );
 
   const bodyStyle = resolvedMode === 'sheet' ? styles.sheetBody : styles.centerBody;
+
+  useEffect(() => {
+    if (!diagnosticsEnabled) return;
+    recordInfo('ui.slideUpPanel', 'SlideUpPanel render mode updated.', {
+      action: 'render_mode',
+      context: {
+        visible,
+        resolvedMode,
+        animationWrapperActive: true,
+        maxHeightMovedToStaticContainer: true,
+      },
+    });
+  }, [diagnosticsEnabled, resolvedMode, visible]);
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
       <View style={styles.backdropWrap}>
         <Pressable style={styles.backdropHit} onPress={onClose} />
         <View style={bodyStyle}>
-          <Animated.View style={panelContainerStyle}>{children}</Animated.View>
+          <View style={panelContainerStyle}>
+            <Animated.View style={panelAnimatedStyle}>{children}</Animated.View>
+          </View>
         </View>
       </View>
     </Modal>
@@ -112,7 +138,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.sm,
     paddingBottom: theme.spacing.sm,
   },
-  panel: {
+  panelAnimated: {
+    width: '100%',
     borderWidth: 1,
     borderColor: theme.color.border,
     backgroundColor: theme.color.surface,
@@ -124,10 +151,12 @@ const styles = StyleSheet.create({
     maxWidth: 760,
     maxHeight: '90%',
     borderRadius: theme.radius.xl,
+    overflow: 'hidden',
   },
   sheetPanel: {
     width: '100%',
     maxHeight: '88%',
     borderRadius: theme.radius.xl,
+    overflow: 'hidden',
   },
 });
