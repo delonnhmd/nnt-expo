@@ -1,15 +1,17 @@
 import React from 'react';
+import { StyleSheet, View } from 'react-native';
 
 import { OnboardingHighlight } from '@/components/onboarding';
-import PlayerStatsBar from '@/components/gameplay/PlayerStatsBar';
+import { theme } from '@/design/theme';
 import { useOnboarding } from '@/features/onboarding';
 import { formatMoney } from '@/lib/gameplayFormatters';
 import { useScreenTimer } from '@/hooks/useScreenTimer';
+import PrimaryButton from '@/components/ui/PrimaryButton';
+import SecondaryButton from '@/components/ui/SecondaryButton';
 
 import { useGameplayLoop } from '../context';
 import {
   GameplayCompactMetricRows,
-  GameplayOpportunityCallout,
   GameplayStickyActionArea,
   GameplaySummaryCard,
   GameplayWarningBanner,
@@ -26,125 +28,132 @@ export default function DashboardScreen() {
   const loop = useGameplayLoop();
   const onboarding = useOnboarding();
   const guidedDashboardActive = onboarding.isActive && onboarding.currentStep?.route === 'dashboard';
-  const simplified = onboarding.isSimplifiedMode;
   const stats = loop.dashboard?.stats;
   const netCashFlow = loop.economyState.netCashFlow ?? 0;
-  const nextAction = loop.actionHub?.recommended_actions?.[0]?.title
-    || loop.dashboard?.recommended_actions?.[0]?.title
-    || 'Open Work and preview your safest move.';
-  const pressureLabel = loop.expenseDebt.debtPressure.charAt(0).toUpperCase() + loop.expenseDebt.debtPressure.slice(1);
-  const pressureMessage = loop.dashboard?.top_risks?.[0]?.description
-    || loop.economySummary?.player_warnings?.[0]
-    || 'No immediate risk headline, but keep a cash buffer before optional plays.';
-  const opportunityMessage = loop.dashboard?.top_opportunities?.[0]?.description
-    || loop.economySummary?.player_opportunities?.[0]
-    || 'No direct upside flagged. Prioritize consistent cash generation.';
+  const pressureLabel = loop.expenseDebt.debtPressure.charAt(0).toUpperCase()
+    + loop.expenseDebt.debtPressure.slice(1);
+  const cash = stats?.cash_xgp ?? 0;
+  const stress = stats?.stress ?? 0;
+  const health = stats?.health ?? 100;
 
   return (
     <GameplayLoopScaffold
-      title="Player Dashboard"
-      subtitle="Financial health, pressure, and what to do next"
+      title="Dashboard"
+      subtitle="Your money, health, and what to do now"
       activeNavKey="dashboard"
       footer={guidedDashboardActive ? null : (
         <GameplayStickyActionArea
-          summary={`Next best action: ${nextAction}`}
-          secondaryLabel="Open Market"
-          onSecondaryPress={() => {
-            onboarding.navigateTo('market');
-          }}
+          secondaryLabel="Check Market"
+          onSecondaryPress={() => onboarding.navigateTo('market')}
           primaryLabel={loop.dailySession.sessionStatus === 'active' ? 'Go To Work' : 'Open Summary'}
-          onPrimaryPress={() => {
-            onboarding.navigateTo(loop.dailySession.sessionStatus === 'active' ? 'work' : 'summary');
-          }}
+          onPrimaryPress={() =>
+            onboarding.navigateTo(loop.dailySession.sessionStatus === 'active' ? 'work' : 'summary')
+          }
         />
       )}
     >
+      {/* ── Stats ── */}
       {stats ? (
         <OnboardingHighlight target="dashboard-core-stats">
-          <GameplaySummaryCard
-            eyebrow="Top-level health"
-            title="Finance + Survival Snapshot"
-            subtitle="This is your primary decision surface for today."
-          >
-            {simplified ? (
-              <GameplayCompactMetricRows
-                items={[
-                  { label: 'Cash', value: formatMoney(stats.cash_xgp), tone: 'info' },
-                  { label: 'Stress', value: String(Math.round(stats.stress)), tone: stats.stress >= 65 ? 'warning' : 'neutral' },
-                  { label: 'Time left', value: `${loop.dailySession.remainingTimeUnits}/${loop.dailySession.totalTimeUnits} units`, tone: 'info' },
-                  { label: 'Most important next action', value: nextAction, tone: 'info' },
-                ]}
-              />
-            ) : (
-              <PlayerStatsBar
-                stats={stats}
-                economy={loop.economyState}
-                currentGameDay={loop.dailyProgression.currentGameDay}
-                jobIncome={loop.jobIncome}
-                expenseDebt={loop.expenseDebt}
-              />
-            )}
+          <GameplaySummaryCard eyebrow="Your status" title="Money, Health &amp; Stress">
+            <GameplayCompactMetricRows
+              items={[
+                {
+                  label: 'Cash',
+                  value: formatMoney(cash),
+                  tone: cash < 50 ? 'danger' : cash < 200 ? 'warning' : 'positive',
+                },
+                {
+                  label: 'Money in / out today',
+                  value: signedCurrency(netCashFlow),
+                  tone: netCashFlow >= 0 ? 'positive' : 'danger',
+                },
+                {
+                  label: 'Debt',
+                  value: formatMoney(stats.debt_xgp),
+                  tone: stats.debt_xgp > cash ? 'danger' : 'neutral',
+                },
+                {
+                  label: 'Health',
+                  value: `${Math.round(health)} / 100`,
+                  tone: health < 40 ? 'danger' : health < 65 ? 'warning' : 'positive',
+                },
+                {
+                  label: 'Stress',
+                  value: String(Math.round(stress)),
+                  tone: stress >= 75 ? 'danger' : stress >= 55 ? 'warning' : 'neutral',
+                },
+                {
+                  label: 'Debt pressure',
+                  value: pressureLabel,
+                  tone: loop.expenseDebt.debtWarning ? 'danger' : 'neutral',
+                },
+              ]}
+            />
           </GameplaySummaryCard>
         </OnboardingHighlight>
       ) : (
         <GameplayWarningBanner
-          title="Dashboard data unavailable"
-          message="Refresh to load player snapshot data from backend or fallback bundle."
+          title="No dashboard data"
+          message="Pull to refresh to load your player stats."
           tone="info"
         />
       )}
 
-      {!simplified ? (
-        <GameplaySummaryCard
-          eyebrow="Pressure and opportunity"
-          title="Today Decision Signals"
-          subtitle="Read these before choosing your next action."
-        >
-          <GameplayCompactMetricRows
-            items={[
-              {
-                label: 'Daily net movement',
-                value: signedCurrency(netCashFlow),
-                tone: netCashFlow >= 0 ? 'positive' : 'danger',
-              },
-              {
-                label: 'Debt pressure',
-                value: pressureLabel,
-                tone: loop.expenseDebt.debtWarning ? 'danger' : 'warning',
-              },
-              {
-                label: 'Actions taken',
-                value: String(loop.dailySession.actionsTakenToday.length),
-                tone: 'info',
-              },
-              {
-                label: 'Remaining time',
-                value: `${loop.dailySession.remainingTimeUnits}/${loop.dailySession.totalTimeUnits} units`,
-                tone: 'info',
-              },
-              {
-                label: 'Most important next action',
-                value: nextAction,
-                tone: 'info',
-              },
-            ]}
+      {/* ── Quick actions ── */}
+      <GameplaySummaryCard eyebrow="Actions" title="What can you do right now?">
+        <View style={styles.actionGrid}>
+          <PrimaryButton
+            label="Go To Work"
+            onPress={() => onboarding.navigateTo('work')}
+            style={styles.actionBtn}
           />
-        </GameplaySummaryCard>
-      ) : null}
+          <SecondaryButton
+            label="Eat a Meal"
+            onPress={() => onboarding.navigateTo('life')}
+            style={styles.actionBtn}
+          />
+          <SecondaryButton
+            label="Check Market"
+            onPress={() => onboarding.navigateTo('market')}
+            style={styles.actionBtn}
+          />
+          <SecondaryButton
+            label="Housing / Loan"
+            onPress={() => onboarding.navigateTo('life')}
+            style={styles.actionBtn}
+          />
+        </View>
+      </GameplaySummaryCard>
 
-      {!simplified ? (
-        <GameplayOpportunityCallout
-          title="Opportunity Signal"
-          message={opportunityMessage}
+      {/* ── Survival warnings ── */}
+      {cash < 50 ? (
+        <GameplayWarningBanner
+          title="Almost out of money"
+          message="Go to work to earn XGP, or borrow a quick loan on the Life tab to survive."
+          tone="danger"
         />
       ) : null}
-      {!simplified ? (
+
+      {stress >= 70 ? (
         <GameplayWarningBanner
-          title="Pressure Signal"
-          message={pressureMessage}
-          tone={loop.expenseDebt.debtWarning ? 'danger' : 'warning'}
+          title="Your stress is very high"
+          message="Eat a meal or take a recovery block to reduce stress before it affects your health."
+          tone="warning"
         />
       ) : null}
     </GameplayLoopScaffold>
   );
 }
+
+const styles = StyleSheet.create({
+  actionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.sm,
+  },
+  actionBtn: {
+    flex: 1,
+    minWidth: 140,
+  },
+});

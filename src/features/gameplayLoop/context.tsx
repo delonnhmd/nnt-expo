@@ -107,6 +107,9 @@ interface GameplayLoopContextValue {
   buyOneStock: (stockId: string) => Promise<void>;
   sellOneStock: (stockId: string) => Promise<void>;
   sellAllStock: (stockId: string, quantity: number) => Promise<void>;
+  eatMeal: (mealType: 'breakfast' | 'lunch' | 'dinner') => Promise<boolean>;
+  takeLoan: (amount: number) => Promise<boolean>;
+  selectHousing: (housingType: 'suburban' | 'downtown') => Promise<boolean>;
 }
 
 const GameplayLoopContext = createContext<GameplayLoopContextValue | null>(null);
@@ -651,6 +654,52 @@ export function GameplayLoopProvider({
     return executeAction(operateBusinessAction || fallbackAction);
   }, [executeAction, operateBusinessAction]);
 
+  const eatMeal = useCallback(async (mealType: 'breakfast' | 'lunch' | 'dinner'): Promise<boolean> => {
+    const action: DailyActionItem = {
+      action_key: 'eat_meal',
+      title: `Eat ${mealType.charAt(0).toUpperCase() + mealType.slice(1)}`,
+      description: `Eat ${mealType} to restore health and reduce stress (-6 XGP).`,
+      status: 'available',
+      blockers: [],
+      warnings: [],
+      tradeoffs: [],
+      confidence_level: 'high',
+      parameters: { meal_type: mealType },
+    };
+    return executeAction(action);
+  }, [executeAction]);
+
+  const takeLoan = useCallback(async (amount: number): Promise<boolean> => {
+    const safeAmount = Math.max(100, Math.min(500, Math.round(amount)));
+    const action: DailyActionItem = {
+      action_key: 'quick_loan',
+      title: `Borrow ${safeAmount} XGP`,
+      description: `Quick loan of ${safeAmount} XGP at 15% interest.`,
+      status: 'available',
+      blockers: [],
+      warnings: [],
+      tradeoffs: [],
+      confidence_level: 'medium',
+      parameters: { loan_amount: safeAmount },
+    };
+    return executeAction(action);
+  }, [executeAction]);
+
+  const selectHousing = useCallback(async (housingType: 'suburban' | 'downtown'): Promise<boolean> => {
+    const action: DailyActionItem = {
+      action_key: 'select_housing',
+      title: `Choose ${housingType.charAt(0).toUpperCase() + housingType.slice(1)} Housing`,
+      description: `Set your housing to ${housingType}.`,
+      status: 'available',
+      blockers: [],
+      warnings: [],
+      tradeoffs: [],
+      confidence_level: 'high',
+      parameters: { housing_type: housingType },
+    };
+    return executeAction(action);
+  }, [executeAction]);
+
   const value = useMemo<GameplayLoopContextValue>(() => ({
     playerId,
     bundle,
@@ -702,6 +751,9 @@ export function GameplayLoopProvider({
     buyOneStock,
     sellOneStock,
     sellAllStock,
+    eatMeal,
+    takeLoan,
+    selectHousing,
   }), [
     playerId,
     bundle,
@@ -742,6 +794,9 @@ export function GameplayLoopProvider({
     buyOneStock,
     sellOneStock,
     sellAllStock,
+    eatMeal,
+    takeLoan,
+    selectHousing,
   ]);
 
   return (

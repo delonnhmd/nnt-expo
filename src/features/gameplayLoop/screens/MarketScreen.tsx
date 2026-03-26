@@ -12,11 +12,9 @@ import { useScreenTimer } from '@/hooks/useScreenTimer';
 
 import { useGameplayLoop } from '../context';
 import {
-  GameplayOpportunityCallout,
   GameplayStickyActionArea,
   GameplaySummaryCard,
   GameplayTrendChip,
-  GameplayWarningBanner,
 } from '../components/GameplayUIParts';
 import GameplayLoopScaffold from '../GameplayLoopScaffold';
 
@@ -26,12 +24,6 @@ export default function MarketScreen() {
   const onboarding = useOnboarding();
   const guidedMarketActive = onboarding.isActive && onboarding.currentStep?.route === 'market';
   const simplified = onboarding.isSimplifiedMode;
-  const topOpportunity = loop.economySummary?.player_opportunities?.[0]
-    || loop.dashboard?.top_opportunities?.[0]?.description
-    || 'No direct market upside flagged.';
-  const topWarning = loop.economySummary?.player_warnings?.[0]
-    || loop.dashboard?.top_risks?.[0]?.description
-    || 'No direct market warning flagged.';
   const marketMood = loop.economySummary?.market_overview.current_market_mood || 'unknown';
   const basketCount = loop.economySummary?.price_trends.items.length || 0;
   const stockCount = loop.stockMarket?.stocks.length || 0;
@@ -58,8 +50,8 @@ export default function MarketScreen() {
     >
       <GameplaySummaryCard
         eyebrow="Market snapshot"
-        title="Baskets Vs Stocks"
-        subtitle="Separate mandatory economy movement from optional portfolio plays."
+        title="Baskets vs Stocks"
+        subtitle="Baskets affect daily costs. Stocks are optional extra income."
       >
         <View style={styles.chipRow}>
           <GameplayTrendChip label="Market mood" value={marketMood} tone="info" />
@@ -69,26 +61,12 @@ export default function MarketScreen() {
         </View>
       </GameplaySummaryCard>
 
-      {!simplified ? (
-        <GameplayOpportunityCallout
-          title="Opportunity Signal"
-          message={topOpportunity}
-        />
-      ) : null}
-      {!simplified ? (
-        <GameplayWarningBanner
-          title="Risk Signal"
-          message={topWarning}
-          tone="warning"
-        />
-      ) : null}
-
       {loop.economySummary ? (
         <OnboardingHighlight target="market-price-movement">
           <GameplaySummaryCard
             eyebrow="Baskets"
-            title="Economy Drivers"
-            subtitle="These moves affect household costs and business margins."
+            title="Why prices change today"
+            subtitle="These moves affect what you pay for food, rent, and goods."
           >
             <MarketOverviewCard overview={loop.economySummary.market_overview} />
             <PriceTrendsCard trends={loop.economySummary.price_trends} />

@@ -13,11 +13,9 @@ import { DailyActionItem } from '@/types/gameplay';
 
 import { useGameplayLoop } from '../context';
 import {
-  GameplayOpportunityCallout,
   GameplayStatCard,
   GameplayStickyActionArea,
   GameplaySummaryCard,
-  GameplayWarningBanner,
 } from '../components/GameplayUIParts';
 import GameplayLoopScaffold from '../GameplayLoopScaffold';
 
@@ -61,12 +59,7 @@ export default function WorkScreen() {
   const guidedWorkActive = onboarding.isActive && onboarding.currentStep?.route === 'work';
   const simplified = onboarding.isSimplifiedMode;
   const stats = loop.dashboard?.stats;
-  const leadTradeoff = loop.actionHub?.top_tradeoffs?.[0] || null;
-  const leadWarning = loop.actionHub?.next_risk_warnings?.[0] || null;
   const endDayDisabled = !loop.dailyProgression.canAdvanceDay || loop.endingDay;
-  const nextAction = loop.actionHub?.recommended_actions?.[0]?.title
-    || loop.dashboard?.recommended_actions?.[0]?.title
-    || 'Preview one action and execute it if the tradeoff is acceptable.';
   const switchJobAction = useMemo(() => {
     if (!loop.actionHub) return null;
     return (
@@ -147,11 +140,11 @@ export default function WorkScreen() {
   return (
     <GameplayLoopScaffold
       title="Work / Job"
-      subtitle="Convert time into income while managing stress and health"
+      subtitle="Turn your time into money"
       activeNavKey="work"
       footer={guidedWorkActive ? null : (
         <GameplayStickyActionArea
-          summary={`Time left: ${loop.dailySession.remainingTimeUnits}/${loop.dailySession.totalTimeUnits} units. Next action: ${nextAction}`}
+          summary={`${loop.dailySession.remainingTimeUnits} time units left today`}
           secondaryLabel="Open Market"
           onSecondaryPress={() => {
             onboarding.navigateTo('market');
@@ -166,51 +159,37 @@ export default function WorkScreen() {
       )}
     >
       <GameplaySummaryCard
-        eyebrow="Action framing"
-        title="Work, Income, Stress, Health"
-        subtitle="Check this tradeoff before spending each time unit."
+        eyebrow="Your work status"
+        title="Income, Energy &amp; Time"
+        subtitle="Start a shift to earn money. Each shift uses time and increases stress."
       >
         <View style={styles.metricRow}>
           <GameplayStatCard
-            label="Job Income"
+            label="Today's pay"
             value={loop.jobIncome.dailyIncomeLabel}
             tone={loop.jobIncome.incomeAmount != null && loop.jobIncome.incomeAmount >= 0 ? 'positive' : 'warning'}
-            note={loop.jobIncome.currentJob || 'No active job lane'}
+            note={loop.jobIncome.currentJob ? loop.jobIncome.currentJob.replace(/_/g, ' ') : 'No job selected yet'}
           />
           <GameplayStatCard
             label="Stress"
             value={`${Math.round(stats?.stress ?? 0)}`}
             tone={(stats?.stress ?? 0) >= 65 ? 'danger' : 'warning'}
-            note="Higher stress makes recovery and mistakes more likely."
+            note="High stress slows recovery and raises mistakes."
           />
           <GameplayStatCard
             label="Health"
             value={`${Math.round(stats?.health ?? 100)}`}
             tone={(stats?.health ?? 100) >= 65 ? 'positive' : 'warning'}
-            note="Health buffers bad streaks and pressure spikes."
+            note="Low health reduces earnings from shifts."
           />
           <GameplayStatCard
-            label="Time Left"
+            label="Time left"
             value={`${loop.dailySession.remainingTimeUnits}/${loop.dailySession.totalTimeUnits}`}
             tone={loop.dailySession.remainingTimeUnits <= 2 ? 'warning' : 'info'}
-            note="Every action consumes units."
+            note="Each shift uses time units."
           />
         </View>
       </GameplaySummaryCard>
-
-      {!simplified && leadTradeoff ? (
-        <GameplayOpportunityCallout
-          title="Best Setup Right Now"
-          message={leadTradeoff}
-        />
-      ) : null}
-      {!simplified && leadWarning ? (
-        <GameplayWarningBanner
-          title="Watch Before Acting"
-          message={leadWarning}
-          tone="warning"
-        />
-      ) : null}
 
       {showStarterJobChooser ? (
         <GameplaySummaryCard

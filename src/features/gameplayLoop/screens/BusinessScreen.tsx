@@ -12,7 +12,6 @@ import { useScreenTimer } from '@/hooks/useScreenTimer';
 
 import { useGameplayLoop } from '../context';
 import {
-  GameplayOpportunityCallout,
   GameplayStatCard,
   GameplayStickyActionArea,
   GameplaySummaryCard,
@@ -60,11 +59,7 @@ export default function BusinessScreen() {
   const latestProfit = loop.businesses?.profit_snapshot.latest_daily_profit_xgp ?? 0;
   const trailingProfit = loop.businesses?.profit_snapshot.trailing_7d_profit_xgp ?? 0;
   const topRisk = marginsForActive?.risk_factors?.[0]
-    || loop.economySummary?.player_warnings?.[0]
     || 'No business risk flagged.';
-  const topUpside = marginsForActive?.opportunity_factors?.[0]
-    || loop.economySummary?.player_opportunities?.[0]
-    || 'No business upside flagged.';
 
   return (
     <GameplayLoopScaffold
@@ -124,15 +119,13 @@ export default function BusinessScreen() {
         </View>
       </GameplaySummaryCard>
 
-      <GameplayOpportunityCallout
-        title="Business Opportunity"
-        message={topUpside}
-      />
-      <GameplayWarningBanner
-        title="Business Risk"
-        message={topRisk}
-        tone={marginsForActive?.margin_outlook === 'pressured' ? 'danger' : 'warning'}
-      />
+      {marginsForActive?.margin_outlook === 'pressured' || marginsForActive?.cost_pressure === 'high' ? (
+        <GameplayWarningBanner
+          title="Cost pressure is high right now"
+          message={topRisk}
+          tone="danger"
+        />
+      ) : null}
 
       {loop.economySummary ? (
         <GameplaySummaryCard

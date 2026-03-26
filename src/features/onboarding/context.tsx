@@ -26,9 +26,10 @@ export type OnboardingRouteKey =
   | 'work'
   | 'market'
   | 'business'
+  | 'life'
   | 'summary';
 
-type GuidedRouteKey = Exclude<OnboardingRouteKey, 'business'>;
+type GuidedRouteKey = Exclude<OnboardingRouteKey, 'business' | 'life'>;
 
 type OnboardingStepRequirement = 'manual_continue' | 'first_work_action' | 'settled_summary';
 
@@ -139,6 +140,7 @@ function navLabel(route: OnboardingRouteKey): string {
   if (route === 'work') return 'Work';
   if (route === 'market') return 'Market';
   if (route === 'business') return 'Business';
+  if (route === 'life') return 'Life';
   return 'Summary';
 }
 

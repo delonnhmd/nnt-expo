@@ -29,7 +29,7 @@ const styles = StyleSheet.create({
     borderBottomColor: theme.color.border,
     backgroundColor: theme.color.surface,
     paddingHorizontal: theme.spacing.lg,
-    paddingVertical: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -42,7 +42,7 @@ const styles = StyleSheet.create({
   },
   title: {
     color: theme.color.textPrimary,
-    ...theme.typography.headingLg,
+    ...theme.typography.headingMd,
   },
   subtitle: {
     color: theme.color.textSecondary,
