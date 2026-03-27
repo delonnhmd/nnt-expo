@@ -64,23 +64,23 @@ export default function BusinessScreen() {
   return (
     <GameplayLoopScaffold
       title="Business"
-      subtitle="Separate margin quality from cost and risk before operating"
+      subtitle="Revenue, costs, margin, and risk"
       activeNavKey="business"
       footer={(
         <GameplayStickyActionArea
           summary={canOperateNow
-            ? 'Operate only if margin outlook is worth the time and inventory risk.'
+            ? 'Check margin outlook before operating.'
             : operatedToday
-              ? 'Business already operated today. Move to summary or another lane.'
-              : 'Review margin and risk signals, then decide whether to operate.'}
+              ? 'Business already operated today.'
+              : 'Review margin and decide whether to operate.'}
           secondaryLabel="Back To Market"
           onSecondaryPress={() => router.replace(`/gameplay/loop/${loop.playerId}/market`)}
-          primaryLabel={canOperateNow ? 'Operate Business' : 'Open Summary'}
+          primaryLabel={canOperateNow ? 'Operate Business' : 'Open Brief'}
           onPrimaryPress={canOperateNow
             ? () => {
               void loop.operateBusiness();
             }
-            : () => router.replace(`/gameplay/loop/${loop.playerId}/summary`)}
+            : () => router.replace(`/gameplay/loop/${loop.playerId}/brief`)}
           primaryDisabled={canOperateNow ? loop.executingAction : false}
           primaryLoading={canOperateNow ? loop.executingAction : false}
         />
@@ -89,7 +89,6 @@ export default function BusinessScreen() {
       <GameplaySummaryCard
         eyebrow="Core split"
         title="Revenue, Cost, Margin, Risk"
-        subtitle="Read this before deciding to run operations."
       >
         <View style={styles.metricRow}>
           <GameplayStatCard

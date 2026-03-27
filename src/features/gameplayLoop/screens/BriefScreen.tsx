@@ -2,16 +2,17 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import DailyBriefCard from '@/components/gameplay/DailyBriefCard';
+import EndOfDaySummaryCard from '@/components/gameplay/EndOfDaySummaryCard';
 import { OnboardingHighlight } from '@/components/onboarding';
+import EmptyStateView from '@/components/ui/EmptyStateView';
 import { theme } from '@/design/theme';
 import { useOnboarding } from '@/features/onboarding';
-import { formatMoney } from '@/lib/gameplayFormatters';
 import { useScreenTimer } from '@/hooks/useScreenTimer';
+import { formatDelta, formatMoney } from '@/lib/gameplayFormatters';
 
 import { useGameplayLoop } from '../context';
 import {
   GameplayCompactMetricRows,
-  GameplayOpportunityCallout,
   GameplayStickyActionArea,
   GameplaySummaryCard,
   GameplayTrendChip,
@@ -25,38 +26,57 @@ export default function BriefScreen() {
   const loop = useGameplayLoop();
   const onboarding = useOnboarding();
   const guidedBriefActive = onboarding.isActive && onboarding.currentStep?.route === 'brief';
-  const simplified = onboarding.isSimplifiedMode;
-  const topOpportunity = loop.dashboard?.top_opportunities?.[0];
-  const topRisk = loop.dashboard?.top_risks?.[0];
   const netFlow = loop.economyState.netCashFlow ?? 0;
-  const nextAction = loop.actionHub?.recommended_actions?.[0]?.title
-    || loop.dashboard?.recommended_actions?.[0]?.title
-    || 'Review Work lane and run one low-risk action.';
   const timeTone = loop.dailySession.remainingTimeUnits <= 2
     ? 'warning'
     : loop.dailySession.remainingTimeUnits <= 0
       ? 'danger'
       : 'info';
 
+  // End-of-day summary state
+  const summary = loop.endOfDaySummary;
+  const hasSummary = Boolean(summary);
+  const sessionEnded = loop.dailySession.sessionStatus === 'ended';
+  const summaryMissingAfterSettlement = !hasSummary && sessionEnded;
+  const netTone = toneFromSignedValue(summary?.net_change_xgp ?? 0);
+
+  // Footer logic: day active vs day ended
+  const primaryLabel = hasSummary || summaryMissingAfterSettlement
+    ? 'Start Next Day'
+    : loop.endingDay
+      ? 'Settling Day...'
+      : sessionEnded
+        ? 'Run Settlement'
+        : 'Go To Dashboard';
+
+  const onPrimaryPress = hasSummary || summaryMissingAfterSettlement
+    ? () => void loop.startNextDay()
+    : sessionEnded
+      ? () => void loop.endCurrentDay()
+      : () => onboarding.navigateTo('dashboard');
+
   return (
     <GameplayLoopScaffold
-      title="Home / Daily Brief"
-      subtitle="Read, orient, and decide your first move"
+      title="Brief"
+      subtitle="Day overview and settlement"
       activeNavKey="brief"
       footer={guidedBriefActive ? null : (
         <GameplayStickyActionArea
-          summary={`Most important next action: ${nextAction}`}
-          secondaryLabel="Jump To Work"
-          onSecondaryPress={() => {
-            onboarding.navigateTo('work');
-          }}
-          primaryLabel="Continue To Dashboard"
-          onPrimaryPress={() => {
-            onboarding.navigateTo('dashboard');
-          }}
+          secondaryLabel={sessionEnded ? undefined : 'Go To Dashboard'}
+          onSecondaryPress={sessionEnded ? undefined : () => onboarding.navigateTo('dashboard')}
+          primaryLabel={primaryLabel}
+          onPrimaryPress={onPrimaryPress}
+          primaryLoading={!hasSummary && !summaryMissingAfterSettlement && loop.endingDay}
+          primaryDisabled={
+            !hasSummary
+            && !summaryMissingAfterSettlement
+            && sessionEnded
+            && (!loop.dailyProgression.canAdvanceDay || loop.endingDay)
+          }
         />
       )}
     >
+      {/* ── Daily Brief card ── */}
       {loop.dashboard ? (
         <OnboardingHighlight target="brief-daily-economy">
           <DailyBriefCard
@@ -69,11 +89,8 @@ export default function BriefScreen() {
         </OnboardingHighlight>
       ) : null}
 
-      <GameplaySummaryCard
-        eyebrow="Macro chips"
-        title="Economy Snapshot"
-        subtitle="Fast context before committing time units."
-      >
+      {/* ── Economy snapshot ── */}
+      <GameplaySummaryCard eyebrow="Economy" title="Snapshot">
         <View style={styles.chipRow}>
           <GameplayTrendChip
             label="Day"
@@ -98,46 +115,64 @@ export default function BriefScreen() {
         </View>
       </GameplaySummaryCard>
 
-      {!simplified ? (
-        <GameplaySummaryCard
-          eyebrow="Why today matters"
-          title={loop.dashboard?.headline || 'Protect downside, then grow carefully.'}
-          subtitle={loop.economySummary?.explainer.this_week_focus || 'Use one deliberate action before ending the day.'}
-        >
-          <GameplayCompactMetricRows
-            items={[
-              {
-                label: 'Risk pressure',
-                value: topRisk?.title || loop.economySummary?.player_warnings?.[0] || 'No major risk flagged.',
-                tone: 'warning',
-              },
-              {
-                label: 'Opportunity',
-                value: topOpportunity?.title || loop.economySummary?.player_opportunities?.[0] || 'No major upside flagged.',
-                tone: 'positive',
-              },
-              {
-                label: 'Next action',
-                value: nextAction,
-                tone: 'info',
-              },
-            ]}
-          />
-        </GameplaySummaryCard>
+      {/* ── End-of-day settlement (shown once session ended) ── */}
+      {sessionEnded ? (
+        <OnboardingHighlight target="summary-day-results">
+          <GameplaySummaryCard
+            eyebrow="Day closeout"
+            title="Settlement Status"
+          >
+            <View style={styles.chipRow}>
+              <GameplayTrendChip
+                label="Session"
+                value="Ended"
+                tone="warning"
+              />
+              <GameplayTrendChip
+                label="Actions"
+                value={String(loop.dailySession.actionsTakenToday.length)}
+                tone="neutral"
+              />
+              <GameplayTrendChip
+                label="Ending cash"
+                value={formatMoney(loop.dashboard?.stats.cash_xgp ?? 0)}
+                tone="neutral"
+              />
+            </View>
+          </GameplaySummaryCard>
+        </OnboardingHighlight>
       ) : null}
 
-      {!simplified && topOpportunity ? (
-        <GameplayOpportunityCallout
-          title="Top Opportunity"
-          message={topOpportunity.description}
+      {summary ? (
+        <>
+          <GameplaySummaryCard
+            eyebrow="Today's result"
+            title={summary.net_change_xgp >= 0
+              ? 'Nice finish today.'
+              : 'Tough day — tomorrow can recover this.'}
+          >
+            <GameplayCompactMetricRows
+              items={[
+                { label: 'Net', value: formatMoney(summary.net_change_xgp), tone: netTone },
+                { label: 'Earned', value: formatMoney(summary.total_earned_xgp), tone: 'positive' },
+                { label: 'Spent', value: formatMoney(summary.total_spent_xgp), tone: 'danger' },
+                { label: 'Stress delta', value: formatDelta(summary.stress_delta), tone: summary.stress_delta > 0 ? 'danger' : 'positive' },
+                { label: 'Health delta', value: formatDelta(summary.health_delta), tone: summary.health_delta >= 0 ? 'positive' : 'warning' },
+              ]}
+            />
+          </GameplaySummaryCard>
+          <EndOfDaySummaryCard summary={summary} />
+        </>
+      ) : summaryMissingAfterSettlement ? (
+        <EmptyStateView
+          title="Summary temporarily unavailable"
+          subtitle="Settlement completed. Continue to the next day — refresh later for full recap."
         />
-      ) : null}
-
-      {!simplified && topRisk ? (
+      ) : !sessionEnded ? (
         <GameplayWarningBanner
-          title="Top Risk"
-          message={topRisk.description}
-          tone="warning"
+          title="Day still active"
+          message="Run End Day from the Dashboard when you are done with your actions."
+          tone="info"
         />
       ) : null}
     </GameplayLoopScaffold>
