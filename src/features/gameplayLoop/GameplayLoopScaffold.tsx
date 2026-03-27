@@ -12,6 +12,7 @@ import SectionCard from '@/components/ui/SectionCard';
 import { useOnboarding } from '@/features/onboarding';
 import { OnboardingRouteKey } from '@/features/onboarding/context';
 import { FeedbackSheet, IssueReportSheet, SoftLaunchGate, useSoftLaunch } from '@/features/softLaunch';
+import { theme } from '@/design/theme';
 import { recordInfo, recordWarning } from '@/lib/logger';
 
 import { useGameplayLoop } from './context';
