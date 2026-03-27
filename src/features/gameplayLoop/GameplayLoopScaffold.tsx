@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { usePathname } from 'expo-router';
-import { LayoutChangeEvent, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { LayoutChangeEvent, RefreshControl, ScrollView, StyleSheet } from 'react-native';
 
 import { OnboardingStepOverlay } from '@/components/onboarding';
 import AppShell from '@/components/layout/AppShell';
@@ -8,23 +8,16 @@ import ContentStack from '@/components/layout/ContentStack';
 import PageContainer from '@/components/layout/PageContainer';
 import ErrorStateView from '@/components/ui/ErrorStateView';
 import LoadingSkeleton from '@/components/ui/LoadingSkeleton';
-import SecondaryButton from '@/components/ui/SecondaryButton';
 import SectionCard from '@/components/ui/SectionCard';
-import { theme } from '@/design/theme';
 import { useOnboarding } from '@/features/onboarding';
 import { OnboardingRouteKey } from '@/features/onboarding/context';
 import { FeedbackSheet, IssueReportSheet, SoftLaunchGate, useSoftLaunch } from '@/features/softLaunch';
-import { formatMoney } from '@/lib/gameplayFormatters';
 import { recordInfo, recordWarning } from '@/lib/logger';
 
 import { useGameplayLoop } from './context';
 import {
-  GameplayCompactMetricRows,
   GameplayOpportunityCallout,
-  GameplaySummaryCard,
-  GameplayTrendChip,
   GameplayWarningBanner,
-  toneFromSignedValue,
 } from './components/GameplayUIParts';
 import { PlaytestObserver } from './components/PlaytestObserver';
 
@@ -42,19 +35,6 @@ function sourceCopy(mode: 'live' | 'mixed' | 'mock'): string {
     return 'Some sections are using local fallback data while backend endpoints recover.';
   }
   return 'Connected to backend source of truth.';
-}
-
-function labelFromPressure(pressure: string | undefined): string {
-  const value = String(pressure || 'stable').trim();
-  if (!value) return 'Stable';
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
-function pressureTone(pressure: string | undefined): 'neutral' | 'warning' | 'danger' {
-  const normalized = String(pressure || '').toLowerCase();
-  if (normalized === 'critical' || normalized === 'high') return 'danger';
-  if (normalized === 'medium') return 'warning';
-  return 'neutral';
 }
 
 const INTERACTION_DIAGNOSTICS_ENABLED =
@@ -97,24 +77,7 @@ export default function GameplayLoopScaffold({
     isSimplifiedMode,
     navigateTo,
   } = onboarding;
-  const cash = loop.dashboard?.stats.cash_xgp ?? loop.economyState.cashOnHand ?? 0;
-  const stress = Math.round(loop.dashboard?.stats.stress ?? 0);
-  const netFlow = loop.economyState.netCashFlow ?? 0;
-  const pressure = labelFromPressure(loop.expenseDebt.debtPressure);
-  const usedUnits = Math.max(0, loop.dailySession.totalTimeUnits - loop.dailySession.remainingTimeUnits);
-  const topOpportunity = loop.dashboard?.top_opportunities?.[0]?.title
-    || loop.economySummary?.player_opportunities?.[0]
-    || 'No immediate upside signal.';
-  const topRisk = loop.dashboard?.top_risks?.[0]?.title
-    || loop.economySummary?.player_warnings?.[0]
-    || 'No immediate red flag.';
-  const nextAction = loop.actionHub?.recommended_actions?.[0]?.title
-    || loop.dashboard?.recommended_actions?.[0]?.title
-    || 'Open Work and preview a low-risk action.';
   const sourceTone = loop.sourceMode === 'live' ? 'positive' : loop.sourceMode === 'mixed' ? 'warning' : 'info';
-  const syncedTimeLabel = loop.lastSyncedAt
-    ? new Date(loop.lastSyncedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    : 'Pending';
 
   useEffect(() => {
     ensureRoute(activeNavKey as OnboardingRouteKey);
@@ -310,13 +273,6 @@ export default function GameplayLoopScaffold({
     <AppShell
       title={title}
       subtitle={subtitle}
-      headerRight={(
-        <SecondaryButton
-          label={loop.refreshing ? 'Refreshing...' : 'Refresh'}
-          onPress={() => void loop.refresh()}
-          disabled={loop.refreshing}
-        />
-      )}
       bottomNavItems={bottomNavItems}
       activeBottomNavKey={activeNavKey}
       footer={footer}
@@ -339,75 +295,6 @@ export default function GameplayLoopScaffold({
           <ContentStack gap={theme.spacing.md} onLayout={handleContentLayout}>
             <PlaytestObserver />
             {onboardingActive ? <OnboardingStepOverlay /> : null}
-
-            {isSimplifiedMode ? (
-              <GameplaySummaryCard
-                eyebrow="Day 1 Essentials"
-                title="Focus Right Now"
-                subtitle={onboardingStep?.body || 'Take one guided step at a time.'}
-              >
-                <View style={styles.scanCardRow}>
-                  <View style={styles.scanCard}>
-                    <Text style={styles.scanLabel}>Cash</Text>
-                    <Text style={styles.scanValue}>{formatMoney(cash)}</Text>
-                  </View>
-                  <View style={styles.scanCard}>
-                    <Text style={styles.scanLabel}>Stress</Text>
-                    <Text style={styles.scanValue}>{String(stress)}</Text>
-                  </View>
-                  <View style={styles.scanCard}>
-                    <Text style={styles.scanLabel}>Time Left</Text>
-                    <Text style={styles.scanValue}>{`${loop.dailySession.remainingTimeUnits}/${loop.dailySession.totalTimeUnits}`}</Text>
-                  </View>
-                </View>
-                <GameplayCompactMetricRows
-                  items={[
-                    { label: 'Current step', value: onboardingStep?.title || 'Guided flow', tone: 'info' },
-                    { label: 'Next move', value: nextAction, tone: 'info' },
-                  ]}
-                />
-              </GameplaySummaryCard>
-            ) : (
-              <GameplaySummaryCard
-                eyebrow="5-second read"
-                title="Today At A Glance"
-                subtitle="Financial status, pressure, opportunity, movement, and next step."
-              >
-                <View style={styles.scanCardRow}>
-                  <View style={styles.scanCard}>
-                    <Text style={styles.scanLabel}>Cash</Text>
-                    <Text style={styles.scanValue}>{formatMoney(cash)}</Text>
-                  </View>
-                  <View style={styles.scanCard}>
-                    <Text style={styles.scanLabel}>Daily Net</Text>
-                    <Text style={[
-                      styles.scanValue,
-                      { color: toneFromSignedValue(netFlow) === 'positive' ? '#166534' : toneFromSignedValue(netFlow) === 'danger' ? '#b91c1c' : theme.color.textPrimary },
-                    ]}
-                    >
-                      {`${netFlow > 0 ? '+' : ''}${formatMoney(netFlow)}`}
-                    </Text>
-                  </View>
-                </View>
-                <View style={styles.trendRow}>
-                  <GameplayTrendChip label="Pressure" value={pressure} tone={pressureTone(loop.expenseDebt.debtPressure)} />
-                  <GameplayTrendChip
-                    label="Day Movement"
-                    value={`${usedUnits}/${loop.dailySession.totalTimeUnits} units used`}
-                    tone="info"
-                  />
-                  <GameplayTrendChip label="Data" value={sourceLabel(loop.sourceMode)} tone={sourceTone} />
-                </View>
-                <GameplayCompactMetricRows
-                  items={[
-                    { label: 'Most important next action', value: nextAction, tone: 'info' },
-                    { label: 'Top risk', value: topRisk, tone: 'warning' },
-                    { label: 'Top opportunity', value: topOpportunity, tone: 'positive' },
-                    { label: 'Last sync', value: syncedTimeLabel },
-                  ]}
-                />
-              </GameplaySummaryCard>
-            )}
 
             {!isSimplifiedMode && loop.sourceMode !== 'live' ? (
               <GameplayWarningBanner
@@ -478,37 +365,5 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingTop: theme.spacing.md,
     paddingBottom: theme.spacing.xxxl,
-  },
-  scanCardRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: theme.spacing.sm,
-  },
-  scanCard: {
-    flex: 1,
-    minWidth: 134,
-    borderWidth: 1,
-    borderColor: theme.color.border,
-    borderRadius: theme.radius.lg,
-    backgroundColor: theme.color.surfaceAlt,
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.sm,
-    gap: theme.spacing.xxs,
-  },
-  scanLabel: {
-    ...theme.typography.caption,
-    textTransform: 'uppercase',
-    color: theme.color.textSecondary,
-    fontWeight: '800',
-  },
-  scanValue: {
-    ...theme.typography.bodyMd,
-    color: theme.color.textPrimary,
-    fontWeight: '800',
-  },
-  trendRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: theme.spacing.sm,
   },
 });

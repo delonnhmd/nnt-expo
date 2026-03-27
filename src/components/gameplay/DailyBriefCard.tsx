@@ -14,12 +14,53 @@ function firstMeaningfulLine(value: string | null | undefined): string {
 
 export default function DailyBriefCard({
   dashboard,
-  impactBullets,
 }: {
   dashboard: PlayerDashboardResponse;
-  impactBullets?: string[];
 }) {
-  const bullets = (impactBullets || []).filter(Boolean).slice(0, 3);
+  const summary = firstMeaningfulLine(dashboard.daily_brief);
+  const heroWatchValue = `${dashboard.headline || ''}|${summary}`;
+
+  return (
+    <View style={styles.card}>
+      <HighlightOnChangeView watchValue={heroWatchValue} style={styles.heroBlock}>
+        <Text style={styles.headerLabel}>Daily Brief</Text>
+        <Text style={styles.headline}>{dashboard.headline || 'Today at Gold Penny'}</Text>
+        <Text style={styles.summary}>{summary}</Text>
+      </HighlightOnChangeView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  card: {
+    borderWidth: 1,
+    borderColor: '#d6e1f2',
+    borderRadius: theme.radius.xl,
+    backgroundColor: '#fdfefe',
+    padding: theme.spacing.lg,
+  },
+  heroBlock: {
+    gap: theme.spacing.xs,
+  },
+  headerLabel: {
+    ...theme.typography.caption,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    color: '#1d4ed8',
+    fontWeight: '800',
+  },
+  headline: {
+    ...theme.typography.headingLg,
+    color: theme.color.textPrimary,
+    fontWeight: '800',
+  },
+  summary: {
+    color: theme.color.textSecondary,
+    ...theme.typography.bodyMd,
+    lineHeight: 20,
+  },
+});
+
   const recommendedActions = (dashboard.recommended_actions || []).filter(Boolean).slice(0, 2);
   const leadRisk = dashboard.top_risks[0] || null;
   const leadOpportunity = dashboard.top_opportunities[0] || null;

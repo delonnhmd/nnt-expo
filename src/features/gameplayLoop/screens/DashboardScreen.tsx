@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import ActionHubPanel from '@/components/gameplay/ActionHubPanel';
-import ActionPreviewModal from '@/components/gameplay/ActionPreviewModal';
 import { OnboardingHighlight } from '@/components/onboarding';
 import EmptyStateView from '@/components/ui/EmptyStateView';
 import PrimaryButton from '@/components/ui/PrimaryButton';
@@ -302,7 +301,7 @@ export default function DashboardScreen() {
         <OnboardingHighlight target="work-first-action">
           <ActionHubPanel
             hub={loop.actionHub}
-            onPreviewAction={(action) => void loop.openActionPreview(action)}
+            onExecuteAction={(action) => void loop.executeAction(action)}
             getExecutionGuard={(action) => loop.dailySession.canExecuteAction(action)}
             remainingTimeUnits={loop.dailySession.remainingTimeUnits}
             totalTimeUnits={loop.dailySession.totalTimeUnits}
@@ -403,18 +402,6 @@ export default function DashboardScreen() {
         />
       ) : null}
 
-      <ActionPreviewModal
-        visible={Boolean(loop.selectedPreviewAction)}
-        action={loop.selectedPreviewAction}
-        preview={loop.actionPreview}
-        loading={loop.previewLoading}
-        error={loop.previewError}
-        onClose={loop.closeActionPreview}
-        onExecuteAction={() => void loop.executeSelectedAction()}
-        executeDisabled={loop.dailySession.sessionStatus !== 'active'}
-        executeGuard={loop.selectedPreviewAction ? loop.dailySession.canExecuteAction(loop.selectedPreviewAction) : undefined}
-        executing={loop.executingAction}
-      />
     </GameplayLoopScaffold>
   );
 }

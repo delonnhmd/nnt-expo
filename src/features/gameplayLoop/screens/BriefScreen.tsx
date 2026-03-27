@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import DailyBriefCard from '@/components/gameplay/DailyBriefCard';
 import EndOfDaySummaryCard from '@/components/gameplay/EndOfDaySummaryCard';
@@ -27,11 +27,6 @@ export default function BriefScreen() {
   const onboarding = useOnboarding();
   const guidedBriefActive = onboarding.isActive && onboarding.currentStep?.route === 'brief';
   const netFlow = loop.economyState.netCashFlow ?? 0;
-  const timeTone = loop.dailySession.remainingTimeUnits <= 2
-    ? 'warning'
-    : loop.dailySession.remainingTimeUnits <= 0
-      ? 'danger'
-      : 'info';
 
   // End-of-day summary state
   const summary = loop.endOfDaySummary;
@@ -79,40 +74,36 @@ export default function BriefScreen() {
       {/* ── Daily Brief card ── */}
       {loop.dashboard ? (
         <OnboardingHighlight target="brief-daily-economy">
-          <DailyBriefCard
-            dashboard={loop.dashboard}
-            impactBullets={[
-              ...(loop.economySummary?.player_warnings || []).slice(0, 2),
-              ...(loop.economySummary?.player_opportunities || []).slice(0, 1),
-            ]}
-          />
+          <DailyBriefCard dashboard={loop.dashboard} />
         </OnboardingHighlight>
       ) : null}
 
-      {/* ── Economy snapshot ── */}
-      <GameplaySummaryCard eyebrow="Economy" title="Snapshot">
-        <View style={styles.chipRow}>
-          <GameplayTrendChip
-            label="Day"
-            value={`Day ${loop.dailyProgression.currentGameDay}`}
-            tone="info"
-          />
-          <GameplayTrendChip
-            label="Time left"
-            value={`${loop.dailySession.remainingTimeUnits}/${loop.dailySession.totalTimeUnits} units`}
-            tone={timeTone}
-          />
-          <GameplayTrendChip
-            label="Net flow"
-            value={`${netFlow > 0 ? '+' : ''}${formatMoney(netFlow)}`}
-            tone={toneFromSignedValue(netFlow)}
-          />
-          <GameplayTrendChip
-            label="Market mood"
-            value={loop.economySummary?.market_overview.current_market_mood || 'Unknown'}
-            tone="neutral"
-          />
-        </View>
+      {/* ── Today's Activity ── */}
+      <GameplaySummaryCard eyebrow="Today" title="Activity">
+        <GameplayCompactMetricRows
+          items={[
+            {
+              label: 'Net flow',
+              value: `${netFlow > 0 ? '+' : ''}${formatMoney(netFlow)}`,
+              tone: toneFromSignedValue(netFlow),
+            },
+            {
+              label: 'Actions taken',
+              value: String(loop.dailySession.actionsTakenToday.length),
+              tone: 'neutral',
+            },
+          ]}
+        />
+        {loop.dailySession.actionsTakenToday.length > 0 ? (
+          <View style={styles.actionsList}>
+            {loop.dailySession.actionsTakenToday.map((entry, idx) => (
+              <Text key={`${entry.id}_${idx}`} style={styles.actionsListItem}>
+                • {entry.title}{entry.success ? '' : ' (failed)'}
+              </Text>
+            ))}
+          </View>
+        ) : null}
+        <Text style={styles.txPlaceholder}>Transaction log — coming soon</Text>
       </GameplaySummaryCard>
 
       {/* ── End-of-day settlement (shown once session ended) ── */}
@@ -180,6 +171,18 @@ export default function BriefScreen() {
 }
 
 const styles = StyleSheet.create({
+  actionsList: {
+    gap: theme.spacing.xs,
+  },
+  actionsListItem: {
+    color: theme.color.textSecondary,
+    ...theme.typography.bodySm,
+  },
+  txPlaceholder: {
+    color: theme.color.muted,
+    ...theme.typography.caption,
+    fontStyle: 'italic',
+  },
   chipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',

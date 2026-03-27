@@ -2,9 +2,7 @@ import React, { useMemo } from 'react';
 import { router } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
-import BusinessMarginsCard from '@/components/gameplay/BusinessMarginsCard';
 import BusinessOperationsCard from '@/components/gameplay/BusinessOperationsCard';
-import BusinessPlanCard from '@/components/gameplay/BusinessPlanCard';
 import EmptyStateView from '@/components/ui/EmptyStateView';
 import { theme } from '@/design/theme';
 import { formatMoney } from '@/lib/gameplayFormatters';
@@ -68,11 +66,6 @@ export default function BusinessScreen() {
       activeNavKey="business"
       footer={(
         <GameplayStickyActionArea
-          summary={canOperateNow
-            ? 'Check margin outlook before operating.'
-            : operatedToday
-              ? 'Business already operated today.'
-              : 'Review margin and decide whether to operate.'}
           secondaryLabel="Back To Market"
           onSecondaryPress={() => router.replace(`/gameplay/loop/${loop.playerId}/market`)}
           primaryLabel={canOperateNow ? 'Operate Business' : 'Open Brief'}
@@ -124,31 +117,6 @@ export default function BusinessScreen() {
           message={topRisk}
           tone="danger"
         />
-      ) : null}
-
-      {loop.economySummary ? (
-        <GameplaySummaryCard
-          eyebrow="Economy context"
-          title="Business Margin Signals"
-          subtitle="How demand and costs are shifting each business lane."
-        >
-          <BusinessMarginsCard margins={loop.economySummary.business_margins} />
-        </GameplaySummaryCard>
-      ) : (
-        <EmptyStateView
-          title="Business margins unavailable"
-          subtitle="Refresh to fetch margin outlook."
-        />
-      )}
-
-      {loop.businessPlan ? (
-        <GameplaySummaryCard
-          eyebrow="3-7 day view"
-          title="Business Plan Signals"
-          subtitle="Short-horizon guidance for mode and watch items."
-        >
-          <BusinessPlanCard plan={loop.businessPlan} />
-        </GameplaySummaryCard>
       ) : null}
 
       {activeBusiness ? (

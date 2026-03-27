@@ -9,15 +9,15 @@ import { ActionExecutionGuard } from '@/hooks/useDailySession';
 
 export default function ActionCard({
   action,
-  onPreview,
+  onExecute,
   executionGuard,
 }: {
   action: DailyActionItem;
-  onPreview: (action: DailyActionItem) => void;
+  onExecute: (action: DailyActionItem) => void;
   executionGuard: ActionExecutionGuard;
 }) {
   const statusColor = actionStatusColor(action.status);
-  const previewDisabled = !executionGuard.allowed;
+  const disabled = !executionGuard.allowed;
   const priorityTone = action.status === 'recommended' ? styles.cardRecommended : null;
   const primaryWarning = action.warnings?.[0] || action.tradeoffs?.[0] || null;
   const metaSummary = confidenceLabel(action.confidence_level);
@@ -59,11 +59,11 @@ export default function ActionCard({
       ) : null}
 
       <TouchableOpacity
-        onPress={() => onPreview(action)}
-        disabled={previewDisabled}
-        style={[styles.button, previewDisabled ? styles.buttonDisabled : null]}
+        onPress={() => onExecute(action)}
+        disabled={disabled}
+        style={[styles.button, disabled ? styles.buttonDisabled : null]}
       >
-        <Text style={styles.buttonText}>Preview</Text>
+        <Text style={styles.buttonText}>Start</Text>
       </TouchableOpacity>
     </View>
   );
