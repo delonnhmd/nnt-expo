@@ -9,6 +9,7 @@ import SecondaryButton from '@/components/ui/SecondaryButton';
 import { theme } from '@/design/theme';
 import { useOnboarding } from '@/features/onboarding';
 import { useScreenTimer } from '@/hooks/useScreenTimer';
+import { BALANCE } from '@/lib/balanceConfig';
 import { formatMoney } from '@/lib/gameplayFormatters';
 import { recordInfo } from '@/lib/logger';
 import { DailyActionItem } from '@/types/gameplay';
@@ -26,6 +27,127 @@ import GameplayLoopScaffold from '../GameplayLoopScaffold';
 function signedCurrency(value: number): string {
   const sign = value > 0 ? '+' : '';
   return `${sign}${formatMoney(value)}`;
+}
+
+function signedWhole(value: number): string {
+  const rounded = Math.round(value);
+  if (rounded > 0) return `+${rounded}`;
+  return String(rounded);
+}
+
+const HOUSTON_TIMEZONE = 'America/Chicago';
+const SHIFT_START_HOUR = 9;
+const SHIFT_END_HOUR = 17;
+const FULL_SHIFT_SECONDS = 8 * 60 * 60;
+const SHORT_SHIFT_SECONDS = Math.max(30, Number(process.env.EXPO_PUBLIC_SHIFT_TIMER_SECONDS || 90));
+const SHIFT_SHORT_MODE =
+  __DEV__
+  || process.env.EXPO_PUBLIC_SHIFT_TIMER_SHORT_MODE === 'true'
+  || process.env.EXPO_PUBLIC_SHIFT_TIMER_SHORT_MODE === '1';
+
+interface ShiftClockState {
+  startedAtMs: number;
+  endsAtMs: number;
+  action: DailyActionItem;
+}
+
+interface TimelineNote {
+  id: string;
+  timestampIso: string;
+  title: string;
+  detail: string;
+  category: 'work' | 'rideshare' | 'recovery' | 'meal' | 'finance' | 'system';
+}
+
+type RecoveryPresetId = 'watch_tv' | 'watch_movie' | 'read_book' | 'jogging' | 'eat_meal' | 'rest';
+
+interface RecoveryPreset {
+  id: RecoveryPresetId;
+  title: string;
+  timeCostUnits: number;
+  stressChange: number;
+  healthChange: number;
+  skillChange: number;
+}
+
+const RECOVERY_PRESETS: RecoveryPreset[] = [
+  { id: 'watch_tv', title: 'Watch TV', timeCostUnits: 1, stressChange: -4, healthChange: 0, skillChange: 0 },
+  { id: 'watch_movie', title: 'Watch Movie', timeCostUnits: 1, stressChange: -5, healthChange: 0, skillChange: 0 },
+  { id: 'read_book', title: 'Read Book', timeCostUnits: 1, stressChange: -2, healthChange: 0, skillChange: 1 },
+  { id: 'jogging', title: 'Jogging', timeCostUnits: 1, stressChange: -3, healthChange: 2, skillChange: 0 },
+  { id: 'eat_meal', title: 'Eat Meal', timeCostUnits: 1, stressChange: -4, healthChange: 2, skillChange: 0 },
+  { id: 'rest', title: 'Rest', timeCostUnits: 1, stressChange: -6, healthChange: 3, skillChange: 0 },
+];
+
+function canonicalDashboardActionKey(actionKey: string): string {
+  const raw = String(actionKey || '').toLowerCase().trim();
+  if (!raw) return '';
+  if (raw.includes('work') || raw.includes('shift')) return 'work_shift';
+  if (raw.includes('ride') || raw.includes('side_income') || raw.includes('delivery')) return 'side_income';
+  if (raw.includes('rest') || raw.includes('recover')) return 'rest';
+  if (raw.includes('study') || raw.includes('train')) return 'study';
+  if (raw.includes('debt') || raw.includes('loan') || raw.includes('borrow')) return 'finance';
+  if (raw.includes('meal') || raw.includes('eat')) return 'meal';
+  return raw;
+}
+
+function getHoustonHour(date: Date): number {
+  const formatted = new Intl.DateTimeFormat('en-US', {
+    timeZone: HOUSTON_TIMEZONE,
+    hour: 'numeric',
+    hour12: false,
+  }).format(date);
+  const parsed = Number(formatted);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Math.min(23, Math.floor(parsed)));
+}
+
+function formatHoustonNow(date: Date): string {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: HOUSTON_TIMEZONE,
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(date);
+}
+
+function formatHoustonDate(date: Date): string {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: HOUSTON_TIMEZONE,
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(date);
+}
+
+function formatHoustonTimestamp(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '--:--';
+  return formatHoustonNow(date);
+}
+
+function formatSecondsRemaining(totalSeconds: number): string {
+  const seconds = Math.max(0, Math.floor(totalSeconds));
+  const hh = Math.floor(seconds / 3600);
+  const mm = Math.floor((seconds % 3600) / 60);
+  const ss = seconds % 60;
+  if (hh > 0) {
+    return `${hh}h ${String(mm).padStart(2, '0')}m ${String(ss).padStart(2, '0')}s`;
+  }
+  return `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+}
+
+function shiftWindowLabel(): string {
+  return '9:00 AM - 5:00 PM (Houston)';
+}
+
+function sanitizeRideShareReason(reason: string | null | undefined): string {
+  const normalized = String(reason || '').trim();
+  if (!normalized) return 'Ride share unavailable right now.';
+  if (normalized.toLowerCase().includes('not authenticated')) {
+    return 'Ride share is unavailable right now.';
+  }
+  return normalized;
 }
 
 interface StarterJobOption {
@@ -69,7 +191,7 @@ export default function DashboardScreen() {
   const onboarding = useOnboarding();
   const guidedDashboardActive = onboarding.isActive && onboarding.currentStep?.route === 'dashboard';
 
-  // ── Stats ──
+  // Stats
   const stats = loop.dashboard?.stats;
   const netCashFlow = loop.economyState.netCashFlow ?? 0;
   const pressureLabel = loop.expenseDebt.debtPressure.charAt(0).toUpperCase()
@@ -79,7 +201,147 @@ export default function DashboardScreen() {
   const health = stats?.health ?? 100;
   const debt = loop.expenseDebt?.debtAmount ?? stats?.debt_xgp ?? 0;
 
-  // ── Work / Job selection ──
+  const [houstonNow, setHoustonNow] = useState(() => new Date());
+  const [activeShift, setActiveShift] = useState<ShiftClockState | null>(null);
+  const [autoClockingOut, setAutoClockingOut] = useState(false);
+  const [timelineNotes, setTimelineNotes] = useState<TimelineNote[]>([]);
+  const [busyRecoveryId, setBusyRecoveryId] = useState<RecoveryPresetId | null>(null);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setHoustonNow(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Work / Job selection
+  const allActionItems = useMemo(() => {
+    if (!loop.actionHub) return [];
+    return [
+      ...(loop.actionHub.recommended_actions || []),
+      ...(loop.actionHub.available_actions || []),
+      ...(loop.actionHub.blocked_actions || []),
+    ];
+  }, [loop.actionHub]);
+
+  const workShiftAction = useMemo(
+    () => allActionItems.find((action) => canonicalDashboardActionKey(String(action.action_key || '')) === 'work_shift') || null,
+    [allActionItems],
+  );
+  const sideIncomeAction = useMemo(
+    () => allActionItems.find((action) => canonicalDashboardActionKey(String(action.action_key || '')) === 'side_income') || null,
+    [allActionItems],
+  );
+
+  useEffect(() => {
+    setActiveShift(null);
+    setAutoClockingOut(false);
+    setTimelineNotes([]);
+    setBusyRecoveryId(null);
+  }, [loop.dailySession.currentDay]);
+
+  const appendTimelineNote = (note: Omit<TimelineNote, 'id'>) => {
+    const id = `${note.timestampIso}_${Math.random().toString(36).slice(2, 8)}`;
+    setTimelineNotes((prev) => [...prev, { ...note, id }]);
+  };
+
+  const houstonHour = getHoustonHour(houstonNow);
+  const currentShiftWindowOpen = houstonHour >= SHIFT_START_HOUR && houstonHour < SHIFT_END_HOUR;
+  const shiftDurationSeconds = SHIFT_SHORT_MODE ? SHORT_SHIFT_SECONDS : FULL_SHIFT_SECONDS;
+  const shiftRemainingSeconds = activeShift
+    ? Math.max(0, Math.floor((activeShift.endsAtMs - houstonNow.getTime()) / 1000))
+    : 0;
+  const shiftRemainingLabel = formatSecondsRemaining(shiftRemainingSeconds);
+  const shiftEndLabel = activeShift
+    ? formatHoustonNow(new Date(activeShift.endsAtMs))
+    : '5:00 PM';
+
+  const workExecutionGuard = workShiftAction
+    ? loop.dailySession.canExecuteAction(workShiftAction)
+    : { allowed: false, reason: 'No shift action available.', timeCostUnits: 0 };
+
+  const canClockIn = Boolean(
+    workShiftAction
+    && !activeShift
+    && !autoClockingOut
+    && loop.dailySession.sessionStatus === 'active'
+    && workExecutionGuard.allowed
+    && (SHIFT_SHORT_MODE || currentShiftWindowOpen),
+  );
+
+  const clockInBlocker = useMemo(() => {
+    if (activeShift) return 'You are already clocked in.';
+    if (loop.dailySession.sessionStatus !== 'active') return 'Day already ended.';
+    if (!workShiftAction) return 'No work shift is available right now.';
+    if (!SHIFT_SHORT_MODE && !currentShiftWindowOpen) return 'Clock-in opens at 9:00 AM Houston time.';
+    if (!workExecutionGuard.allowed) return workExecutionGuard.reason || 'Cannot start shift right now.';
+    return null;
+  }, [
+    activeShift,
+    currentShiftWindowOpen,
+    loop.dailySession.sessionStatus,
+    workExecutionGuard.allowed,
+    workExecutionGuard.reason,
+    workShiftAction,
+  ]);
+
+  const gamePhaseLabel = useMemo(() => {
+    if (loop.dailySession.sessionStatus === 'ended') return 'End of day';
+    if (activeShift) return 'On shift';
+    if (houstonHour < SHIFT_START_HOUR) return 'Before shift';
+    if (houstonHour >= SHIFT_END_HOUR) return 'After shift';
+    return 'Before shift';
+  }, [activeShift, houstonHour, loop.dailySession.sessionStatus]);
+
+  const dayLabel = loop.dailySession.currentDay || loop.dailyProgression.currentGameDay || 1;
+
+  const rideshareTripsToday = useMemo(
+    () => loop.dailySession.actionsTakenToday.filter((entry) => canonicalDashboardActionKey(String(entry.action_key || '')) === 'side_income' && entry.success).length,
+    [loop.dailySession.actionsTakenToday],
+  );
+  const rideshareEarnedToday = useMemo(
+    () => loop.dailySession.actionsTakenToday
+      .filter((entry) => canonicalDashboardActionKey(String(entry.action_key || '')) === 'side_income' && entry.success)
+      .reduce((sum, entry) => sum + Number(entry.impact_snapshot?.cash_delta_xgp || 0), 0),
+    [loop.dailySession.actionsTakenToday],
+  );
+  const rideshareDailyCap = Math.max(1, Number(BALANCE.ACTION_CAPS.side_income || 5));
+  const rideshareTimeWindowOpen = SHIFT_SHORT_MODE || houstonHour < SHIFT_START_HOUR || houstonHour >= SHIFT_END_HOUR;
+  const sideIncomeGuard = sideIncomeAction
+    ? loop.dailySession.canExecuteAction(sideIncomeAction)
+    : { allowed: false, reason: 'Ride share action is not available yet.', timeCostUnits: 0 };
+  const rideshareAvailable = Boolean(
+    sideIncomeAction
+    && !activeShift
+    && rideshareTimeWindowOpen
+    && sideIncomeGuard.allowed
+    && loop.dailySession.sessionStatus === 'active',
+  );
+
+  const rideshareStatusLabel = useMemo(() => {
+    if (loop.dailySession.sessionStatus !== 'active') return 'Day ended';
+    if (activeShift) return `Unavailable during work shift (available after ${shiftEndLabel})`;
+    if (!rideshareTimeWindowOpen) return 'Available after 5:00 PM';
+    if (!sideIncomeAction) return 'Ride share not unlocked yet';
+    if (!sideIncomeGuard.allowed) return sanitizeRideShareReason(sideIncomeGuard.reason);
+    if (houstonHour >= SHIFT_END_HOUR) return 'Available after shift';
+    if (houstonHour < SHIFT_START_HOUR) return 'Available before shift';
+    return 'Available now';
+  }, [
+    activeShift,
+    houstonHour,
+    loop.dailySession.sessionStatus,
+    rideshareTimeWindowOpen,
+    shiftEndLabel,
+    sideIncomeAction,
+    sideIncomeGuard.allowed,
+    sideIncomeGuard.reason,
+  ]);
+
+  const busyActionKey = canonicalDashboardActionKey(String(loop.busyActionKey || ''));
+  const runningSideIncome = loop.executingAction && busyActionKey === 'side_income';
+  const runningWorkAction = loop.executingAction && busyActionKey === 'work_shift';
+
   const switchJobAction = useMemo(() => {
     if (!loop.actionHub) return null;
     return (
@@ -108,7 +370,7 @@ export default function DashboardScreen() {
   );
   const showStarterJobChooser = starterJobOptions.length > 0 && (firstSessionFlag || !hasStarterJobSelected);
   const selectingStarterJob = loop.executingAction && loop.busyActionKey === 'switch_job';
-  const endDayDisabled = !loop.dailyProgression.canAdvanceDay || loop.endingDay;
+  const endDayDisabled = !loop.dailyProgression.canAdvanceDay || loop.endingDay || Boolean(activeShift) || autoClockingOut;
 
   useEffect(() => {
     if (!INTERACTION_DIAGNOSTICS_ENABLED) return;
@@ -157,18 +419,241 @@ export default function DashboardScreen() {
     void loop.executeAction(action);
   };
 
-  // ── Life / Meals ──
+  const actionTimeline = useMemo(() => loop.dailySession.actionsTakenToday.map((entry) => {
+    const key = canonicalDashboardActionKey(String(entry.action_key || ''));
+    let category: TimelineNote['category'] = 'system';
+    if (key === 'work_shift') category = 'work';
+    else if (key === 'side_income') category = 'rideshare';
+    else if (key === 'rest' || key === 'study') category = 'recovery';
+    else if (key === 'meal') category = 'meal';
+    else if (key === 'finance') category = 'finance';
+
+    return {
+      id: entry.id,
+      timestampIso: entry.executed_at,
+      title: entry.title,
+      detail: entry.result_summary || entry.description || (entry.success ? 'Action completed.' : 'Action failed.'),
+      category,
+    };
+  }), [loop.dailySession.actionsTakenToday]);
+
+  const todaysActivity = useMemo(() => {
+    const merged = [...timelineNotes, ...actionTimeline];
+    return merged.sort(
+      (a, b) => new Date(a.timestampIso).getTime() - new Date(b.timestampIso).getTime(),
+    );
+  }, [actionTimeline, timelineNotes]);
+
+  const actionHubForDisplay = useMemo(() => {
+    if (!loop.actionHub) return null;
+    const stripRoutineActions = (actions: DailyActionItem[]) =>
+      actions.filter((action) => {
+        const key = canonicalDashboardActionKey(String(action.action_key || ''));
+        return key !== 'work_shift' && key !== 'side_income';
+      });
+
+    return {
+      ...loop.actionHub,
+      recommended_actions: stripRoutineActions(loop.actionHub.recommended_actions || []),
+      available_actions: stripRoutineActions(loop.actionHub.available_actions || []),
+      blocked_actions: stripRoutineActions(loop.actionHub.blocked_actions || []),
+    };
+  }, [loop.actionHub]);
+
+  const handleClockIn = async () => {
+    if (!workShiftAction || !canClockIn) {
+      if (clockInBlocker) {
+        loop.setFeedback({
+          tone: 'error',
+          message: clockInBlocker,
+        });
+      }
+      return;
+    }
+
+    const startMs = Date.now();
+    const endMs = startMs + (shiftDurationSeconds * 1000);
+
+    setActiveShift({
+      startedAtMs: startMs,
+      endsAtMs: endMs,
+      action: workShiftAction,
+    });
+
+    appendTimelineNote({
+      timestampIso: new Date(startMs).toISOString(),
+      title: `Clocked in to ${workShiftAction.title}`,
+      detail: `Shift timer started (${formatSecondsRemaining(shiftDurationSeconds)}${SHIFT_SHORT_MODE ? ' short mode' : ''}).`,
+      category: 'work',
+    });
+
+    loop.setFeedback({
+      tone: 'info',
+      message: `Clocked in. Shift auto-completes in ${formatSecondsRemaining(shiftDurationSeconds)}.`,
+    });
+  };
+
+  useEffect(() => {
+    if (!activeShift || autoClockingOut) return;
+    if (houstonNow.getTime() < activeShift.endsAtMs) return;
+
+    let cancelled = false;
+
+    const autoClockOut = async () => {
+      setAutoClockingOut(true);
+      appendTimelineNote({
+        timestampIso: new Date().toISOString(),
+        title: 'Shift timer ended',
+        detail: 'Auto clock-out triggered.',
+        category: 'system',
+      });
+
+      const ok = await loop.executeAction(activeShift.action);
+
+      if (!cancelled) {
+        appendTimelineNote({
+          timestampIso: new Date().toISOString(),
+          title: ok ? 'Shift completed' : 'Shift completion failed',
+          detail: ok ? 'Shift payout and effects were applied.' : 'Shift payout failed. Try clocking in again.',
+          category: 'work',
+        });
+        setActiveShift(null);
+        setAutoClockingOut(false);
+      }
+    };
+
+    void autoClockOut();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeShift, autoClockingOut, houstonNow, loop]);
+
+  const runRideShareTrip = async () => {
+    if (!sideIncomeAction) {
+      loop.setFeedback({
+        tone: 'error',
+        message: 'Ride share is not unlocked yet.',
+      });
+      return;
+    }
+
+    if (activeShift) {
+      loop.setFeedback({
+        tone: 'error',
+        message: `Unavailable during work shift. Available after ${shiftEndLabel}.`,
+      });
+      return;
+    }
+
+    if (!rideshareTimeWindowOpen) {
+      loop.setFeedback({
+        tone: 'error',
+        message: 'Ride share is only available before 9:00 AM or after 5:00 PM.',
+      });
+      return;
+    }
+
+    if (!sideIncomeGuard.allowed) {
+      loop.setFeedback({
+        tone: 'error',
+        message: sanitizeRideShareReason(sideIncomeGuard.reason),
+      });
+      return;
+    }
+
+    await loop.executeAction(sideIncomeAction);
+  };
+
+  const runRecoveryAction = async (preset: RecoveryPreset) => {
+    if (activeShift || autoClockingOut) {
+      loop.setFeedback({
+        tone: 'error',
+        message: `Recovery actions are unavailable during shift. Available after ${shiftEndLabel}.`,
+      });
+      return;
+    }
+
+    setBusyRecoveryId(preset.id);
+
+    try {
+      if (preset.id === 'eat_meal') {
+        await loop.eatMeal('dinner');
+      } else if (preset.id === 'read_book') {
+        await loop.executeAction({
+          action_key: 'study',
+          title: 'Read Book',
+          description: 'Read for focused recovery and skill growth.',
+          status: 'available',
+          blockers: [],
+          warnings: [],
+          tradeoffs: [],
+          confidence_level: 'high',
+          parameters: { training_hours: 1 },
+        });
+      } else if (preset.id === 'jogging') {
+        await loop.executeAction({
+          action_key: 'rest',
+          title: 'Jogging',
+          description: 'Jog lightly to lower stress and improve health.',
+          status: 'available',
+          blockers: [],
+          warnings: [],
+          tradeoffs: [],
+          confidence_level: 'medium',
+          parameters: { recovery_mode: 'jogging' },
+        });
+      } else if (preset.id === 'watch_tv' || preset.id === 'watch_movie') {
+        await loop.executeAction({
+          action_key: 'rest',
+          title: preset.title,
+          description: `${preset.title} to decompress before your next money move.`,
+          status: 'available',
+          blockers: [],
+          warnings: [],
+          tradeoffs: [],
+          confidence_level: 'high',
+          parameters: { recovery_mode: preset.id },
+        });
+      } else {
+        await loop.executeAction({
+          action_key: 'rest',
+          title: 'Rest',
+          description: 'Take a short recovery block to reduce stress.',
+          status: 'available',
+          blockers: [],
+          warnings: [],
+          tradeoffs: [],
+          confidence_level: 'high',
+          parameters: { recovery_mode: 'rest' },
+        });
+      }
+    } finally {
+      setBusyRecoveryId(null);
+    }
+  };
+
+  // Life / Meals
   const [busyMeal, setBusyMeal] = useState<string | null>(null);
-  const busyLife = loop.executingAction || busyMeal !== null;
+  const busyLife = loop.executingAction || busyMeal !== null || Boolean(activeShift) || autoClockingOut;
 
   async function handleEat(mealType: 'breakfast' | 'lunch' | 'dinner') {
+    if (activeShift || autoClockingOut) {
+      loop.setFeedback({
+        tone: 'error',
+        message: `Meals and recovery are unavailable during shift. Available after ${shiftEndLabel}.`,
+      });
+      return;
+    }
+
     if (busyLife) return;
+
     setBusyMeal(`eat_${mealType}`);
     await loop.eatMeal(mealType);
     setBusyMeal(null);
   }
 
-  // ── Finance / Loans ──
+  // Finance / Loans
   const [loanAmount, setLoanAmount] = useState<100 | 200 | 300 | 500>(100);
   const [busyLoan, setBusyLoan] = useState(false);
   const busyFinance = loop.executingAction || busyLoan;
@@ -188,7 +673,7 @@ export default function DashboardScreen() {
       activeNavKey="dashboard"
       footer={guidedDashboardActive ? null : (
         <GameplayStickyActionArea
-          summary={`${loop.dailySession.remainingTimeUnits} time units left today`}
+          summary={activeShift ? `On shift - ${shiftRemainingLabel} remaining` : `${loop.dailySession.remainingTimeUnits} time units left today`}
           secondaryLabel="Check Market"
           onSecondaryPress={() => onboarding.navigateTo('market')}
           primaryLabel={loop.endingDay ? 'Settling Day...' : 'End Day'}
@@ -198,7 +683,7 @@ export default function DashboardScreen() {
         />
       )}
     >
-      {/* ── Stats ── */}
+      {/* Stats */}
       {stats ? (
         <OnboardingHighlight target="dashboard-core-stats">
           <GameplaySummaryCard eyebrow="Status" title="Money, Health &amp; Stress">
@@ -246,7 +731,21 @@ export default function DashboardScreen() {
         />
       )}
 
-      {/* ── Work ── */}
+      {/* Game time */}
+      <GameplaySummaryCard eyebrow="Game Time" title="Houston Clock">
+        <GameplayCompactMetricRows
+          items={[
+            { label: 'Current day', value: `Day ${dayLabel}` },
+            { label: 'Current time', value: `${formatHoustonNow(houstonNow)} CT` },
+            { label: 'Date', value: formatHoustonDate(houstonNow) },
+            { label: 'Phase / status', value: gamePhaseLabel, tone: activeShift ? 'warning' : 'info' },
+            { label: 'Shift window', value: shiftWindowLabel() },
+            { label: 'Timer mode', value: SHIFT_SHORT_MODE ? 'Accelerated testing mode' : 'Real-time mode' },
+          ]}
+        />
+      </GameplaySummaryCard>
+
+      {/* Work shift */}
       <GameplaySummaryCard eyebrow="Work" title="Income &amp; Shifts">
         <View style={styles.metricRow}>
           <GameplayStatCard
@@ -256,17 +755,59 @@ export default function DashboardScreen() {
             note={loop.jobIncome.currentJob ? loop.jobIncome.currentJob.replace(/_/g, ' ') : 'No job selected'}
           />
           <GameplayStatCard
+            label="Shift status"
+            value={activeShift ? 'On shift' : autoClockingOut ? 'Auto clocking out' : canClockIn ? 'Ready to clock in' : 'Off shift'}
+            tone={activeShift ? 'warning' : canClockIn ? 'positive' : 'neutral'}
+            note={activeShift ? `Ends at ${shiftEndLabel} CT` : `Window: ${shiftWindowLabel()}`}
+          />
+          <GameplayStatCard
+            label="Shift timer"
+            value={activeShift ? shiftRemainingLabel : '--'}
+            tone={activeShift ? 'warning' : 'neutral'}
+            note={SHIFT_SHORT_MODE ? `Short mode (${shiftDurationSeconds}s)` : 'Auto clock-out at shift end'}
+          />
+          <GameplayStatCard
             label="Time left"
             value={`${loop.dailySession.remainingTimeUnits}/${loop.dailySession.totalTimeUnits}`}
             tone={loop.dailySession.remainingTimeUnits <= 2 ? 'warning' : 'info'}
             note="Each shift uses time units."
           />
         </View>
+
+        <View style={styles.clockInButtonWrap}>
+          <PrimaryButton
+            label={
+              autoClockingOut
+                ? 'Auto clocking out...'
+                : runningWorkAction
+                  ? 'Applying shift...'
+                  : activeShift
+                    ? `On shift (${shiftRemainingLabel})`
+                    : 'Clock In'
+            }
+            onPress={() => void handleClockIn()}
+            disabled={!canClockIn || Boolean(activeShift) || autoClockingOut || runningWorkAction}
+          />
+        </View>
+
+        {activeShift ? (
+          <GameplayWarningBanner
+            title="Shift active"
+            message={`You are clocked in. Auto clock-out at ${shiftEndLabel} CT.`}
+            tone="info"
+          />
+        ) : clockInBlocker ? (
+          <Text style={styles.helperText}>{clockInBlocker}</Text>
+        ) : (
+          <Text style={styles.helperText}>
+            Clock in during shift hours, then wait for auto clock-out and payout.
+          </Text>
+        )}
       </GameplaySummaryCard>
 
       {showStarterJobChooser ? (
         <GameplaySummaryCard
-          eyebrow={hasStarterJobSelected ? 'Switch Job' : 'Day 1 — Choose Your Job'}
+          eyebrow={hasStarterJobSelected ? 'Switch Job' : 'Day 1 - Choose Your Job'}
           title={hasStarterJobSelected ? `Current: ${currentJobKey.replace(/_/g, ' ')}` : 'Pick a Role to Start Earning'}
         >
           <View style={styles.jobOptionsGrid}>
@@ -297,10 +838,38 @@ export default function DashboardScreen() {
         </GameplaySummaryCard>
       ) : null}
 
-      {loop.actionHub ? (
+      {/* Ride share */}
+      <GameplaySummaryCard eyebrow="Side Income" title="Post-Shift Ride Share">
+        <GameplayCompactMetricRows
+          items={[
+            {
+              label: 'Status',
+              value: rideshareStatusLabel,
+              tone: rideshareAvailable ? 'positive' : activeShift ? 'warning' : 'neutral',
+            },
+            { label: 'Trips today', value: `${rideshareTripsToday} / ${rideshareDailyCap}` },
+            {
+              label: 'Ride share earned today',
+              value: formatMoney(rideshareEarnedToday),
+              tone: rideshareEarnedToday > 0 ? 'positive' : 'neutral',
+            },
+            { label: 'Time cost per trip', value: `${sideIncomeGuard.timeCostUnits || 1} units` },
+          ]}
+        />
+        <View style={styles.clockInButtonWrap}>
+          <PrimaryButton
+            label={runningSideIncome ? 'Completing trip...' : 'Run Ride Share Trip'}
+            onPress={() => void runRideShareTrip()}
+            disabled={!rideshareAvailable || runningSideIncome || autoClockingOut || loop.executingAction}
+          />
+        </View>
+      </GameplaySummaryCard>
+
+      {/* Action hub */}
+      {actionHubForDisplay ? (
         <OnboardingHighlight target="work-first-action">
           <ActionHubPanel
-            hub={loop.actionHub}
+            hub={actionHubForDisplay}
             onExecuteAction={(action) => void loop.executeAction(action)}
             getExecutionGuard={(action) => loop.dailySession.canExecuteAction(action)}
             remainingTimeUnits={loop.dailySession.remainingTimeUnits}
@@ -316,8 +885,61 @@ export default function DashboardScreen() {
         />
       )}
 
-      {/* ── Life ── */}
-      <GameplaySummaryCard eyebrow="Life" title="Food &amp; Recovery">
+      {/* Recovery */}
+      <GameplaySummaryCard eyebrow="Recovery" title="Recovery Actions">
+        {(activeShift || autoClockingOut) ? (
+          <GameplayWarningBanner
+            title="Recovery locked during shift"
+            message={`Recovery actions unlock after ${shiftEndLabel} CT.`}
+            tone="warning"
+          />
+        ) : null}
+
+        <View style={styles.recoveryList}>
+          {RECOVERY_PRESETS.map((preset) => {
+            const running = busyRecoveryId === preset.id;
+            return (
+              <View key={preset.id} style={styles.recoveryRow}>
+                <View style={styles.recoveryInfo}>
+                  <Text style={styles.recoveryTitle}>{preset.title}</Text>
+                  <Text style={styles.recoveryMeta}>
+                    Time {preset.timeCostUnits}u | Stress {signedWhole(preset.stressChange)} | Health {signedWhole(preset.healthChange)} | Skill {signedWhole(preset.skillChange)}
+                  </Text>
+                </View>
+                <View style={styles.recoveryActionWrap}>
+                  <SecondaryButton
+                    label={running ? 'Running...' : 'Do'}
+                    onPress={() => void runRecoveryAction(preset)}
+                    disabled={Boolean(busyRecoveryId) || loop.executingAction || Boolean(activeShift) || autoClockingOut}
+                  />
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      </GameplaySummaryCard>
+
+      {/* Activity history */}
+      <GameplaySummaryCard eyebrow="Today" title="Activity History">
+        {todaysActivity.length > 0 ? (
+          <View style={styles.activityList}>
+            {todaysActivity.map((entry) => (
+              <View key={entry.id} style={styles.activityRow}>
+                <Text style={styles.activityTime}>{formatHoustonTimestamp(entry.timestampIso)}</Text>
+                <View style={styles.activityCopy}>
+                  <Text style={styles.activityTitle}>{entry.title}</Text>
+                  <Text style={styles.activityDetail}>{entry.detail}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <Text style={styles.activityEmpty}>No activity yet today. Start with clock-in, meals, recovery, or a ride share trip.</Text>
+        )}
+      </GameplaySummaryCard>
+
+      {/* Meals */}
+      <GameplaySummaryCard eyebrow="Life" title="Food &amp; Meals">
         {cash < 6 ? (
           <GameplayWarningBanner
             title="Not enough cash for a meal"
@@ -328,21 +950,21 @@ export default function DashboardScreen() {
         <View style={styles.buttonRow}>
           <View style={styles.mealBtn}>
             <PrimaryButton
-              label={busyMeal === 'eat_breakfast' ? 'Eating...' : 'Breakfast (−6 XGP)'}
+              label={busyMeal === 'eat_breakfast' ? 'Eating...' : 'Breakfast (-6 XGP)'}
               onPress={() => void handleEat('breakfast')}
               disabled={busyLife || cash < 6}
             />
           </View>
           <View style={styles.mealBtn}>
             <SecondaryButton
-              label={busyMeal === 'eat_lunch' ? 'Eating...' : 'Lunch (−6 XGP)'}
+              label={busyMeal === 'eat_lunch' ? 'Eating...' : 'Lunch (-6 XGP)'}
               onPress={() => void handleEat('lunch')}
               disabled={busyLife || cash < 6}
             />
           </View>
           <View style={styles.mealBtn}>
             <SecondaryButton
-              label={busyMeal === 'eat_dinner' ? 'Eating...' : 'Dinner (−6 XGP)'}
+              label={busyMeal === 'eat_dinner' ? 'Eating...' : 'Dinner (-6 XGP)'}
               onPress={() => void handleEat('dinner')}
               disabled={busyLife || cash < 6}
             />
@@ -350,12 +972,12 @@ export default function DashboardScreen() {
         </View>
       </GameplaySummaryCard>
 
-      {/* ── Finance ── */}
+      {/* Finance */}
       <GameplaySummaryCard eyebrow="Finance" title="Quick Loan">
         {debt > 200 ? (
           <GameplayWarningBanner
             title="High debt"
-            message={`Current debt: ${formatMoney(debt)}. Borrowing adds more — try earning first.`}
+            message={`Current debt: ${formatMoney(debt)}. Borrowing adds more - try earning first.`}
             tone="warning"
           />
         ) : null}
@@ -374,7 +996,7 @@ export default function DashboardScreen() {
           })}
         </View>
         <Text style={styles.loanRepayNote}>
-          Borrow {loanAmount} XGP → owe {loanRepay} XGP (+15%).
+          Borrow {loanAmount} XGP -&gt; owe {loanRepay} XGP (+15%).
         </Text>
         <View style={styles.loanConfirmBtn}>
           <PrimaryButton
@@ -385,7 +1007,7 @@ export default function DashboardScreen() {
         </View>
       </GameplaySummaryCard>
 
-      {/* ── Warnings ── */}
+      {/* Warnings */}
       {cash < 50 ? (
         <GameplayWarningBanner
           title="Almost out of money"
@@ -397,7 +1019,7 @@ export default function DashboardScreen() {
       {stress >= 70 ? (
         <GameplayWarningBanner
           title="Stress is very high"
-          message="Eat a meal above to reduce stress before it affects your health."
+          message="Use meals or recovery actions before stress starts harming health."
           tone="warning"
         />
       ) : null}
@@ -411,6 +1033,76 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: theme.spacing.sm,
+  },
+  clockInButtonWrap: {
+    marginTop: theme.spacing.xs,
+  },
+  helperText: {
+    ...theme.typography.bodySm,
+    color: theme.color.textSecondary,
+  },
+  recoveryList: {
+    gap: theme.spacing.sm,
+  },
+  recoveryRow: {
+    borderWidth: 1,
+    borderColor: theme.color.border,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.color.surfaceAlt,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm,
+    gap: theme.spacing.xs,
+  },
+  recoveryInfo: {
+    gap: theme.spacing.xxs,
+  },
+  recoveryTitle: {
+    ...theme.typography.bodyMd,
+    color: theme.color.textPrimary,
+    fontWeight: '700',
+  },
+  recoveryMeta: {
+    ...theme.typography.caption,
+    color: theme.color.textSecondary,
+  },
+  recoveryActionWrap: {
+    marginTop: theme.spacing.xxs,
+  },
+  activityList: {
+    gap: theme.spacing.sm,
+  },
+  activityRow: {
+    borderWidth: 1,
+    borderColor: theme.color.border,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.color.surfaceAlt,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: theme.spacing.sm,
+  },
+  activityTime: {
+    ...theme.typography.label,
+    color: theme.color.info,
+    minWidth: 62,
+  },
+  activityCopy: {
+    flex: 1,
+    gap: theme.spacing.xxs,
+  },
+  activityTitle: {
+    ...theme.typography.bodySm,
+    color: theme.color.textPrimary,
+    fontWeight: '700',
+  },
+  activityDetail: {
+    ...theme.typography.caption,
+    color: theme.color.textSecondary,
+  },
+  activityEmpty: {
+    ...theme.typography.bodySm,
+    color: theme.color.textSecondary,
   },
   buttonRow: {
     gap: theme.spacing.sm,
@@ -495,3 +1187,4 @@ const styles = StyleSheet.create({
     color: '#166534',
   },
 });
+
