@@ -29,6 +29,20 @@ export interface DashboardStatSnapshot {
   region_key?: string | null;
 }
 
+export interface JobProgressSnapshot {
+  job_key: string;
+  job_level: number;
+  skill_level: number;
+  job_xp: number;
+  job_xp_to_next_level: number;
+  max_job_level: number;
+  monthly_pay_xgp: number;
+  employer_company_symbol?: string | null;
+  employer_company_name?: string | null;
+  position_title?: string | null;
+  shift_type?: string | null;
+}
+
 export interface DashboardStateCard {
   title: string;
   summary: string;
@@ -60,6 +74,7 @@ export interface PlayerDashboardResponse {
   top_opportunities: DashboardSignalItem[];
   top_risks: DashboardSignalItem[];
   recommended_actions: ActionRecommendation[];
+  job_progress?: JobProgressSnapshot | null;
   debug_meta?: Record<string, unknown>;
 }
 

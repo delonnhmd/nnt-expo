@@ -359,6 +359,21 @@ export default function DashboardScreen() {
     || loop.dashboard?.stats?.current_job
     || '',
   ).trim();
+  const jobProgress = loop.dashboard?.job_progress || null;
+  const jobLevelMax = Math.max(1, Number(jobProgress?.max_job_level || 40));
+  const jobLevel = Math.max(1, Math.min(jobLevelMax, Number(jobProgress?.job_level || jobProgress?.skill_level || 1)));
+  const jobXp = Math.max(0, Number(jobProgress?.job_xp || 0));
+  const jobXpToNext = Math.max(0, Number(jobProgress?.job_xp_to_next_level || 0));
+  const monthlyPay = Number(jobProgress?.monthly_pay_xgp || 0);
+  const estimatedHourlyPay = monthlyPay > 0 ? monthlyPay / 30 / 8 : 0;
+  const jobLevelDetail = jobLevel >= jobLevelMax
+    ? `Level cap reached (${jobLevelMax})`
+    : `${Math.round(jobXp)} / ${Math.round(jobXpToNext)} XP to next`;
+  const employerLabel = String(
+    jobProgress?.position_title
+    || jobProgress?.employer_company_name
+    || '',
+  ).trim();
   const hasStarterJobSelected = Boolean(
     loop.actionHub?.debug_meta?.has_starter_job_selected
     ?? currentJobKey,
@@ -752,7 +767,19 @@ export default function DashboardScreen() {
             label="Today's pay"
             value={loop.jobIncome.dailyIncomeLabel}
             tone={loop.jobIncome.incomeAmount != null && loop.jobIncome.incomeAmount >= 0 ? 'positive' : 'warning'}
-            note={loop.jobIncome.currentJob ? loop.jobIncome.currentJob.replace(/_/g, ' ') : 'No job selected'}
+            note={employerLabel || (loop.jobIncome.currentJob ? loop.jobIncome.currentJob.replace(/_/g, ' ') : 'No job selected')}
+          />
+          <GameplayStatCard
+            label="Job level"
+            value={`Lv ${jobLevel}/${jobLevelMax}`}
+            tone={jobLevel >= jobLevelMax ? 'positive' : 'info'}
+            note={jobLevelDetail}
+          />
+          <GameplayStatCard
+            label="Pay scale"
+            value={monthlyPay > 0 ? formatMoney(monthlyPay) : '--'}
+            tone={monthlyPay > 0 ? 'positive' : 'neutral'}
+            note={monthlyPay > 0 ? `~${formatMoney(estimatedHourlyPay)}/hour` : 'Monthly salary updates with level'}
           />
           <GameplayStatCard
             label="Shift status"

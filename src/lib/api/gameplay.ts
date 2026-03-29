@@ -155,6 +155,9 @@ function normalizeImpact(raw: unknown, label: string, fallbackDirection: TrendDi
 
 function normalizeDashboard(raw: Record<string, unknown>, playerId: string): PlayerDashboardResponse {
   const stats = (raw.stats as Record<string, unknown>) || {};
+  const jobProgressRaw = (raw.job_progress && typeof raw.job_progress === 'object')
+    ? (raw.job_progress as Record<string, unknown>)
+    : null;
   const opportunitiesRaw =
     (Array.isArray(raw.top_opportunities) ? raw.top_opportunities : null) ||
     (Array.isArray(raw.opportunities) ? raw.opportunities : null) ||
@@ -222,6 +225,21 @@ function normalizeDashboard(raw: Record<string, unknown>, playerId: string): Pla
         reason: toString(item.reason || item.description || 'Recommended action'),
       };
     }),
+    job_progress: jobProgressRaw
+      ? {
+        job_key: toString(jobProgressRaw.job_key || stats.current_job || ''),
+        job_level: Math.max(1, Math.min(40, toNumber(jobProgressRaw.job_level ?? jobProgressRaw.skill_level, 1))),
+        skill_level: Math.max(1, Math.min(40, toNumber(jobProgressRaw.skill_level ?? jobProgressRaw.job_level, 1))),
+        job_xp: Math.max(0, Math.round(toNumber(jobProgressRaw.job_xp, 0))),
+        job_xp_to_next_level: Math.max(0, Math.round(toNumber(jobProgressRaw.job_xp_to_next_level, 0))),
+        max_job_level: Math.max(1, Math.round(toNumber(jobProgressRaw.max_job_level, 40))),
+        monthly_pay_xgp: normalizeMoneyValue(jobProgressRaw.monthly_pay_xgp, { allowNegative: false, fallback: 0 }),
+        employer_company_symbol: toString(jobProgressRaw.employer_company_symbol, ''),
+        employer_company_name: toString(jobProgressRaw.employer_company_name, ''),
+        position_title: toString(jobProgressRaw.position_title, ''),
+        shift_type: toString(jobProgressRaw.shift_type, ''),
+      }
+      : null,
     debug_meta: (raw.debug_meta as Record<string, unknown>) || {},
   };
 }
@@ -571,8 +589,19 @@ export async function executeAction(
       toNumber(unified.time_cost_units ?? params.time_cost_units ?? 2, 2),
       unified,
     );
-  } catch {
-    // Fallback to known backend endpoints when unified execution is unavailable.
+  } catch (error) {
+    // Preserve canonical gameplay errors (4xx/5xx) so we don't mask the real cause
+    // with legacy fallback responses like unrelated auth failures.
+    const message = error instanceof Error ? error.message : String(error);
+    const normalized = message.toLowerCase();
+    const shouldUseFallback =
+      normalized.includes('404')
+      || normalized.includes('not found')
+      || normalized.includes('failed to fetch')
+      || normalized.includes('network request failed');
+    if (!shouldUseFallback) {
+      throw error instanceof Error ? error : new Error(message);
+    }
   }
 
   if (canonical === 'operate_business') {
@@ -751,6 +780,7 @@ export async function executeAction(
       {
         method: 'POST',
         body: JSON.stringify({
+          player_id: playerId,
           hours_worked: Math.max(1, Math.min(8, toNumber(params.hours_worked, 3))),
         }),
       },
